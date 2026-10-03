@@ -249,7 +249,7 @@ export const LAYER_SHEAR = 0.5;
 export const LAYER_SQUASH = 0.5;
 /** Screen units per sheet unit of height, for a flap standing up mid-fold. */
 export const LAYER_HEIGHT = 0.6;
-/** Width to height ratio of the layer view frame; the viewBox is padded to match. */
+/** Default width to height ratio of the layer view; the viewBox is padded to match. */
 export const LAYER_VIEW_ASPECT = 2;
 
 /**
@@ -263,12 +263,14 @@ export function projectLayer(p: Vec, rank: number, lift: number, size: number): 
 
 export interface LayerViewOptions {
   readonly lift: number;
+  /** Width to height ratio of the frame; defaults to LAYER_VIEW_ASPECT. */
+  readonly aspect?: number;
   readonly animation?: FoldAnimation;
 }
 
 export interface LayerView {
   readonly markup: string;
-  /** Frames every drawn facet with the usual padding, at LAYER_VIEW_ASPECT. */
+  /** Frames every drawn facet with the usual padding, at the frame's aspect ratio. */
   readonly viewBox: string;
 }
 
@@ -326,8 +328,9 @@ export function renderLayers(state: PaperState, options: LayerViewOptions): Laye
   const pad = VIEW_PADDING * size;
   let w = box.maxX - box.minX + 2 * pad;
   let h = box.maxY - box.minY + 2 * pad;
-  if (w < LAYER_VIEW_ASPECT * h) w = LAYER_VIEW_ASPECT * h;
-  else h = w / LAYER_VIEW_ASPECT;
+  const aspect = options.aspect ?? LAYER_VIEW_ASPECT;
+  if (w < aspect * h) w = aspect * h;
+  else h = w / aspect;
   const cx = (box.minX + box.maxX) / 2;
   const cy = (box.minY + box.maxY) / 2;
   return {

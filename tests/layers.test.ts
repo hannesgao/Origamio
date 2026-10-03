@@ -45,6 +45,9 @@ describe('layer view', () => {
     expect(view.markup).toContain('data-id="');
     const [, , w, h] = view.viewBox.split(' ').map(Number) as [number, number, number, number];
     expect(w / h).toBeCloseTo(LAYER_VIEW_ASPECT);
+    const square = renderLayers(folded().state, { lift: 0.05, aspect: 1 });
+    const [, , sw, sh] = square.viewBox.split(' ').map(Number) as [number, number, number, number];
+    expect(sw / sh).toBeCloseTo(1);
     // The flat sheet projects to a parallelogram 1.5 wide and 0.5 high.
     const flat = renderLayers(createPaper(), { lift: 0.05 });
     const [x, y, fw, fh] = flat.viewBox.split(' ').map(Number) as [number, number, number, number];

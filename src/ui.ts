@@ -207,10 +207,14 @@ export function createApp(root: HTMLElement): App {
     [icon(RESET_ICON), 'Reset'],
   );
   const presetButtons = PRESETS.map((preset) =>
-    el('button', { type: 'button', class: 'preset', 'data-preset': preset.id }, [
-      el('span', { class: 'preset-label' }, [preset.label]),
-      el('span', { class: 'preset-desc' }, [preset.title]),
-    ]),
+    el(
+      'button',
+      { type: 'button', class: 'preset', 'data-preset': preset.id, title: preset.title },
+      [
+        el('span', { class: 'preset-label' }, [preset.label]),
+        el('span', { class: 'preset-desc' }, [preset.title]),
+      ],
+    ),
   );
 
   const statFolds = el('span', { class: 'stat-value' }, ['0']);
@@ -236,12 +240,12 @@ export function createApp(root: HTMLElement): App {
   const fitButton = el(
     'button',
     { type: 'button', class: 'btn btn-sm', title: 'Fit the folded sheet into view (F)' },
-    [icon(FIT_ICON), 'Fit'],
+    [icon(FIT_ICON), el('span', { class: 'btn-label' }, ['Fit'])],
   );
   const fullButton = el(
     'button',
     { type: 'button', class: 'btn btn-sm', title: 'Show the whole sheet (0)' },
-    [icon(FULL_ICON), 'Full'],
+    [icon(FULL_ICON), el('span', { class: 'btn-label' }, ['Full'])],
   );
   const zoomReadout = el('span', { class: 'zoom', title: 'Zoom; scroll on the sheet to change' }, [
     '100%',
@@ -347,7 +351,7 @@ export function createApp(root: HTMLElement): App {
           'Layers',
           layerTools,
           el('div', {}, [
-            el('div', { class: 'view-frame' }, [layersSvg]),
+            el('div', { class: 'view-frame view-frame-wide' }, [layersSvg]),
             el('p', { class: 'help view-help' }, [
               'The stack seen from the front, each layer lifted a little. Point at a facet in ',
               'any view to find it in the others.',
@@ -422,10 +426,14 @@ export function createApp(root: HTMLElement): App {
     toolMove.setAttribute('aria-pressed', String(tool === 'move'));
     foldedSvg.innerHTML = renderFolded(state, options);
     unfoldedSvg.innerHTML = renderUnfolded(state);
-    const layerOptions =
-      phase.kind === 'animating'
-        ? { lift: layerLift(), animation: phase.animation }
-        : { lift: layerLift() };
+    // The layer view is framed at the aspect ratio its frame actually has.
+    const rect = layersSvg.getBoundingClientRect();
+    const aspect = rect.width > 0 && rect.height > 0 ? rect.width / rect.height : undefined;
+    const layerOptions = {
+      lift: layerLift(),
+      ...(aspect === undefined ? {} : { aspect }),
+      ...(phase.kind === 'animating' ? { animation: phase.animation } : {}),
+    };
     const layers = renderLayers(state, layerOptions);
     layersSvg.setAttribute('viewBox', layers.viewBox);
     layersSvg.innerHTML = layers.markup;
@@ -681,6 +689,11 @@ export function createApp(root: HTMLElement): App {
     svg.addEventListener('pointerleave', () => setHighlight([]));
   }
   liftInput.addEventListener('input', render);
+  let resizeFrame = 0;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(render);
+  });
 
   toolFold.addEventListener('click', () => setTool('fold'));
   toolMove.addEventListener('click', () => setTool('move'));
@@ -755,6 +768,7 @@ export function createApp(root: HTMLElement): App {
   });
 
   render();
+  requestAnimationFrame(render);
 
   return {
     root,
