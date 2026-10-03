@@ -58,7 +58,7 @@ reflections and convex polygon clipping.
   have a chevron that collapses them to their header; in the folded-large
   layout the remaining card then takes the whole column. All of these choices
   are remembered in the browser.
-- **Made for wide screens.** Header, rail and dock are fixed and the views
+- **Made for wide screens.** Header, rail and footer are fixed and the views
   are sized to the remaining space, so nothing scrolls on a 16:9 display.
   Windows narrower than 1340 px show one view at a time behind Folded /
   Unfolded / Layers tabs and float the panels over the workspace; on phones
@@ -68,12 +68,15 @@ reflections and convex polygon clipping.
 
 The page is a workbench that fills the window and never scrolls as a whole: a
 fixed header with the layout switch, an icon rail on the left whose buttons
-open the Library (presets), File (name, import, export, new) and Shortcuts
-panels, the workspace with the folded sheet as the main view and the crease
-pattern and layer view beside it, and a dock at the bottom with the playback
-controls and the step track, which can be hidden. The views size themselves
-to the space that is left. Everything you operate on is in the Folded card:
-the drag tool, the layer selection, zoom, the status line and the statistics.
+open the Library (presets, in groups), File (name, import, export, new) and
+Shortcuts panels, the workspace with the three view cards and the timeline
+card under them, and a footer with the version and links. Every view card has
+the same anatomy: a head with the title and one row of tools, the canvas, and
+two lines underneath (status and statistics for the folded sheet; legend and
+crease count for the crease pattern; a note and the gap slider for the layer
+view), so the cards and their canvases are the same height. The views size
+themselves to the space that is left. Everything you operate on is in the
+Folded card: the drag tool, the layer selection, zoom and the status line.
 
 1. **Draw a fold line.** Press on the folded sheet, drag, and release. A dashed
    blue line shows where the fold will go; drags shorter than 2 % of the sheet
@@ -90,10 +93,10 @@ the drag tool, the layer selection, zoom, the status line and the statistics.
 5. **Try a preset.** The Library panel (first button on the rail) lists the
    presets; clicking one loads its steps onto the timeline from a flat sheet,
    where you step through or play them. Esc or the × closes the panel.
-6. **Replay and share.** The dock at the bottom holds the transport buttons
+6. **Replay and share.** The Timeline card under the views holds the transport buttons
    (start, one step back, play or pause, one step forward, end), the speed
    menu (a quarter speed up to four times), the position and a status line.
-   Below it the track shows the steps as clips: filled clips are applied,
+   Its body shows the steps as clips on a track: filled clips are applied,
    dashed ones are still to come, and the red playhead sits after the last
    applied step (it slides along while a step animates). Playing stops at the
    end of the current step when you press pause, P or Esc. Clicking a clip

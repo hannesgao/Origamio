@@ -12,7 +12,7 @@ export default defineConfig([
   {
     files: ['**/*.ts'],
     languageOptions: {
-      globals: { ...globals.browser },
+      globals: { ...globals.browser, __APP_VERSION__: 'readonly' },
     },
     rules: {
       '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
