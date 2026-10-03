@@ -21,9 +21,19 @@ export interface FoldStep {
   readonly label?: string;
 }
 
+/** The sheet a sequence is folded from. Sides are in sheet units; the longer side is usually 1. */
+export interface Paper {
+  readonly width: number;
+  readonly height: number;
+}
+
+export const DEFAULT_PAPER: Paper = { width: 1, height: 1 };
+
 export interface Sequence {
   readonly name: string;
   readonly description?: string;
+  /** Omitted in files means the unit square. */
+  readonly paper?: Paper;
   readonly steps: readonly FoldStep[];
 }
 
@@ -50,8 +60,12 @@ export interface SequenceJson {
   readonly version: typeof SEQUENCE_VERSION;
   readonly name: string;
   readonly description?: string;
+  readonly paper?: { readonly width: number; readonly height: number };
   readonly steps: readonly StepJson[];
 }
+
+/** Largest side length accepted for a sheet, in sheet units. */
+export const MAX_PAPER_SIDE = 10;
 
 const PLACEMENTS: readonly Placement[] = ['top', 'bottom', 'inside'];
 
@@ -83,6 +97,9 @@ export function sequenceToJson(sequence: Sequence): SequenceJson {
     version: SEQUENCE_VERSION,
     name: sequence.name,
     ...(sequence.description ? { description: sequence.description } : {}),
+    ...(sequence.paper
+      ? { paper: { width: round(sequence.paper.width), height: round(sequence.paper.height) } }
+      : {}),
     steps: sequence.steps.map(stepToJson),
   };
 }
@@ -209,9 +226,23 @@ export function parseSequence(input: unknown): Sequence {
   }
   const steps = value['steps'];
   if (!Array.isArray(steps)) return fail('sequence.steps', 'expected an array');
+  const paperValue = value['paper'];
+  let paper: Paper | undefined;
+  if (paperValue !== undefined) {
+    if (!isRecord(paperValue)) return fail('sequence.paper', 'expected { width, height }');
+    const width = paperValue['width'];
+    const height = paperValue['height'];
+    const side = (n: unknown): n is number =>
+      typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= MAX_PAPER_SIDE;
+    if (!side(width) || !side(height)) {
+      return fail('sequence.paper', `expected sides between 0 and ${MAX_PAPER_SIDE}`);
+    }
+    paper = { width, height };
+  }
   return {
     name: name.trim(),
     ...(typeof description === 'string' && description ? { description } : {}),
+    ...(paper ? { paper } : {}),
     steps: steps.map((s, i) => parseStep(s, `steps[${i}]`)),
   };
 }

@@ -77,6 +77,11 @@ export interface FoldOptions {
 }
 
 export interface PaperState {
+  /** Width of the unfolded sheet (x extent). */
+  readonly width: number;
+  /** Height of the unfolded sheet (y extent). */
+  readonly height: number;
+  /** The longer side: the scale used for padding, tolerances and view extents. */
   readonly size: number;
   readonly facets: readonly Facet[];
   readonly creases: readonly Crease[];
@@ -91,17 +96,19 @@ export interface FoldResult {
   readonly line: Line;
 }
 
-/** A fresh square sheet with its lower-left corner at the origin. */
-export function createPaper(size = 1): PaperState {
-  const square: Polygon = [
+/** A fresh rectangular sheet (square by default) with its lower-left corner at the origin. */
+export function createPaper(width = 1, height = width): PaperState {
+  const sheet: Polygon = [
     { x: 0, y: 0 },
-    { x: size, y: 0 },
-    { x: size, y: size },
-    { x: 0, y: size },
+    { x: width, y: 0 },
+    { x: width, y: height },
+    { x: 0, y: height },
   ];
   return {
-    size,
-    facets: [{ id: 0, poly: square, transform: IDENTITY, z: 0 }],
+    width,
+    height,
+    size: Math.max(width, height),
+    facets: [{ id: 0, poly: sheet, transform: IDENTITY, z: 0 }],
     creases: [],
     foldCount: 0,
     nextId: 1,

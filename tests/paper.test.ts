@@ -14,6 +14,7 @@ import {
   FoldHistory,
   createPaper,
   facetCount,
+  foldedPoints,
   layersAt,
   maxLayers,
   topLayers,
@@ -115,5 +116,34 @@ describe('fold', () => {
     const result = history.fold(l, sideOf(l, vec(3, 0)));
     expect(result).toBeNull();
     expect(history.canUndo).toBe(false);
+  });
+});
+
+describe('rectangular sheets', () => {
+  it('creates a sheet of any size with the longer side as its scale', () => {
+    const paper = createPaper(1, 0.75);
+    expect(paper.width).toBe(1);
+    expect(paper.height).toBe(0.75);
+    expect(paper.size).toBe(1);
+    expect(paper.facets[0]?.poly).toEqual([
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 1, y: 0.75 },
+      { x: 0, y: 0.75 },
+    ]);
+    const tall = createPaper(0.5, 2);
+    expect(tall.size).toBe(2);
+  });
+
+  it('folds a rectangle like a square', () => {
+    const history = new FoldHistory(createPaper(1, 0.5));
+    const step = foldLeftRight();
+    const result = history.fold(step.line, step.side, step.layers);
+    expect(result?.movedIds).toHaveLength(1);
+    expect(facetCount(history.state)).toBe(2);
+    expect(maxLayers(history.state)).toBe(2);
+    expect(foldedPoints(history.state).every((p) => p.x <= 0.5 + 1e-9 && p.y <= 0.5 + 1e-9)).toBe(
+      true,
+    );
   });
 });

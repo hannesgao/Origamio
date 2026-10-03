@@ -29,6 +29,10 @@ reflections and convex polygon clipping.
   and then fold one of three kinds of corner: the loose corner where the four
   sheet corners stack, the corner where both folded edges meet, and a corner
   with a single folded edge.
+- **Any sheet shape.** The Paper panel offers square, A series, 4:3, 3:2 and
+  16:9 sheets, a custom width and height, and a rotate button. Changing the
+  paper rewinds to the flat sheet and keeps every step on the timeline; the
+  size is part of every exported file and is restored on import.
 - **A crane.** The _Crane_ preset plays the classic sequence in 21 folds:
   pre-crease the diagonals, fold the preliminary base, petal fold both sides
   into the bird base, narrow the points, close the model along its centre
@@ -90,10 +94,14 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
 4. **Watch the result.** The status line under the folded sheet tells you
    which step you are in, and the statistics beneath it (folds, maximum
    layers, facets, layers under the cursor) update after every fold.
-5. **Try a preset.** The Library panel (first button on the rail) lists the
+5. **Choose the paper.** The Paper panel (second button on the rail) shows
+   the current sheet and lets you pick a shape or type a width and height;
+   the longer side is 1 by convention. Presets are folded from a square, so
+   loading one switches the sheet back and says so in the status line.
+6. **Try a preset.** The Library panel (first button on the rail) lists the
    presets; clicking one loads its steps onto the timeline from a flat sheet,
    where you step through or play them. Esc or the × closes the panel.
-6. **Replay and share.** The Timeline card under the views holds the transport buttons
+7. **Replay and share.** The Timeline card under the views holds the transport buttons
    (start, one step back, play or pause, one step forward, end), the speed
    menu (a quarter speed up to four times), the position and a status line.
    Its body shows the steps as clips on a track: filled clips are applied,
@@ -105,12 +113,12 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    choice and the speed are remembered. The File panel on the rail names the
    sequence, exports the timeline as JSON, imports such a file onto a fresh
    sheet and clears everything with _New_.
-7. **Read the stack.** The Layers card draws the folded sheet from the front
+8. **Read the stack.** The Layers card draws the folded sheet from the front
    with each layer lifted by the _Gap_ slider; set it to zero for a plain side
    view. Move the pointer over a facet in the Unfolded or Layers view to see
    where it sits in the folded sheet, or over the folded sheet to see all
    facets stacked under the cursor.
-8. **Look closer.** The folded sheet gets small quickly, so the Folded card has
+9. **Look closer.** The folded sheet gets small quickly, so the Folded card has
    its own navigation: _Fit_ frames the folded sheet, _Full_ shows the whole
    square again, the mouse wheel zooms around the pointer, and the _Move_ tool
    (or holding Space, or the middle mouse button) lets you drag the view. On a
@@ -227,8 +235,11 @@ mutated, so a fold that moves nothing is rejected without changing history.
 ### Sequence files
 
 Presets live in `presets/*.json` and anything you fold can be exported to the
-same format. A file is an object with `format` `"origamio-sequence"`,
-`version` `1`, a `name`, an optional `description` and a list of `steps`.
+same format: a project file that holds the sheet and every step. A file is an
+object with `format` `"origamio-sequence"`, `version` `1`, a `name`, an
+optional `description`, an optional `paper` (`{ "width": 1, "height": 0.75 }`
+in sheet units, sides between 0 and 10; omitted means the unit square) and a
+list of `steps`.
 Every step is one call of `fold` on the sheet as it is at that moment:
 
 ```json
