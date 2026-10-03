@@ -19,8 +19,11 @@ import {
   type FoldStep,
   type Paper,
   type Sequence,
+  DEFAULT_BACK,
+  DEFAULT_FRONT,
   DEFAULT_PAPER,
   MAX_PAPER_SIDE,
+  isHexColour,
   SequenceError,
   parseSequence,
   serializeSequence,
@@ -163,7 +166,7 @@ const PANEL_KEY = 'origamio.panel';
 const PAPER_PRESETS: readonly {
   readonly id: string;
   readonly label: string;
-  readonly paper: Paper;
+  readonly paper: { readonly width: number; readonly height: number };
 }[] = [
   { id: 'square', label: 'Square 1:1', paper: { width: 1, height: 1 } },
   { id: 'a-series', label: 'A series 1:√2', paper: { width: 1, height: 0.7071 } },
@@ -172,13 +175,33 @@ const PAPER_PRESETS: readonly {
   { id: '16-9', label: '16:9', paper: { width: 1, height: 0.5625 } },
 ];
 
-const samePaper = (a: Paper, b: Paper): boolean =>
+/** Face colour pairs offered in the Paper panel. */
+const COLOUR_PRESETS: readonly {
+  readonly id: string;
+  readonly label: string;
+  readonly front: string;
+  readonly back: string;
+}[] = [
+  { id: 'orange', label: 'Orange and brown (default)', front: DEFAULT_FRONT, back: DEFAULT_BACK },
+  { id: 'kami', label: 'Kami red and white', front: '#d7263d', back: '#f6f1e7' },
+  { id: 'blue', label: 'Blue and white', front: '#2b5fb3', back: '#f2f5fb' },
+  { id: 'green', label: 'Green and cream', front: '#3f8f5a', back: '#f3f0dc' },
+  { id: 'kraft', label: 'Kraft', front: '#c9a26b', back: '#a67c48' },
+  { id: 'gold', label: 'Black and gold', front: '#24201c', back: '#d4a53a' },
+];
+
+/** Same size, colours aside. */
+const sameSize = (a: Paper, b: Paper): boolean =>
   Math.abs(a.width - b.width) < 1e-6 && Math.abs(a.height - b.height) < 1e-6;
+type Faces = Pick<Paper, 'front' | 'back'>;
+const sameColours = (a: Faces, b: Faces): boolean =>
+  a.front.toLowerCase() === b.front.toLowerCase() && a.back.toLowerCase() === b.back.toLowerCase();
+const samePaper = (a: Paper, b: Paper): boolean => sameSize(a, b) && sameColours(a, b);
 
 const describePaper = (paper: Paper): string => {
-  const preset = PAPER_PRESETS.find((p) => samePaper(p.paper, paper));
+  const preset = PAPER_PRESETS.find((p) => sameSize({ ...paper, ...p.paper }, paper));
   const portrait = PAPER_PRESETS.find((p) =>
-    samePaper({ width: p.paper.height, height: p.paper.width }, paper),
+    sameSize({ ...paper, width: p.paper.height, height: p.paper.width }, paper),
   );
   const dims = `${+paper.width.toFixed(4)} × ${+paper.height.toFixed(4)}`;
   if (preset) return `${preset.label} (${dims})`;
@@ -247,6 +270,7 @@ export interface App {
   /** The sheet being folded. */
   readonly paper: Paper;
   setPaper(paper: Paper): void;
+  setColours(front: string, back: string): void;
   stepForward(): Promise<void>;
   stepBack(): void;
   jumpTo(index: number): void;
@@ -461,6 +485,27 @@ export function createApp(root: HTMLElement): App {
     ['Rotate (portrait / landscape)'],
   );
   const paperCurrent = el('p', { class: 'help paper-current' }, ['']);
+  const colourButtons = COLOUR_PRESETS.map((preset) =>
+    el('button', {
+      type: 'button',
+      class: 'colour-preset',
+      title: preset.label,
+      'aria-label': preset.label,
+      'aria-pressed': 'false',
+      'data-colours': preset.id,
+      style: `--swatch-front: ${preset.front}; --swatch-back: ${preset.back}`,
+    }),
+  );
+  const frontInput = el('input', {
+    type: 'color',
+    value: DEFAULT_FRONT,
+    'aria-label': 'Front colour',
+  });
+  const backInput = el('input', {
+    type: 'color',
+    value: DEFAULT_BACK,
+    'aria-label': 'Back colour',
+  });
   const paperPanel = el('div', { class: 'panel-section' }, [
     paperCurrent,
     el('div', { class: 'preset-list' }, paperButtons),
@@ -475,9 +520,18 @@ export function createApp(root: HTMLElement): App {
     ]),
     paperSwap,
     el('p', { class: 'help' }, [
-      'Changing the paper rewinds to the flat sheet and keeps every step on the timeline, so ',
-      'play to see them on the new sheet. The size is saved in exported files.',
+      'Changing the size rewinds to the flat sheet and keeps every step on the timeline, so ',
+      'play to see them on the new sheet.',
     ]),
+    el('div', { class: 'field' }, [
+      el('span', { class: 'field-label' }, ['Colours (front / back)']),
+      el('div', { class: 'colour-presets' }, colourButtons),
+      el('div', { class: 'colour-row' }, [
+        el('label', { class: 'colour-field' }, [frontInput, 'Front']),
+        el('label', { class: 'colour-field' }, [backInput, 'Back']),
+      ]),
+    ]),
+    el('p', { class: 'help' }, ['Size and colours are saved in exported files.']),
   ]);
 
   const keysPanel = el(
@@ -847,9 +901,22 @@ export function createApp(root: HTMLElement): App {
       const preset = PAPER_PRESETS[i];
       button.setAttribute(
         'aria-pressed',
-        String(preset !== undefined && samePaper(preset.paper, paper)),
+        String(preset !== undefined && sameSize({ ...paper, ...preset.paper }, paper)),
       );
     });
+    colourButtons.forEach((button, i) => {
+      const preset = COLOUR_PRESETS[i];
+      button.setAttribute(
+        'aria-pressed',
+        String(preset !== undefined && sameColours(preset, paper)),
+      );
+    });
+    frontInput.value = paper.front;
+    backInput.value = paper.back;
+    // On the document root, so that the tokens derived from them (unfolded
+    // facets, legend swatches) pick the live colours up.
+    document.documentElement.style.setProperty('--paper-front', paper.front);
+    document.documentElement.style.setProperty('--paper-back', paper.back);
     panel.hidden = openPanel === null;
     if (openPanel) {
       panelTitle.textContent = PANELS.find((p) => p.id === openPanel)?.label ?? '';
@@ -1186,8 +1253,8 @@ export function createApp(root: HTMLElement): App {
     playing = false;
     return enqueue(async () => {
       const wanted = sequence.paper ?? DEFAULT_PAPER;
-      const paperChanged = !samePaper(wanted, paper);
-      if (paperChanged) setPaper(wanted, false);
+      const paperChanged = !sameSize(wanted, paper);
+      if (!samePaper(wanted, paper)) setPaper(wanted, false);
       history.reset();
       pending = [...sequence.steps];
       sequenceName = sequence.name;
@@ -1202,12 +1269,22 @@ export function createApp(root: HTMLElement): App {
     });
   };
 
+  /** Change the face colours; nothing on the timeline moves. */
+  const setColours = (front: string, back: string): void => {
+    paper = { ...paper, front: front.toLowerCase(), back: back.toLowerCase() };
+    applyLayout();
+  };
+
   /** Replace the sheet, keeping every step on the timeline as pending. */
   const setPaper = (next: Paper, announce = true): void => {
     if (phase.kind === 'animating') return;
+    if (sameSize(next, paper)) {
+      setColours(next.front, next.back);
+      return;
+    }
     playing = false;
     const steps = [...history.steps, ...pending];
-    paper = { width: next.width, height: next.height };
+    paper = { ...next };
     history = new FoldHistory(createPaper(paper.width, paper.height));
     pending = steps;
     for (const svg of [unfoldedSvg, layersSvg]) {
@@ -1245,7 +1322,9 @@ export function createApp(root: HTMLElement): App {
     try {
       const sequence = parseSequence(await file.text());
       await loadSequence(sequence);
-      say(`Loaded "${sequence.name}": ${sequence.steps.length} steps. Press play.`);
+      say(
+        `Loaded "${sequence.name}": ${sequence.steps.length} steps on a ${describePaper(paper)} sheet. Press play.`,
+      );
     } catch (error) {
       const reason = error instanceof SequenceError ? error.message : 'unreadable file';
       say(`Could not load ${file.name}: ${reason}`);
@@ -1459,8 +1538,20 @@ export function createApp(root: HTMLElement): App {
   paperButtons.forEach((button, i) => {
     button.addEventListener('click', () => {
       const preset = PAPER_PRESETS[i];
-      if (preset) setPaper(preset.paper);
+      if (preset) setPaper({ ...paper, ...preset.paper });
     });
+  });
+  colourButtons.forEach((button, i) => {
+    button.addEventListener('click', () => {
+      const preset = COLOUR_PRESETS[i];
+      if (preset) setColours(preset.front, preset.back);
+    });
+  });
+  frontInput.addEventListener('input', () => {
+    if (isHexColour(frontInput.value)) setColours(frontInput.value, paper.back);
+  });
+  backInput.addEventListener('input', () => {
+    if (isHexColour(backInput.value)) setColours(paper.front, backInput.value);
   });
   const customPaper = (): Paper | null => {
     const width = Number(paperWidth.value);
@@ -1470,13 +1561,15 @@ export function createApp(root: HTMLElement): App {
       say(`Could not use that size: sides must be between 0 and ${MAX_PAPER_SIDE}.`);
       return null;
     }
-    return { width, height };
+    return { ...paper, width, height };
   };
   paperApply.addEventListener('click', () => {
     const next = customPaper();
     if (next) setPaper(next);
   });
-  paperSwap.addEventListener('click', () => setPaper({ width: paper.height, height: paper.width }));
+  paperSwap.addEventListener('click', () =>
+    setPaper({ ...paper, width: paper.height, height: paper.width }),
+  );
   narrowQuery.addEventListener('change', applyLayout);
   new ResizeObserver(scheduleFit).observe(workspace);
   unfoldedToggle.addEventListener('click', () => toggleCard('unfolded'));
@@ -1668,6 +1761,7 @@ export function createApp(root: HTMLElement): App {
       return paper;
     },
     setPaper,
+    setColours,
     stepForward,
     stepBack,
     jumpTo,
