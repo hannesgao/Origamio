@@ -79,7 +79,7 @@ reflections and convex polygon clipping.
   canvas is as big as its card allows, whatever the window's aspect; the other
   two canvases stay square. All of these choices are remembered in the
   browser.
-- **Made for wide screens.** Header, rail and footer are fixed and the views
+- **Made for wide screens.** Header, rail and status bar are fixed and the views
   are sized to the remaining space, so nothing scrolls on a 16:9 display.
   Windows narrower than 1340 px show one view at a time behind Folded /
   Unfolded / Layers tabs and float the panels over the workspace; on phones
@@ -88,11 +88,14 @@ reflections and convex polygon clipping.
 ## Using the simulator
 
 The page is a workbench that fills the window and never scrolls as a whole: a
-fixed header with the layout switch, an icon rail on the left whose buttons
-open the Library (presets, in groups), Paper (size and colours), Step (the
-selected step's parameters), File (name, import, export, new) and Shortcuts
-panels, the workspace with the three view cards and the timeline
-card under them, and a footer with the version and links. Every view card has
+fixed header with the sequence name (edit it in place) and the layout switch,
+an icon rail on the left whose buttons open the Library (presets, in groups),
+Paper (size and colours), Step (the selected step's parameters), File (name,
+import, export, new) and Shortcuts panels, the workspace with the three view
+cards and the timeline card under them, and a status bar along the bottom
+that shows the sheet with its two colours, the position on the timeline and
+the latest message (what was loaded, what a fold did, why a file was
+rejected). Every view card has
 the same anatomy: a head with the title and one row of tools, the canvas, and
 two lines underneath (status and statistics for the folded sheet; legend and
 crease count for the crease pattern; a note and the gap slider for the layer

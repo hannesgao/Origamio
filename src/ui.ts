@@ -378,8 +378,8 @@ export function createApp(root: HTMLElement): App {
     if (value === speed) option.selected = true;
     speedSelect.append(option);
   }
+  // Only shown on phones, where the status bar is hidden and the transport is fixed.
   const positionReadout = el('span', { class: 'timeline-position ctl' }, ['00 / 00']);
-  const timelineStatus = el('span', { class: 'timeline-message', role: 'status' });
   const drawerToggle = el(
     'button',
     {
@@ -413,7 +413,6 @@ export function createApp(root: HTMLElement): App {
         speedSelect,
       ]),
       positionReadout,
-      timelineStatus,
       drawerToggle,
     ]),
   ]);
@@ -427,6 +426,22 @@ export function createApp(root: HTMLElement): App {
     'aria-label': 'Sequence name',
     placeholder: 'Sequence name',
   });
+  // The same name, editable in the header; the two inputs mirror each other.
+  const projectName = el('input', {
+    type: 'text',
+    class: 'project-name',
+    value: sequenceName,
+    'aria-label': 'Sequence name',
+    placeholder: 'Untitled sequence',
+    spellcheck: 'false',
+  });
+  const setName = (name: string): void => {
+    sequenceName = name;
+    if (nameInput.value !== name) nameInput.value = name;
+    if (projectName.value !== name) projectName.value = name;
+    const shown = name.trim();
+    document.title = shown ? `${shown} · Origamio` : 'Origamio';
+  };
   const importInput = el('input', { type: 'file', accept: 'application/json,.json', hidden: '' });
   const importButton = el(
     'button',
@@ -542,7 +557,7 @@ export function createApp(root: HTMLElement): App {
   // --- Step panel (filled by renderStepPanel) ------------------------------------
   const stepPanel = el('div', { class: 'panel-section step-panel' });
 
-  const keysPanel = el(
+  const keysTable = el(
     'table',
     { class: 'keys' },
     (
@@ -561,6 +576,30 @@ export function createApp(root: HTMLElement): App {
       el('tr', {}, [el('th', {}, [el('kbd', {}, [key])]), el('td', {}, [what])]),
     ),
   );
+  const keysPanel = el('div', { class: 'panel-section' }, [
+    keysTable,
+    el('p', { class: 'about' }, [
+      el('span', {}, ['© 2026 Hannes Gao']),
+      el('span', {}, ['MIT License']),
+      el('span', {}, [`v${__APP_VERSION__}`]),
+      el(
+        'a',
+        { href: 'https://github.com/hannesgao/Origamio', target: '_blank', rel: 'noopener' },
+        ['GitHub'],
+      ),
+    ]),
+  ]);
+
+  // --- Status bar --------------------------------------------------------------
+  const statusSheet = el('span', { class: 'status-item' }, [
+    el('span', { class: 'status-swatches', 'aria-hidden': 'true' }, [
+      el('i', { class: 'swatch swatch-front' }),
+      el('i', { class: 'swatch swatch-back' }),
+    ]),
+    el('span', { class: 'status-sheet' }),
+  ]);
+  const statusSteps = el('span', { class: 'status-item status-steps' });
+  const statusMessage = el('span', { class: 'status-message', role: 'status' });
 
   // --- Folded view controls ----------------------------------------------------
   const statFolds = el('span', { class: 'stat-value' }, ['0']);
@@ -764,26 +803,26 @@ export function createApp(root: HTMLElement): App {
 
   root.replaceChildren(
     el('header', { class: 'topbar' }, [
-      el('div', { class: 'brand' }, [
-        brandMark(),
-        el('div', {}, [
-          el('h1', {}, ['Origamio']),
-          el('p', {}, ['Fold a square sheet along any line and watch the creases appear.']),
-        ]),
-      ]),
+      el('div', { class: 'brand' }, [brandMark(), el('h1', {}, ['Origamio'])]),
+      projectName,
       el('div', { class: 'actions' }, [layoutSwitch]),
     ]),
     el('div', { class: 'body' }, [rail, panel, workspace]),
-    el('footer', { class: 'footer' }, [
-      el('span', {}, ['© 2026 Hannes Gao']),
-      el('span', {}, ['MIT License']),
-      el('span', {}, [`v${__APP_VERSION__}`]),
+    el('footer', { class: 'statusbar' }, [
+      statusSheet,
+      statusSteps,
+      statusMessage,
       el(
         'a',
-        { href: 'https://github.com/hannesgao/Origamio', target: '_blank', rel: 'noopener' },
-        ['GitHub'],
+        {
+          class: 'status-version',
+          href: 'https://github.com/hannesgao/Origamio',
+          target: '_blank',
+          rel: 'noopener',
+          title: 'Origamio on GitHub',
+        },
+        [`v${__APP_VERSION__}`],
       ),
-      el('span', { class: 'footer-hint' }, ['Shortcuts are on the rail']),
     ]),
     importInput,
   );
@@ -912,6 +951,8 @@ export function createApp(root: HTMLElement): App {
       button.setAttribute('aria-pressed', String(PANELS[i]?.id === openPanel));
     });
     paperCurrent.textContent = `Current sheet: ${describePaper(paper)}`;
+    const sheetLabel = statusSheet.querySelector('.status-sheet');
+    if (sheetLabel) sheetLabel.textContent = describePaper(paper);
     paperButtons.forEach((button, i) => {
       const preset = PAPER_PRESETS[i];
       button.setAttribute(
@@ -1116,8 +1157,9 @@ export function createApp(root: HTMLElement): App {
     playButton.classList.toggle('is-playing', playing);
     exportButton.disabled = length === 0;
     positionReadout.textContent = `${two(position)} / ${two(length)}`;
-    timelineStatus.textContent = timelineMessage;
-    timelineStatus.classList.toggle('is-error', timelineMessage.startsWith('Could not'));
+    statusSteps.textContent = length === 0 ? 'No steps' : `Step ${two(position)} of ${two(length)}`;
+    statusMessage.textContent = timelineMessage;
+    statusMessage.classList.toggle('is-error', timelineMessage.startsWith('Could not'));
     timelineCard.classList.toggle('is-playing', playing);
 
     // The playhead moves every frame while a step animates.
@@ -1511,8 +1553,7 @@ export function createApp(root: HTMLElement): App {
       if (!samePaper(wanted, paper)) setPaper(wanted, false);
       timeline.load(sequence.steps);
       selected = null;
-      sequenceName = sequence.name;
-      nameInput.value = sequence.name;
+      setName(sequence.name);
       timelineMessage = '';
       phase = { kind: 'idle' };
       // Sequences start from the flat sheet, so show all of it like Reset does.
@@ -2010,8 +2051,7 @@ export function createApp(root: HTMLElement): App {
     playing = false;
     timeline.clear();
     selected = null;
-    sequenceName = 'My sequence';
-    nameInput.value = sequenceName;
+    setName('My sequence');
     timelineMessage = '';
     phase = { kind: 'idle' };
     camera = defaultCamera(timeline.state.width, timeline.state.height);
@@ -2124,8 +2164,10 @@ export function createApp(root: HTMLElement): App {
     renderTimeline();
     openMenu(selected, event.clientX, event.clientY);
   });
-  nameInput.addEventListener('input', () => {
-    sequenceName = nameInput.value;
+  nameInput.addEventListener('input', () => setName(nameInput.value));
+  projectName.addEventListener('input', () => setName(projectName.value));
+  projectName.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === 'Escape') projectName.blur();
   });
   exportButton.addEventListener('click', downloadSequence);
   newButton.addEventListener('click', clear);
