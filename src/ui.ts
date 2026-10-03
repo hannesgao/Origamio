@@ -332,8 +332,9 @@ export function createApp(root: HTMLElement): App {
   const lanes = el('div', { class: 'tl-lanes' }, [ruler, track, playhead]);
   const scroller = el('div', { class: 'tl-scroll' }, [lanes]);
   const drawer = el('div', { class: 'drawer' }, [scroller]);
-  const dock = el('footer', { class: 'dock' }, [
-    el('div', { class: 'transport-bar' }, [
+  const timelineHead = el('div', { class: 'card-head timeline-head' }, [
+    el('h2', {}, ['Timeline']),
+    el('div', { class: 'card-tools timeline-tools' }, [
       el('div', { class: 'transport-group' }, [
         startButton,
         backButton,
@@ -349,8 +350,8 @@ export function createApp(root: HTMLElement): App {
       timelineStatus,
       drawerToggle,
     ]),
-    drawer,
   ]);
+  const timelineCard = el('section', { class: 'card timeline-card' }, [timelineHead, drawer]);
 
   // --- File panel contents -----------------------------------------------------
   const nameInput = el('input', {
@@ -415,8 +416,8 @@ export function createApp(root: HTMLElement): App {
   const statusBar = el('div', { class: 'status-bar', role: 'status', 'aria-live': 'polite' }, [
     el('span', { class: 'status-dot' }),
     hint,
-    statsRow,
   ]);
+  const creaseCount = el('span', {}, ['0 creases']);
 
   const toolFold = el(
     'button',
@@ -502,7 +503,7 @@ export function createApp(root: HTMLElement): App {
     unfoldedToggle,
   ]);
   const layerTools = el('div', { class: 'card-tools' }, [
-    el('label', { class: 'range-label' }, ['Gap', liftInput]),
+    el('span', { class: 'caption' }, ['Stack, lifted']),
     layersToggle,
   ]);
 
@@ -515,18 +516,25 @@ export function createApp(root: HTMLElement): App {
     stat(statCursor, 'under cursor'),
   );
 
+  /**
+   * Every view card has the same anatomy: a 44px head with the title and one
+   * row of tools, the canvas, and a foot of exactly two lines, so that equal
+   * canvases give equal cards.
+   */
   const card = (
     title: string,
-    caption: string | HTMLElement,
-    body: HTMLElement,
+    tools: HTMLElement,
+    frame: HTMLElement,
+    foot: readonly [HTMLElement, HTMLElement],
     extraClass = '',
   ): HTMLElement =>
-    el('section', { class: `card ${extraClass}`.trim() }, [
-      el('div', { class: 'card-head' }, [
-        el('h2', {}, [title]),
-        typeof caption === 'string' ? el('span', { class: 'caption' }, [caption]) : caption,
+    el('section', { class: `card view-card ${extraClass}`.trim() }, [
+      el('div', { class: 'card-head' }, [el('h2', {}, [title]), tools]),
+      el('div', { class: 'card-body' }, [frame]),
+      el('div', { class: 'card-foot' }, [
+        el('div', { class: 'foot-line' }, [foot[0]]),
+        el('div', { class: 'foot-line' }, [foot[1]]),
       ]),
-      el('div', { class: 'card-body' }, [body]),
     ]);
 
   const legend = el('div', { class: 'legend' }, [
@@ -538,32 +546,26 @@ export function createApp(root: HTMLElement): App {
   const foldedFrame = el('div', { class: 'view-frame' }, [foldedSvg]);
   const unfoldedFrame = el('div', { class: 'view-frame' }, [unfoldedSvg]);
   const layersFrame = el('div', { class: 'view-frame view-frame-wide' }, [layersSvg]);
-  const foldedCard = card(
-    'Folded',
-    viewTools,
-    el('div', {}, [foldedFrame, statusBar]),
-    'view-card folded-card',
-  );
+  const foldedCard = card('Folded', viewTools, foldedFrame, [statusBar, statsRow], 'folded-card');
   const unfoldedCard = card(
     'Unfolded',
     unfoldedTools,
-    el('div', {}, [unfoldedFrame, legend]),
-    'view-card unfolded-card',
+    unfoldedFrame,
+    [legend, creaseCount],
+    'unfolded-card',
   );
   const layersCard = card(
     'Layers',
     layerTools,
-    el('div', {}, [
-      layersFrame,
-      el('p', { class: 'help view-help' }, [
-        'The stack seen from the front, each layer lifted a little. Point at a facet in ',
-        'any view to find it in the others.',
-      ]),
-    ]),
-    'view-card layers-card',
+    layersFrame,
+    [
+      el('span', {}, ['Seen from the front, each layer lifted. Point at a facet to find it.']),
+      el('label', { class: 'range-label' }, ['Gap', liftInput]),
+    ],
+    'layers-card',
   );
   const viewsGrid = el('main', { class: 'views' }, [foldedCard, unfoldedCard, layersCard]);
-  const workspace = el('div', { class: 'workspace' }, [viewsGrid]);
+  const workspace = el('div', { class: 'workspace' }, [viewsGrid, timelineCard]);
 
   // --- Rail and panel ------------------------------------------------------------
   const railButtons = PANELS.map((panel) =>
@@ -590,7 +592,12 @@ export function createApp(root: HTMLElement): App {
     panelBody,
   ]);
   const panelContents: Record<Panel, HTMLElement> = {
-    library: el('div', { class: 'preset-list' }, presetButtons),
+    library: el('div', { class: 'groups' }, [
+      el('details', { class: 'group', open: '' }, [
+        el('summary', {}, [icon(COLLAPSE_ICON), 'Presets']),
+        el('div', { class: 'preset-list' }, presetButtons),
+      ]),
+    ]),
     file: filePanel,
     keys: keysPanel,
   };
@@ -607,7 +614,17 @@ export function createApp(root: HTMLElement): App {
       el('div', { class: 'actions' }, [layoutSwitch]),
     ]),
     el('div', { class: 'body' }, [rail, panel, workspace]),
-    dock,
+    el('footer', { class: 'footer' }, [
+      el('span', {}, ['© 2026 Hannes Gao']),
+      el('span', {}, ['MIT License']),
+      el('span', {}, [`v${__APP_VERSION__}`]),
+      el(
+        'a',
+        { href: 'https://github.com/hannesgao/Origamio', target: '_blank', rel: 'noopener' },
+        ['GitHub'],
+      ),
+      el('span', { class: 'footer-hint' }, ['Shortcuts are on the rail']),
+    ]),
     importInput,
   );
 
@@ -621,17 +638,20 @@ export function createApp(root: HTMLElement): App {
    * grows wider than its card.
    */
   const fitViews = (): void => {
-    const styles = getComputedStyle(viewsGrid);
-    const gap = parseFloat(styles.rowGap) || 0;
-    const height =
-      workspace.clientHeight - 2 * (parseFloat(getComputedStyle(workspace).paddingTop) || 0);
+    const gap = parseFloat(getComputedStyle(viewsGrid).rowGap) || 0;
+    const padding = parseFloat(getComputedStyle(workspace).paddingTop) || 0;
+    const timelineHeight = timelineCard.offsetParent === null ? 0 : timelineCard.offsetHeight + gap;
+    const height = workspace.clientHeight - 2 * padding - timelineHeight;
     const chrome = (cardEl: HTMLElement, frame: HTMLElement): number =>
       cardEl.offsetHeight - frame.offsetHeight;
     const widthOf = (frame: HTMLElement): number => frame.parentElement?.clientWidth ?? 0;
-    const place = (frame: HTMLElement, budget: number, wide: boolean): void => {
-      const side = Math.max(96, budget);
-      const width = wide ? Math.min(widthOf(frame), 2 * side) : Math.min(widthOf(frame), side);
+    const place = (frame: HTMLElement, side: number, wide: boolean): number => {
+      const bounded = Math.max(96, side);
+      const width = wide
+        ? Math.min(widthOf(frame), 2 * bounded)
+        : Math.min(widthOf(frame), bounded);
       frame.style.width = `${Math.floor(width)}px`;
+      return wide ? Math.floor(width) / 2 : Math.floor(width);
     };
     const tabsHeight = viewTabs.isConnected ? viewTabs.offsetHeight + gap : 0;
     const single = narrowQuery.matches || layout === 'focus';
@@ -646,14 +666,23 @@ export function createApp(root: HTMLElement): App {
       }
       return;
     }
+    const chromeFolded = chrome(foldedCard, foldedFrame);
     if (layout === 'side-by-side') {
-      place(foldedFrame, height - chrome(foldedCard, foldedFrame), false);
-      place(unfoldedFrame, height - chrome(unfoldedCard, unfoldedFrame), false);
-      place(layersFrame, height - chrome(layersCard, layersFrame), false);
+      // Equal canvases: the smallest of the three budgets wins for all.
+      const side = Math.min(
+        height - chromeFolded,
+        widthOf(foldedFrame),
+        widthOf(unfoldedFrame),
+        widthOf(layersFrame),
+      );
+      place(foldedFrame, side, false);
+      place(unfoldedFrame, side, false);
+      place(layersFrame, side, false);
       return;
     }
-    // folded-large: the folded sheet takes the column, the two others share the other one.
-    place(foldedFrame, height - chrome(foldedCard, foldedFrame), false);
+    // folded-large: the two secondary cards together are exactly as tall as the folded card.
+    const big = place(foldedFrame, height - chromeFolded, false);
+    const column = big + chromeFolded;
     const open = (['unfolded', 'layers'] as const).filter((id) => !cardCollapsed[id]);
     const collapsedHeight = (['unfolded', 'layers'] as const)
       .filter((id) => cardCollapsed[id])
@@ -661,7 +690,7 @@ export function createApp(root: HTMLElement): App {
     const chromes =
       (open.includes('unfolded') ? chrome(unfoldedCard, unfoldedFrame) : 0) +
       (open.includes('layers') ? chrome(layersCard, layersFrame) : 0);
-    const each = (height - gap - collapsedHeight - chromes) / Math.max(1, open.length);
+    const each = (column - gap - collapsedHeight - chromes) / Math.max(1, open.length);
     if (open.includes('unfolded')) place(unfoldedFrame, each, false);
     if (open.includes('layers')) place(layersFrame, each, false);
   };
@@ -826,6 +855,7 @@ export function createApp(root: HTMLElement): App {
       ...(aspect === undefined ? {} : { aspect }),
       ...(phase.kind === 'animating' ? { animation: phase.animation } : {}),
     };
+    creaseCount.textContent = `${state.creases.length} crease${state.creases.length === 1 ? '' : 's'}`;
     const layers = renderLayers(state, layerOptions);
     layersSvg.setAttribute('viewBox', layers.viewBox);
     layersSvg.innerHTML = layers.markup;
@@ -883,7 +913,7 @@ export function createApp(root: HTMLElement): App {
     positionReadout.textContent = `${two(applied.length)} / ${two(total)}`;
     timelineStatus.textContent = timelineMessage;
     timelineStatus.classList.toggle('is-error', timelineMessage.startsWith('Could not'));
-    dock.classList.toggle('is-playing', playing);
+    timelineCard.classList.toggle('is-playing', playing);
 
     // The playhead moves every frame while a step animates.
     const progress = phase.kind === 'animating' ? phase.animation.progress : 1;
