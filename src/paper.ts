@@ -189,12 +189,16 @@ export function fold(
 }
 
 /** Number of facets stacked at a point of the folded sheet. */
+/** Ids of the facets whose folded polygon contains `point`, bottom layer first. */
+export function facetsAt(state: PaperState, point: Vec): number[] {
+  return [...state.facets]
+    .filter((f) => containsPoint(currentPolygon(f), point))
+    .sort((a, b) => a.z - b.z)
+    .map((f) => f.id);
+}
+
 export function layersAt(state: PaperState, point: Vec): number {
-  let count = 0;
-  for (const f of state.facets) {
-    if (containsPoint(currentPolygon(f), point)) count++;
-  }
-  return count;
+  return facetsAt(state, point).length;
 }
 
 /** The largest number of facets stacked over any point of the folded sheet. */

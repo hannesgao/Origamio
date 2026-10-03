@@ -291,6 +291,19 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+.range-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.range-label input[type='range'] {
+  width: 120px;
+  accent-color: var(--accent);
+}
+
 .card-body {
   padding: 12px 18px 18px;
 }
@@ -487,6 +500,19 @@ kbd {
   padding: 12px;
 }
 
+.view-card-wide {
+  grid-column: 1 / -1;
+}
+
+/* Wider than the square views; the selector outranks `.view` on purpose. */
+.view.layers-view {
+  aspect-ratio: 2 / 1;
+}
+
+.view-help {
+  margin: 10px 4px 0;
+}
+
 .view-frame {
   position: relative;
   border-radius: var(--radius-sm);
@@ -613,6 +639,27 @@ kbd {
 
 .facet-moving {
   stroke-width: 1.5px;
+}
+
+.layer-facet {
+  fill-opacity: 0.92;
+  stroke: var(--facet-stroke);
+  stroke-opacity: 0.6;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+
+/* The facet(s) under the pointer, echoed in every view. */
+.facet-hit {
+  stroke: var(--accent);
+  stroke-opacity: 1;
+  stroke-width: 2.5px;
+}
+
+.unfolded-facet.facet-hit,
+.layer-facet.facet-hit {
+  filter: brightness(1.08);
 }
 
 .preview-line {

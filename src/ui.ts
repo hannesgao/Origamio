@@ -22,8 +22,8 @@ import {
   FoldHistory,
   createPaper,
   facetCount,
+  facetsAt,
   foldedPoints,
-  layersAt,
   maxLayers,
   topLayers,
 } from './paper';
@@ -38,6 +38,7 @@ import {
   fitCamera,
   fromSvgPoint,
   renderFolded,
+  renderLayers,
   renderUnfolded,
   viewBox,
   visibleExtent,
@@ -182,6 +183,8 @@ export function createApp(root: HTMLElement): App {
   // --- DOM -----------------------------------------------------------------
   const foldedSvg = svgElement(history.state.size, 'view folded-view');
   const unfoldedSvg = svgElement(history.state.size, 'view unfolded-view');
+  const layersSvg = svgElement(history.state.size, 'view layers-view');
+  const views = [foldedSvg, unfoldedSvg, layersSvg];
 
   const layerAll = el('input', { type: 'radio', name: 'layers', value: 'all', checked: '' });
   const layerTop = el('input', { type: 'radio', name: 'layers', value: 'top' });
@@ -251,6 +254,18 @@ export function createApp(root: HTMLElement): App {
     fitButton,
     fullButton,
     zoomReadout,
+  ]);
+
+  const liftInput = el('input', {
+    type: 'range',
+    min: '0',
+    max: '0.2',
+    step: '0.005',
+    value: '0.06',
+    'aria-label': 'Gap between layers',
+  });
+  const layerTools = el('div', { class: 'card-tools' }, [
+    el('label', { class: 'range-label' }, ['Gap', liftInput]),
   ]);
 
   const stat = (value: HTMLElement, label: string): HTMLElement =>
@@ -328,11 +343,42 @@ export function createApp(root: HTMLElement): App {
           el('div', {}, [el('div', { class: 'view-frame' }, [unfoldedSvg]), legend]),
           'view-card',
         ),
+        card(
+          'Layers',
+          layerTools,
+          el('div', {}, [
+            el('div', { class: 'view-frame' }, [layersSvg]),
+            el('p', { class: 'help view-help' }, [
+              'The stack seen from the front, each layer lifted a little. Point at a facet in ',
+              'any view to find it in the others.',
+            ]),
+          ]),
+          'view-card view-card-wide',
+        ),
       ]),
     ]),
   );
 
   // --- Rendering -------------------------------------------------------------
+  const layerLift = (): number => Number(liftInput.value) || 0;
+
+  /** Facets picked out by the pointer, shown with an accent outline in every view. */
+  let highlighted: ReadonlySet<number> = new Set();
+
+  const applyHighlight = (): void => {
+    for (const svg of views) {
+      for (const node of svg.querySelectorAll('[data-id]')) {
+        node.classList.toggle('facet-hit', highlighted.has(Number(node.getAttribute('data-id'))));
+      }
+    }
+  };
+
+  const setHighlight = (ids: readonly number[]): void => {
+    if (ids.length === highlighted.size && ids.every((id) => highlighted.has(id))) return;
+    highlighted = new Set(ids);
+    applyHighlight();
+  };
+
   const selectedLayers = (): LayerSelection => {
     if (layerAll.checked) return ALL_LAYERS;
     const n = Math.max(1, Math.floor(Number(layerCount.value) || 1));
@@ -376,6 +422,14 @@ export function createApp(root: HTMLElement): App {
     toolMove.setAttribute('aria-pressed', String(tool === 'move'));
     foldedSvg.innerHTML = renderFolded(state, options);
     unfoldedSvg.innerHTML = renderUnfolded(state);
+    const layerOptions =
+      phase.kind === 'animating'
+        ? { lift: layerLift(), animation: phase.animation }
+        : { lift: layerLift() };
+    const layers = renderLayers(state, layerOptions);
+    layersSvg.setAttribute('viewBox', layers.viewBox);
+    layersSvg.innerHTML = layers.markup;
+    applyHighlight();
     statFolds.textContent = String(state.foldCount);
     statLayers.textContent = String(maxLayers(state));
     statFacets.textContent = String(facetCount(state));
@@ -546,7 +600,9 @@ export function createApp(root: HTMLElement): App {
     }
 
     const p = toModel(client);
-    statCursor.textContent = String(layersAt(history.state, p));
+    const under = facetsAt(history.state, p);
+    statCursor.textContent = String(under.length);
+    setHighlight(under);
     if (phase.kind === 'dragging') {
       phase = { ...phase, to: p };
       render();
@@ -591,6 +647,7 @@ export function createApp(root: HTMLElement): App {
 
   foldedSvg.addEventListener('pointerleave', () => {
     statCursor.textContent = '–';
+    setHighlight([]);
     if (phase.kind === 'choose-side' && phase.hover !== undefined) {
       phase = { kind: 'choose-side', line: phase.line };
       render();
@@ -615,6 +672,15 @@ export function createApp(root: HTMLElement): App {
       fitView();
     }
   });
+
+  for (const svg of [unfoldedSvg, layersSvg]) {
+    svg.addEventListener('pointermove', (event) => {
+      const hit = event.target instanceof Element ? event.target.closest('[data-id]') : null;
+      setHighlight(hit ? [Number(hit.getAttribute('data-id'))] : []);
+    });
+    svg.addEventListener('pointerleave', () => setHighlight([]));
+  }
+  liftInput.addEventListener('input', render);
 
   toolFold.addEventListener('click', () => setTool('fold'));
   toolMove.addEventListener('click', () => setTool('move'));
