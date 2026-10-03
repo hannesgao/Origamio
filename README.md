@@ -54,8 +54,10 @@ reflections and convex polygon clipping.
 - **Three layouts.** The header switches between _Folded large_ (the
   default: a big folded view with the other two stacked beside it), _Side by
   side_ (all three views in a row) and _Focus_ (only the folded view), and the
-  _Library_ button hides the preset panel. Both choices are remembered in the
-  browser.
+  _Library_ button hides the preset panel. The Unfolded and Layers cards each
+  have a chevron that collapses them to their header; in the folded-large
+  layout the remaining card then takes the whole column. All of these choices
+  are remembered in the browser.
 - **Made for wide screens.** From 1340 px up the three sheets share one row
   and their size follows the window height, so a 16:9 display shows everything
   without scrolling; on screens under 1000 px tall the sidebar turns compact
