@@ -430,6 +430,8 @@ export function createApp(root: HTMLElement): App {
     enqueue(async () => {
       history.reset();
       phase = { kind: 'idle' };
+      // Presets start from the flat sheet, so show all of it like Reset does.
+      camera = defaultCamera(history.state.size);
       render();
       for (const step of preset.steps) {
         const side = sideOf(step.line, step.movingPoint);
@@ -658,6 +660,11 @@ export function createApp(root: HTMLElement): App {
       event.preventDefault();
       undo();
     } else if (!modifier && !event.altKey && event.key === ' ') {
+      // A button focused by a mouse click would be re-activated on key up;
+      // keyboard users (focus-visible) keep the native behaviour.
+      const active = document.activeElement;
+      if (active instanceof HTMLButtonElement && active.matches(':focus-visible')) return;
+      if (active instanceof HTMLButtonElement) active.blur();
       if (!event.repeat) {
         spaceHeld = true;
         foldedSvg.dataset['space'] = 'held';
