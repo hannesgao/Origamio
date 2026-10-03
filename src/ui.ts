@@ -644,13 +644,25 @@ export function createApp(root: HTMLElement): App {
     const height = workspace.clientHeight - 2 * padding - timelineHeight;
     const chrome = (cardEl: HTMLElement, frame: HTMLElement): number =>
       cardEl.offsetHeight - frame.offsetHeight;
-    const widthOf = (frame: HTMLElement): number => frame.parentElement?.clientWidth ?? 0;
+    /** Content width of the frame's container (its padding excluded). */
+    const widthOf = (frame: HTMLElement): number => {
+      const parent = frame.parentElement;
+      if (!parent) return 0;
+      const style = getComputedStyle(parent);
+      return (
+        parent.clientWidth -
+        (parseFloat(style.paddingLeft) || 0) -
+        (parseFloat(style.paddingRight) || 0)
+      );
+    };
     const place = (frame: HTMLElement, side: number, wide: boolean): number => {
       const bounded = Math.max(96, side);
       const width = wide
         ? Math.min(widthOf(frame), 2 * bounded)
         : Math.min(widthOf(frame), bounded);
       frame.style.width = `${Math.floor(width)}px`;
+      // Head and foot of the card line up with the canvas edges.
+      frame.closest('.view-card')?.setAttribute('style', `--canvas: ${Math.floor(width)}px`);
       return wide ? Math.floor(width) / 2 : Math.floor(width);
     };
     const tabsHeight = viewTabs.isConnected ? viewTabs.offsetHeight + gap : 0;
