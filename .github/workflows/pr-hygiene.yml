@@ -1,0 +1,92 @@
+name: pr-hygiene
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: pr-hygiene-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-hygiene:
+    name: pr-hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: PR title follows Conventional Commits
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([A-Za-z0-9._/-]+\))?!?: [^ ].*$'
+          if ! printf '%s' "$PR_TITLE" | grep -Eq "$pattern"; then
+            echo "::error::PR title must look like 'type(scope): summary' (Conventional Commits). Got: $PR_TITLE"
+            exit 1
+          fi
+          if [ "${#PR_TITLE}" -gt 72 ]; then
+            echo "::error::PR title must be at most 72 characters (got ${#PR_TITLE})."
+            exit 1
+          fi
+          echo "PR title OK: $PR_TITLE"
+
+      - name: No forbidden patterns in title, body, commits or file list
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          FORBIDDEN_PATTERNS: ${{ vars.FORBIDDEN_PATTERNS }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Drop blank lines and surrounding whitespace from the pattern list.
+          patterns="$(printf '%s\n' "$FORBIDDEN_PATTERNS" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d')"
+          if [ -z "$patterns" ]; then
+            echo "::error::Repository variable FORBIDDEN_PATTERNS is empty or not set; refusing to run an empty check."
+            exit 1
+          fi
+
+          status=0
+
+          # check <label> <file>: report every case-insensitive, fixed-string hit with its line.
+          check() {
+            local label="$1" file="$2" hits
+            while IFS= read -r pattern; do
+              hits="$(grep -n -i -F -- "$pattern" "$file" || true)"
+              if [ -n "$hits" ]; then
+                status=1
+                while IFS= read -r hit; do
+                  echo "::error::Forbidden pattern '$pattern' found in $label at line ${hit%%:*}: ${hit#*:}"
+                done <<< "$hits"
+              fi
+            done <<< "$patterns"
+          }
+
+          work="$(mktemp -d)"
+          printf '%s\n' "$PR_TITLE" > "$work/title"
+          printf '%s\n' "$PR_BODY" > "$work/body"
+          git ls-files > "$work/files"
+
+          check "PR title" "$work/title"
+          check "PR body" "$work/body"
+          check "file list (git ls-files)" "$work/files"
+
+          for sha in $(git rev-list --reverse "$BASE_SHA".."$HEAD_SHA"); do
+            git log -1 --format=%B "$sha" > "$work/commit"
+            check "commit ${sha:0:12} message" "$work/commit"
+          done
+
+          if [ "$status" -ne 0 ]; then
+            echo "::error::PR hygiene check failed; see the errors above."
+            exit 1
+          fi
+          echo "No forbidden patterns found."
