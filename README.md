@@ -149,6 +149,25 @@ npm run build
 `npm run format` rewrites files in place. The `ci` workflow runs exactly these
 commands on every pull request and on every push to `main`.
 
+### Screenshots
+
+Browser screenshots for pull requests and visual checks go through one helper,
+which drives a headless browser with Playwright:
+
+```sh
+npm run dev                                   # in one terminal
+npm run shot -- --out shots                    # one screenshot of the page
+npm run shot -- --out shots --scenario scripts/scenarios/preset.mjs
+```
+
+A scenario is an ES module whose default export gets the Playwright page and a
+`shot(name)` helper; `scripts/scenarios/preset.mjs` loads a preset and captures
+the views. The helper prefers Playwright's own Chromium (`npx playwright-core
+install chromium`, plus `sudo npx playwright-core install-deps chromium` once on
+Linux or WSL) and falls back to the Chrome installed on Windows when run from
+WSL, using a fresh temporary profile for every run that it closes and deletes
+afterwards. It never ends browser processes by name. `shots/` is ignored by git.
+
 ## Data model
 
 The sheet is a unit square in the coordinate system of the **unfolded** paper.
