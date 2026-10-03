@@ -75,6 +75,14 @@ const FIT_ICON =
   '<path d="M3 7V4a1 1 0 0 1 1-1h3M13 3h3a1 1 0 0 1 1 1v3M17 13v3a1 1 0 0 1-1 1h-3M7 17H4a1 1 0 0 1-1-1v-3" />' +
   '<rect x="7" y="7" width="6" height="6" rx="1" />';
 const FULL_ICON = '<rect x="3" y="3" width="14" height="14" rx="2" />';
+const LAYOUT_ICONS: Record<Layout, string> = {
+  'side-by-side':
+    '<rect x="2.5" y="4" width="4.5" height="12" rx="1" /><rect x="8.5" y="4" width="4.5" height="12" rx="1" /><rect x="14.5" y="4" width="3" height="12" rx="1" />',
+  'folded-large':
+    '<rect x="2.5" y="4" width="9" height="12" rx="1" /><rect x="13" y="4" width="4.5" height="5" rx="1" /><rect x="13" y="11" width="4.5" height="5" rx="1" />',
+  focus: '<rect x="2.5" y="4" width="15" height="12" rx="1" />',
+};
+const SIDEBAR_ICON = '<rect x="2.5" y="4" width="15" height="12" rx="1.5" /><path d="M7.5 4v12" />';
 const RESET_ICON = '<path d="M4.5 10a5.5 5.5 0 1 0 1.6-3.9" /><path d="M4.5 3.5V7H8" />';
 
 /** A small inline icon drawn with strokes in the current text colour. */
@@ -96,6 +104,34 @@ function brandMark(): SVGSVGElement {
     `<rect width="32" height="32" rx="7" fill="${FRONT_COLOR}" />` +
     `<path d="M4 28 28 4v20a4 4 0 0 1-4 4Z" fill="${BACK_COLOR}" />`;
   return svg;
+}
+
+/** How the view cards share the workspace. */
+type Layout = 'side-by-side' | 'folded-large' | 'focus';
+const LAYOUTS: readonly { readonly id: Layout; readonly label: string; readonly title: string }[] =
+  [
+    { id: 'side-by-side', label: 'Side by side', title: 'All three views in a row' },
+    { id: 'folded-large', label: 'Folded large', title: 'A big folded view, the others beside it' },
+    { id: 'focus', label: 'Focus', title: 'Only the folded view' },
+  ];
+const LAYOUT_KEY = 'origamio.layout';
+const SIDEBAR_KEY = 'origamio.sidebar';
+
+/** Read a remembered preference; storage may be unavailable or blocked. */
+function remembered(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function remember(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Nothing to do: the preference simply does not persist.
+  }
 }
 
 /** What a left-button drag on the folded sheet does. */
@@ -131,6 +167,11 @@ export function createApp(root: HTMLElement): App {
   let camera: Camera = defaultCamera(history.state.size);
   let tool: Tool = 'fold';
   let spaceHeld = false;
+  const rememberedLayout = remembered(LAYOUT_KEY);
+  let layout: Layout = LAYOUTS.some((l) => l.id === rememberedLayout)
+    ? (rememberedLayout as Layout)
+    : 'side-by-side';
+  let sidebarHidden = remembered(SIDEBAR_KEY) === 'hidden';
   let navigation: Navigation | null = null;
   /** Last known position of every pointer that is down on the folded view. */
   const pointers = new Map<number, Vec>();
@@ -150,6 +191,23 @@ export function createApp(root: HTMLElement): App {
     value: '1',
     'aria-label': 'Number of top layers to fold',
   });
+
+  const layoutButtons = LAYOUTS.map((l) =>
+    el('button', { type: 'button', title: l.title, 'aria-pressed': 'false', 'data-layout': l.id }, [
+      icon(LAYOUT_ICONS[l.id]),
+      el('span', { class: 'btn-label' }, [l.label]),
+    ]),
+  );
+  const sidebarButton = el(
+    'button',
+    { type: 'button', class: 'btn', 'aria-pressed': 'true', title: 'Show or hide the controls' },
+    [icon(SIDEBAR_ICON), el('span', { class: 'btn-label' }, ['Controls'])],
+  );
+  const layoutSwitch = el(
+    'div',
+    { class: 'tool-toggle layout-switch', role: 'group', 'aria-label': 'Layout' },
+    layoutButtons,
+  );
 
   const undoButton = el('button', { type: 'button', class: 'btn', title: 'Undo the last fold' }, [
     icon(UNDO_ICON),
@@ -259,7 +317,7 @@ export function createApp(root: HTMLElement): App {
           el('p', {}, ['Fold a square sheet along any line and watch the creases appear.']),
         ]),
       ]),
-      el('div', { class: 'actions' }, [undoButton, resetButton]),
+      el('div', { class: 'actions' }, [layoutSwitch, sidebarButton, undoButton, resetButton]),
     ]),
     el('div', { class: 'workspace' }, [
       el('aside', { class: 'sidebar' }, [
@@ -294,7 +352,7 @@ export function createApp(root: HTMLElement): App {
           'Folded',
           viewTools,
           el('div', {}, [el('div', { class: 'view-frame' }, [foldedSvg]), statusBar]),
-          'view-card',
+          'view-card folded-card',
         ),
         card(
           'Unfolded',
@@ -317,6 +375,30 @@ export function createApp(root: HTMLElement): App {
       ]),
     ]),
   );
+
+  // --- Layout ----------------------------------------------------------------
+  const applyLayout = (): void => {
+    root.dataset['layout'] = layout;
+    root.dataset['sidebar'] = sidebarHidden ? 'hidden' : 'shown';
+    layoutButtons.forEach((button, i) => {
+      button.setAttribute('aria-pressed', String(LAYOUTS[i]?.id === layout));
+    });
+    sidebarButton.setAttribute('aria-pressed', String(!sidebarHidden));
+  };
+
+  const setLayout = (next: Layout): void => {
+    layout = next;
+    remember(LAYOUT_KEY, next);
+    applyLayout();
+    render();
+  };
+
+  const toggleSidebar = (): void => {
+    sidebarHidden = !sidebarHidden;
+    remember(SIDEBAR_KEY, sidebarHidden ? 'hidden' : 'shown');
+    applyLayout();
+    render();
+  };
 
   // --- Rendering -------------------------------------------------------------
   const layerLift = (): number => Number(liftInput.value) || 0;
@@ -659,6 +741,11 @@ export function createApp(root: HTMLElement): App {
     resizeFrame = requestAnimationFrame(render);
   });
 
+  layoutButtons.forEach((button, i) => {
+    button.addEventListener('click', () => setLayout(LAYOUTS[i]?.id ?? 'side-by-side'));
+  });
+  sidebarButton.addEventListener('click', toggleSidebar);
+
   toolFold.addEventListener('click', () => setTool('fold'));
   toolMove.addEventListener('click', () => setTool('move'));
   fitButton.addEventListener('click', fitView);
@@ -731,6 +818,7 @@ export function createApp(root: HTMLElement): App {
     endNavigation();
   });
 
+  applyLayout();
   render();
   requestAnimationFrame(render);
 
