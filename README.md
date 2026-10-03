@@ -72,12 +72,13 @@ reflections and convex polygon clipping.
   saved as a JSON file and loaded again later; the presets ship in the same
   format.
 - **Three layouts.** The header switches between _Folded large_ (the
-  default: a big folded view with the other two stacked beside it), _Side by
-  side_ (all three views in a row) and _Focus_ (one view at a time, chosen
-  with a tab strip). The Unfolded and Layers cards each
-  have a chevron that collapses them to their header; in the folded-large
-  layout the remaining card then takes the whole column. All of these choices
-  are remembered in the browser.
+  default: the folded view fills most of the workspace and a second card
+  beside it shows either the crease pattern or the layers, chosen with a tab
+  strip in its head), _Side by side_ (all three views in a row) and _Focus_
+  (one view at a time, chosen with a tab strip over the workspace). The folded
+  canvas is as big as its card allows, whatever the window's aspect; the other
+  two canvases stay square. All of these choices are remembered in the
+  browser.
 - **Made for wide screens.** Header, rail and footer are fixed and the views
   are sized to the remaining space, so nothing scrolls on a 16:9 display.
   Windows narrower than 1340 px show one view at a time behind Folded /
