@@ -4,10 +4,10 @@ Yet another origami simulator: fold a square sheet of paper along arbitrary
 lines in the browser, watch the layers stack up, and unfold it at any time to
 inspect the crease pattern and count the resulting faces.
 
-Origamio is a pure front-end application (Vite + TypeScript, no framework).
-Both views are rendered as SVG from a small, immutable geometric model, so
-every fold is exact: no meshes, no physics, just reflections and convex
-polygon clipping.
+Origamio is a pure front-end application (Vite + TypeScript, no framework, no
+runtime dependencies). Both views are rendered as SVG from a small, immutable
+geometric model, so every fold is exact: no meshes, no physics, just
+reflections and convex polygon clipping.
 
 ## Features
 
@@ -16,7 +16,8 @@ polygon clipping.
 - **Fold all layers or only the top _k_.** Choose between folding the whole
   stack or just the top few layers before you click.
 - **Live unfolded view.** The right panel always shows the sheet flattened out
-  again, with every crease drawn in red.
+  again, with every crease drawn in red and a legend for front, back and
+  crease colours.
 - **Layer-aware colouring.** Facets are translucent, so a region gets darker
   with every layer stacked on top of it. Facets showing their back side use a
   darker base colour.
@@ -27,10 +28,39 @@ polygon clipping.
 - **Undo, reset and presets.** Fold in half three times, or fold in half twice
   and then fold one of three kinds of corner: the loose corner where the four
   sheet corners stack, the corner where both folded edges meet, and a corner
-  with a single folded edge. Ctrl+Z (Cmd+Z on macOS) undoes the last fold and
-  Esc cancels a fold line you are drawing.
+  with a single folded edge.
 - **Light and dark themes.** The interface follows the operating system's
-  colour scheme and works down to phone widths.
+  colour scheme and works down to phone widths, where the two sheets stack
+  above the controls.
+
+## Using the simulator
+
+The page has a header with the Undo and Reset actions, a sidebar with the
+controls and statistics, and two cards showing the folded sheet and the
+unfolded crease pattern.
+
+1. **Draw a fold line.** Press on the folded sheet, drag, and release. A dashed
+   blue line shows where the fold will go; drags shorter than 2 % of the sheet
+   are ignored.
+2. **Choose the side.** Move the pointer over either side of the line; the side
+   that would flip is shaded. Click to fold it over. Press Esc to discard the
+   line instead.
+3. **Pick how many layers move.** The _Layers to fold_ control applies to the
+   next fold: _All layers_ folds the whole stack, _Top n_ folds only the facets
+   that have fewer than _n_ distinct layers above them.
+4. **Watch the result.** The status bar under the folded sheet tells you which
+   step you are in, and the statistic tiles update after every fold. Hovering
+   over the folded sheet shows how many layers lie under the cursor.
+5. **Try a preset.** Each preset starts from a flat sheet and plays its folds
+   one after another with the animation. Buttons are disabled while a fold is
+   animating.
+
+Keyboard shortcuts:
+
+| Key                     | Action                                          |
+| ----------------------- | ----------------------------------------------- |
+| Ctrl+Z (Cmd+Z on macOS) | Undo the last fold                              |
+| Esc                     | Cancel the fold line you are drawing or placing |
 
 ## Getting started
 
@@ -43,14 +73,22 @@ npm run build      # static site in dist/
 npm run preview    # serve the production build locally
 ```
 
-Quality checks, which CI runs on every pull request:
+The build uses relative asset paths (`base: './'` in `vite.config.ts`), so the
+contents of `dist/` can be served from any static host or sub-directory
+without configuration.
+
+### Quality checks
 
 ```sh
-npm run lint
-npm run format:check
-npm run typecheck
-npm test
+npm run lint          # ESLint (typescript-eslint strict + stylistic)
+npm run format:check  # Prettier
+npm run typecheck     # tsc --noEmit with strict options
+npm test              # Vitest specs in tests/
+npm run build
 ```
+
+`npm run format` rewrites files in place. The `ci` workflow runs exactly these
+commands on every pull request and on every push to `main`.
 
 ## Data model
 
@@ -90,15 +128,44 @@ Facet transforms are compositions of reflections, so their determinant is
 −1 whenever the facet currently shows its back side; the renderer uses that to
 pick the face colour.
 
+`FoldHistory` keeps the list of states so that undo is a pop; states are never
+mutated, so a fold that moves nothing is rejected without changing history.
+
 ### Code layout
 
-| File              | Responsibility                                                               |
-| ----------------- | ---------------------------------------------------------------------------- |
-| `src/geometry.ts` | Vectors, lines, affine transforms, reflections, convex clipping/intersection |
-| `src/paper.ts`    | Facet model, `fold`, layer selection, statistics, undo history               |
-| `src/render.ts`   | SVG markup for the folded view (with animation) and the unfolded view        |
-| `src/ui.ts`       | Toolbar, pointer interaction, animation loop, presets                        |
-| `tests/`          | Vitest specs for the geometry and the paper model                            |
+| File              | Responsibility                                                                   |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `index.html`      | Page shell, favicon and meta tags; mounts the app on `#app`                      |
+| `src/main.ts`     | Entry point: loads the stylesheet and creates the app                            |
+| `src/geometry.ts` | Vectors, lines, affine transforms, reflections, convex clipping and intersection |
+| `src/paper.ts`    | Facet model, `fold`, layer selection, statistics, undo history                   |
+| `src/render.ts`   | SVG markup for the folded view (with animation) and the unfolded view            |
+| `src/ui.ts`       | Page layout, toolbar, pointer interaction, animation loop, presets, shortcuts    |
+| `src/style.css`   | Theme tokens (light and dark), layout, controls and SVG styling                  |
+| `tests/`          | Vitest specs for the geometry and the paper model, plus shared fold presets      |
+
+## Contributing
+
+`main` is protected by the `protect-main` ruleset: changes land only through a
+pull request whose `ci` and `pr-hygiene` checks pass on a branch that is up to
+date with `main`, merged with squash, and the history stays linear (no force
+pushes, no branch deletion).
+
+Conventions that the checks enforce:
+
+- **Branch and merge.** Work on a feature branch, open a pull request against
+  `main`, and squash merge. The squash commit takes the pull request title and
+  description, and the branch is deleted automatically after the merge.
+- **Conventional Commits.** Commit messages and pull request titles look like
+  `type(scope): summary` (`feat`, `fix`, `docs`, `refactor`, `test`, `ci`,
+  `chore`, …), written in the imperative and at most 72 characters.
+- **Pull request template.** `.github/pull_request_template.md` asks for what,
+  why, how to test, screenshots for UI changes and a checklist.
+- **Hygiene check.** The `pr-hygiene` workflow rejects pull requests whose
+  title, description, commit messages or file list contain any of the patterns
+  stored in the repository variable `FORBIDDEN_PATTERNS`, such as tool
+  attribution footers and trailers. The repository also carries no
+  configuration files for editor assistants or AI tools.
 
 ## License
 
