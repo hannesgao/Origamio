@@ -27,7 +27,10 @@ polygon clipping.
 - **Undo, reset and presets.** Fold in half three times, or fold in half twice
   and then fold one of three kinds of corner: the loose corner where the four
   sheet corners stack, the corner where both folded edges meet, and a corner
-  with a single folded edge.
+  with a single folded edge. Ctrl+Z (Cmd+Z on macOS) undoes the last fold and
+  Esc cancels a fold line you are drawing.
+- **Light and dark themes.** The interface follows the operating system's
+  colour scheme and works down to phone widths.
 
 ## Getting started
 

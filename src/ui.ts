@@ -15,7 +15,15 @@ import {
   maxLayers,
   topLayers,
 } from './paper';
-import { type FoldAnimation, fromSvgPoint, renderFolded, renderUnfolded, viewBox } from './render';
+import {
+  type FoldAnimation,
+  BACK_COLOR,
+  FRONT_COLOR,
+  fromSvgPoint,
+  renderFolded,
+  renderUnfolded,
+  viewBox,
+} from './render';
 
 export const ANIMATION_MS = 800;
 /** Drags shorter than this (in sheet units) are ignored. */
@@ -88,6 +96,30 @@ function svgElement(size: number, className: string): SVGSVGElement {
   return svg;
 }
 
+const UNDO_ICON = '<path d="M7.5 5.5 4 9l3.5 3.5" /><path d="M4 9h7.5a4 4 0 0 1 0 8H9" />';
+const RESET_ICON = '<path d="M4.5 10a5.5 5.5 0 1 0 1.6-3.9" /><path d="M4.5 3.5V7H8" />';
+
+/** A small inline icon drawn with strokes in the current text colour. */
+function icon(paths: string): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = paths;
+  return svg;
+}
+
+/** The logo: a square sheet with one corner folded over to show its back. */
+function brandMark(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 32 32');
+  svg.setAttribute('class', 'brand-mark');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML =
+    `<rect width="32" height="32" rx="7" fill="${FRONT_COLOR}" />` +
+    `<path d="M4 28 28 4v20a4 4 0 0 1-4 4Z" fill="${BACK_COLOR}" />`;
+  return svg;
+}
+
 type Phase =
   | { readonly kind: 'idle' }
   | { readonly kind: 'dragging'; readonly from: Vec; readonly to: Vec }
@@ -116,44 +148,112 @@ export function createApp(root: HTMLElement): App {
 
   const layerAll = el('input', { type: 'radio', name: 'layers', value: 'all', checked: '' });
   const layerTop = el('input', { type: 'radio', name: 'layers', value: 'top' });
-  const layerCount = el('input', { type: 'number', min: '1', step: '1', value: '1' });
+  const layerCount = el('input', {
+    type: 'number',
+    min: '1',
+    step: '1',
+    value: '1',
+    'aria-label': 'Number of top layers to fold',
+  });
 
-  const undoButton = el('button', { type: 'button' }, ['Undo']);
-  const resetButton = el('button', { type: 'button' }, ['Reset']);
+  const undoButton = el('button', { type: 'button', class: 'btn', title: 'Undo the last fold' }, [
+    icon(UNDO_ICON),
+    'Undo',
+    el('kbd', {}, ['Ctrl Z']),
+  ]);
+  const resetButton = el(
+    'button',
+    { type: 'button', class: 'btn', title: 'Back to the flat sheet' },
+    [icon(RESET_ICON), 'Reset'],
+  );
   const presetButtons = PRESETS.map((preset) =>
-    el('button', { type: 'button', title: preset.title, 'data-preset': preset.id }, [preset.label]),
+    el('button', { type: 'button', class: 'preset', 'data-preset': preset.id }, [
+      el('span', { class: 'preset-label' }, [preset.label]),
+      el('span', { class: 'preset-desc' }, [preset.title]),
+    ]),
   );
 
   const statFolds = el('span', { class: 'stat-value' }, ['0']);
   const statLayers = el('span', { class: 'stat-value' }, ['1']);
   const statFacets = el('span', { class: 'stat-value' }, ['1']);
   const statCursor = el('span', { class: 'stat-value' }, ['–']);
-  const hint = el('p', { class: 'hint' });
+  const hint = el('span', { class: 'status-text' });
+  const statusBar = el('div', { class: 'status-bar', role: 'status', 'aria-live': 'polite' }, [
+    el('span', { class: 'status-dot' }),
+    hint,
+  ]);
+
+  const stat = (value: HTMLElement, label: string): HTMLElement =>
+    el('div', { class: 'stat' }, [value, el('span', { class: 'stat-label' }, [label])]);
+
+  const card = (title: string, caption: string, body: HTMLElement, extraClass = ''): HTMLElement =>
+    el('section', { class: `card ${extraClass}`.trim() }, [
+      el('div', { class: 'card-head' }, [
+        el('h2', {}, [title]),
+        el('span', { class: 'caption' }, [caption]),
+      ]),
+      el('div', { class: 'card-body' }, [body]),
+    ]);
+
+  const legend = el('div', { class: 'legend' }, [
+    el('span', {}, [el('i', { class: 'swatch swatch-front' }), 'Front side up']),
+    el('span', {}, [el('i', { class: 'swatch swatch-back' }), 'Back side up']),
+    el('span', {}, [el('i', { class: 'swatch swatch-crease' }), 'Crease']),
+  ]);
 
   root.replaceChildren(
-    el('header', { class: 'toolbar' }, [
-      el('h1', {}, ['Origamio']),
-      el('div', { class: 'group' }, [undoButton, resetButton]),
-      el('div', { class: 'group' }, [
-        el('span', { class: 'group-label' }, ['Layers to fold:']),
-        el('label', {}, [layerAll, ' all']),
-        el('label', {}, [layerTop, ' top ', layerCount]),
+    el('header', { class: 'topbar' }, [
+      el('div', { class: 'brand' }, [
+        brandMark(),
+        el('div', {}, [
+          el('h1', {}, ['Origamio']),
+          el('p', {}, ['Fold a square sheet along any line and watch the creases appear.']),
+        ]),
       ]),
-      el('div', { class: 'group' }, [
-        el('span', { class: 'group-label' }, ['Presets:']),
-        ...presetButtons,
+      el('div', { class: 'actions' }, [undoButton, resetButton]),
+    ]),
+    el('div', { class: 'workspace' }, [
+      el('aside', { class: 'sidebar' }, [
+        card(
+          'Layers to fold',
+          '',
+          el('div', {}, [
+            el('fieldset', { class: 'segmented' }, [
+              el('label', { class: 'seg' }, [layerAll, el('span', {}, ['All layers'])]),
+              el('label', { class: 'seg' }, [layerTop, el('span', {}, ['Top']), layerCount]),
+            ]),
+            el('p', { class: 'help' }, [
+              'Applies to the next fold you draw. A facet counts as a top layer when fewer than ',
+              'that many layers lie above it.',
+            ]),
+          ]),
+        ),
+        card('Presets', '', el('div', { class: 'preset-list' }, presetButtons)),
+        card(
+          'Statistics',
+          '',
+          el('div', { class: 'stats' }, [
+            stat(statFolds, 'Folds'),
+            stat(statLayers, 'Max layers'),
+            stat(statFacets, 'Facets unfolded'),
+            stat(statCursor, 'Layers under cursor'),
+          ]),
+        ),
       ]),
-    ]),
-    el('main', { class: 'views' }, [
-      el('section', { class: 'panel' }, [el('h2', {}, ['Folded']), foldedSvg]),
-      el('section', { class: 'panel' }, [el('h2', {}, ['Unfolded']), unfoldedSvg]),
-    ]),
-    el('footer', { class: 'status' }, [
-      el('span', { class: 'stat' }, ['Folds: ', statFolds]),
-      el('span', { class: 'stat' }, ['Max layers: ', statLayers]),
-      el('span', { class: 'stat' }, ['Facets when unfolded: ', statFacets]),
-      el('span', { class: 'stat' }, ['Layers under cursor: ', statCursor]),
-      hint,
+      el('main', { class: 'views' }, [
+        card(
+          'Folded',
+          'Drag to draw a fold line',
+          el('div', {}, [el('div', { class: 'view-frame' }, [foldedSvg]), statusBar]),
+          'view-card',
+        ),
+        card(
+          'Unfolded',
+          'Crease pattern, live',
+          el('div', {}, [el('div', { class: 'view-frame' }, [unfoldedSvg]), legend]),
+          'view-card',
+        ),
+      ]),
     ]),
   );
 
@@ -199,6 +299,9 @@ export function createApp(root: HTMLElement): App {
     statFacets.textContent = String(facetCount(state));
     undoButton.disabled = !history.canUndo || phase.kind === 'animating';
     resetButton.disabled = phase.kind === 'animating';
+    for (const button of presetButtons) button.disabled = phase.kind === 'animating';
+    foldedSvg.dataset['phase'] = phase.kind;
+    statusBar.dataset['phase'] = phase.kind;
     hint.textContent = hintFor(phase);
   };
 
@@ -315,13 +418,6 @@ export function createApp(root: HTMLElement): App {
     }
   });
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && (phase.kind === 'choose-side' || phase.kind === 'dragging')) {
-      phase = { kind: 'idle' };
-      render();
-    }
-  });
-
   // --- Buttons ---------------------------------------------------------------
   const undo = (): void => {
     if (phase.kind === 'animating') return;
@@ -345,6 +441,19 @@ export function createApp(root: HTMLElement): App {
   layerTop.addEventListener('change', () => layerCount.focus());
   layerCount.addEventListener('input', () => {
     layerTop.checked = true;
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && (phase.kind === 'choose-side' || phase.kind === 'dragging')) {
+      phase = { kind: 'idle' };
+      render();
+      return;
+    }
+    const inField = event.target instanceof HTMLInputElement;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !inField) {
+      event.preventDefault();
+      undo();
+    }
   });
 
   render();
