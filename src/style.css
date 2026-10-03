@@ -613,6 +613,11 @@ kbd {
   min-width: 0;
 }
 
+.foot-line > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Tool bars stay on one row: labels go first, then the zoom readout. */
 .view-card {
   container-type: inline-size;
