@@ -137,7 +137,81 @@ input {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+.layout-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layout-switch svg,
+.actions .btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+/* Hidden controls: the views take the whole width. */
+#app[data-sidebar='hidden'] .sidebar {
+  display: none;
+}
+
+#app[data-sidebar='hidden'] .workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Focus: only the folded sheet, centred. */
+#app[data-layout='focus'] .views {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#app[data-layout='focus'] .view-card:not(.folded-card) {
+  display: none;
+}
+
+#app[data-layout='focus'] .folded-card {
+  max-width: calc(var(--view-max) + 26px);
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Leave room for the status bar under the sheet. */
+#app[data-layout='focus'] .folded-card .view-frame {
+  width: min(100%, calc(var(--view-max) - 48px));
+}
+
+/* Folded large: the folded sheet takes two thirds, the other two stack beside it. */
+#app[data-layout='folded-large'] .views {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+#app[data-layout='folded-large'] .folded-card {
+  grid-row: 1 / span 2;
+}
+
+#app[data-layout='folded-large'] .view-card-wide {
+  grid-column: auto;
+}
+
+#app[data-layout='folded-large'] .view-frame-wide {
+  width: min(100%, var(--view-max));
+  aspect-ratio: 1 / 1;
+}
+
+#app[data-layout='folded-large'] .folded-card .view-frame {
+  width: min(100%, var(--view-max));
+}
+
+/* The two small views stack beside it within the same height. */
+#app[data-layout='folded-large'] .view-card:not(.folded-card) .view-frame {
+  width: min(100%, calc(var(--view-max) / 2 - 64px));
 }
 
 /* --- Buttons --------------------------------------------------------------- */
@@ -738,6 +812,10 @@ kbd {
     display: none;
   }
 
+  .layout-switch .btn-label {
+    display: none;
+  }
+
   .view-card .btn-sm {
     gap: 0;
   }
@@ -813,6 +891,19 @@ kbd {
 @media (max-width: 900px) {
   .workspace {
     grid-template-columns: 1fr;
+  }
+
+  #app[data-layout='folded-large'] .views {
+    grid-template-columns: 1fr;
+  }
+
+  #app[data-layout='folded-large'] .folded-card {
+    grid-row: auto;
+  }
+
+  .layout-switch .btn-label,
+  .actions .btn .btn-label {
+    display: none;
   }
 
   /* On narrow screens the sheets come first and the controls follow. */
