@@ -102,7 +102,8 @@ describe('fold', () => {
     expect(history.state).not.toBe(before);
     expect(facetCount(history.state)).toBe(8);
 
-    const after = history.undo();
+    expect(history.undo()).not.toBeNull();
+    const after = history.state;
     expect(after).toBe(before);
     expect(after).toEqual(snapshot);
     expect(history.state.foldCount).toBe(2);

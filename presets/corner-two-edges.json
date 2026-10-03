@@ -1,0 +1,32 @@
+{
+  "format": "origamio-sequence",
+  "version": 1,
+  "name": "Halves + centre corner",
+  "description": "Fold in half twice, then fold the corner where both folded edges meet",
+  "steps": [
+    {
+      "line": [
+        [0.5, 0],
+        [0.5, 1]
+      ],
+      "side": -1,
+      "label": "Right half over"
+    },
+    {
+      "line": [
+        [0, 0.5],
+        [1, 0.5]
+      ],
+      "side": 1,
+      "label": "Top half down"
+    },
+    {
+      "line": [
+        [0.5, 0.3],
+        [0.3, 0.5]
+      ],
+      "side": -1,
+      "label": "Centre corner"
+    }
+  ]
+}

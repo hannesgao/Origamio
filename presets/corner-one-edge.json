@@ -1,0 +1,32 @@
+{
+  "format": "origamio-sequence",
+  "version": 1,
+  "name": "Halves + single-edge corner",
+  "description": "Fold in half twice, then fold a corner that has only one folded edge",
+  "steps": [
+    {
+      "line": [
+        [0.5, 0],
+        [0.5, 1]
+      ],
+      "side": -1,
+      "label": "Right half over"
+    },
+    {
+      "line": [
+        [0, 0.5],
+        [1, 0.5]
+      ],
+      "side": 1,
+      "label": "Top half down"
+    },
+    {
+      "line": [
+        [0.3, 0],
+        [0.5, 0.2]
+      ],
+      "side": -1,
+      "label": "Single-edge corner"
+    }
+  ]
+}

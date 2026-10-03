@@ -709,6 +709,158 @@ kbd {
   border-radius: 1px;
 }
 
+/* --- Timeline -------------------------------------------------------------- */
+
+/* The timeline sits under the views, across the whole row. */
+.timeline-card {
+  grid-column: 1 / -1;
+}
+
+/* An open timeline takes about 150px under the views. */
+#app[data-timeline='shown'] {
+  --view-max: calc(100vh - 390px);
+}
+
+#app[data-timeline='collapsed'] .timeline-card .card-body {
+  display: none;
+}
+
+#app[data-timeline='collapsed'] .timeline-card .card-head {
+  padding-bottom: 12px;
+}
+
+.collapse svg {
+  transition: transform 150ms ease;
+}
+
+#app[data-timeline='collapsed'] .collapse svg {
+  transform: rotate(180deg);
+}
+
+.timeline-card .card-body {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.name-input {
+  width: 12em;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  font-size: 0.88rem;
+}
+
+.name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.transport-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.transport {
+  padding: 4px 8px;
+}
+
+.transport svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
+.timeline-position {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-message {
+  margin-left: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.timeline-message.is-error {
+  color: var(--danger);
+}
+
+.steps {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 2px;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 5px 10px 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.step b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6em;
+  height: 1.6em;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+.step.done {
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+
+.step.done b {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.step.current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.step.pending {
+  border-style: dashed;
+}
+
+.step:hover {
+  border-color: var(--accent);
+}
+
 /* --- SVG content ----------------------------------------------------------- */
 
 /* Each facet is translucent so the colour darkens with every layer stacked on top. */
@@ -829,6 +981,30 @@ kbd {
 @media (max-height: 1000px) and (min-width: 901px) {
   :root {
     --view-max: calc(100vh - 200px);
+  }
+
+  #app[data-timeline='shown'] {
+    --view-max: calc(100vh - 355px);
+  }
+
+  /* The layer view's explanation is in the README; the row needs the height. */
+  .view-help {
+    display: none;
+  }
+
+  .timeline-card .card-body {
+    gap: 6px;
+    padding-top: 6px;
+    padding-bottom: 10px;
+  }
+
+  .steps {
+    padding: 2px 2px;
+  }
+
+  .step {
+    padding: 3px 8px 3px 4px;
+    font-size: 0.78rem;
   }
 
   #app {
