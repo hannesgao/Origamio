@@ -12,6 +12,7 @@ import {
   add,
   applyToPolygon,
   area,
+  bounds,
   clipPolygon,
   compose,
   lineDirection,
@@ -52,13 +53,57 @@ export interface FoldedViewOptions {
   readonly preview?: FoldPreview;
 }
 
-/** The common viewBox used by both views, in sheet units. */
-export const viewBox = (size: number): string =>
-  `${-VIEW_PADDING * size} ${-VIEW_PADDING * size} ${size * (1 + 2 * VIEW_PADDING)} ${
-    size * (1 + 2 * VIEW_PADDING)
-  }`;
-
 const fmt = (n: number): string => (Math.abs(n) < 1e-12 ? '0' : n.toFixed(5));
+
+/**
+ * What part of the folded sheet is visible. `centre` is in model coordinates
+ * (y up); `zoom` 1 shows the whole sheet with its padding, 2 shows half of it.
+ */
+export interface Camera {
+  readonly centre: Vec;
+  readonly zoom: number;
+}
+
+export const MIN_ZOOM = 0.5;
+export const MAX_ZOOM = 16;
+
+export const clampZoom = (zoom: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+
+/** The camera that shows the whole sheet. */
+export const defaultCamera = (size: number): Camera => ({
+  centre: { x: size / 2, y: size / 2 },
+  zoom: 1,
+});
+
+/** Side length of the visible square, in sheet units. */
+export const visibleExtent = (size: number, camera: Camera): number =>
+  (size * (1 + 2 * VIEW_PADDING)) / camera.zoom;
+
+/** The viewBox for `camera`: a square in SVG user space (y down). */
+export function cameraViewBox(size: number, camera: Camera): string {
+  const extent = visibleExtent(size, camera);
+  const x = camera.centre.x - extent / 2;
+  const y = size - camera.centre.y - extent / 2;
+  return `${fmt(x)} ${fmt(y)} ${fmt(extent)} ${fmt(extent)}`;
+}
+
+/**
+ * A camera that frames `points` with the usual padding around them. Falls
+ * back to the default camera when there is nothing to frame.
+ */
+export function fitCamera(size: number, points: readonly Vec[]): Camera {
+  if (points.length === 0) return defaultCamera(size);
+  const box = bounds(points);
+  const span = Math.max(box.maxX - box.minX, box.maxY - box.minY, 1e-6);
+  const needed = span + 2 * VIEW_PADDING * size;
+  return {
+    centre: { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 },
+    zoom: clampZoom((size * (1 + 2 * VIEW_PADDING)) / needed),
+  };
+}
+
+/** The common viewBox used by both views, in sheet units. */
+export const viewBox = (size: number): string => cameraViewBox(size, defaultCamera(size));
 
 /** SVG `points` attribute. The y axis is flipped so the model's +y points up. */
 export const pointsAttr = (poly: Polygon, size: number): string =>

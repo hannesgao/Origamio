@@ -54,6 +54,12 @@ unfolded crease pattern.
 5. **Try a preset.** Each preset starts from a flat sheet and plays its folds
    one after another with the animation. Buttons are disabled while a fold is
    animating.
+6. **Look closer.** The folded sheet gets small quickly, so the Folded card has
+   its own navigation: _Fit_ frames the folded sheet, _Full_ shows the whole
+   square again, the mouse wheel zooms around the pointer, and the _Move_ tool
+   (or holding Space, or the middle mouse button) lets you drag the view. On a
+   touch screen, pinch to zoom and pan with two fingers. Zoom and position are
+   kept across folds and undo; Reset returns to the full view.
 
 Keyboard shortcuts:
 
@@ -61,6 +67,9 @@ Keyboard shortcuts:
 | ----------------------- | ----------------------------------------------- |
 | Ctrl+Z (Cmd+Z on macOS) | Undo the last fold                              |
 | Esc                     | Cancel the fold line you are drawing or placing |
+| F                       | Fit the folded sheet into view                  |
+| 0                       | Show the whole sheet                            |
+| Space (held)            | Drag to pan instead of drawing a fold line      |
 
 ## Getting started
 
@@ -139,10 +148,10 @@ mutated, so a fold that moves nothing is rejected without changing history.
 | `src/main.ts`     | Entry point: loads the stylesheet and creates the app                            |
 | `src/geometry.ts` | Vectors, lines, affine transforms, reflections, convex clipping and intersection |
 | `src/paper.ts`    | Facet model, `fold`, layer selection, statistics, undo history                   |
-| `src/render.ts`   | SVG markup for the folded view (with animation) and the unfolded view            |
+| `src/render.ts`   | SVG markup for both views, the fold animation and the folded-view camera         |
 | `src/ui.ts`       | Page layout, toolbar, pointer interaction, animation loop, presets, shortcuts    |
 | `src/style.css`   | Theme tokens (light and dark), layout, controls and SVG styling                  |
-| `tests/`          | Vitest specs for the geometry and the paper model, plus shared fold presets      |
+| `tests/`          | Vitest specs for the geometry, the paper model and the camera, plus fold presets |
 
 ## Contributing
 

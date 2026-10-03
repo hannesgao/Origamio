@@ -2,7 +2,18 @@
  * The interactive application: toolbar, the folded view with drag-to-fold
  * interaction, the live unfolded view, statistics, undo/reset and presets.
  */
-import { type Line, type Side, type Vec, distance, line, sideOf, vec } from './geometry';
+import {
+  type Line,
+  type Side,
+  type Vec,
+  add,
+  distance,
+  line,
+  scale,
+  sideOf,
+  sub,
+  vec,
+} from './geometry';
 import {
   type FoldResult,
   type LayerSelection,
@@ -11,18 +22,25 @@ import {
   FoldHistory,
   createPaper,
   facetCount,
+  foldedPoints,
   layersAt,
   maxLayers,
   topLayers,
 } from './paper';
 import {
+  type Camera,
   type FoldAnimation,
   BACK_COLOR,
   FRONT_COLOR,
+  cameraViewBox,
+  clampZoom,
+  defaultCamera,
+  fitCamera,
   fromSvgPoint,
   renderFolded,
   renderUnfolded,
   viewBox,
+  visibleExtent,
 } from './render';
 
 export const ANIMATION_MS = 800;
@@ -97,6 +115,10 @@ function svgElement(size: number, className: string): SVGSVGElement {
 }
 
 const UNDO_ICON = '<path d="M7.5 5.5 4 9l3.5 3.5" /><path d="M4 9h7.5a4 4 0 0 1 0 8H9" />';
+const FIT_ICON =
+  '<path d="M3 7V4a1 1 0 0 1 1-1h3M13 3h3a1 1 0 0 1 1 1v3M17 13v3a1 1 0 0 1-1 1h-3M7 17H4a1 1 0 0 1-1-1v-3" />' +
+  '<rect x="7" y="7" width="6" height="6" rx="1" />';
+const FULL_ICON = '<rect x="3" y="3" width="14" height="14" rx="2" />';
 const RESET_ICON = '<path d="M4.5 10a5.5 5.5 0 1 0 1.6-3.9" /><path d="M4.5 3.5V7H8" />';
 
 /** A small inline icon drawn with strokes in the current text colour. */
@@ -120,6 +142,12 @@ function brandMark(): SVGSVGElement {
   return svg;
 }
 
+/** What a left-button drag on the folded sheet does. */
+type Tool = 'fold' | 'move';
+
+/** An in-flight pan or pinch gesture on the folded view. */
+type Navigation = { readonly kind: 'pan'; readonly pointerId: number } | { readonly kind: 'pinch' };
+
 type Phase =
   | { readonly kind: 'idle' }
   | { readonly kind: 'dragging'; readonly from: Vec; readonly to: Vec }
@@ -135,12 +163,21 @@ export interface App {
   undo(): void;
   reset(): void;
   readonly state: PaperState;
+  readonly camera: Camera;
+  fitView(): void;
+  fullView(): void;
 }
 
 export function createApp(root: HTMLElement): App {
   const history = new FoldHistory(createPaper());
   let phase: Phase = { kind: 'idle' };
   let queue: Promise<void> = Promise.resolve();
+  let camera: Camera = defaultCamera(history.state.size);
+  let tool: Tool = 'fold';
+  let spaceHeld = false;
+  let navigation: Navigation | null = null;
+  /** Last known position of every pointer that is down on the folded view. */
+  const pointers = new Map<number, Vec>();
 
   // --- DOM -----------------------------------------------------------------
   const foldedSvg = svgElement(history.state.size, 'view folded-view');
@@ -183,14 +220,52 @@ export function createApp(root: HTMLElement): App {
     hint,
   ]);
 
+  const toolFold = el(
+    'button',
+    { type: 'button', 'aria-pressed': 'true', title: 'Drag to draw a fold line' },
+    ['Fold'],
+  );
+  const toolMove = el(
+    'button',
+    { type: 'button', 'aria-pressed': 'false', title: 'Drag to pan (or hold Space)' },
+    ['Move'],
+  );
+  const fitButton = el(
+    'button',
+    { type: 'button', class: 'btn btn-sm', title: 'Fit the folded sheet into view (F)' },
+    [icon(FIT_ICON), 'Fit'],
+  );
+  const fullButton = el(
+    'button',
+    { type: 'button', class: 'btn btn-sm', title: 'Show the whole sheet (0)' },
+    [icon(FULL_ICON), 'Full'],
+  );
+  const zoomReadout = el('span', { class: 'zoom', title: 'Zoom; scroll on the sheet to change' }, [
+    '100%',
+  ]);
+  const viewTools = el('div', { class: 'card-tools' }, [
+    el('div', { class: 'tool-toggle', role: 'group', 'aria-label': 'Drag tool' }, [
+      toolFold,
+      toolMove,
+    ]),
+    fitButton,
+    fullButton,
+    zoomReadout,
+  ]);
+
   const stat = (value: HTMLElement, label: string): HTMLElement =>
     el('div', { class: 'stat' }, [value, el('span', { class: 'stat-label' }, [label])]);
 
-  const card = (title: string, caption: string, body: HTMLElement, extraClass = ''): HTMLElement =>
+  const card = (
+    title: string,
+    caption: string | HTMLElement,
+    body: HTMLElement,
+    extraClass = '',
+  ): HTMLElement =>
     el('section', { class: `card ${extraClass}`.trim() }, [
       el('div', { class: 'card-head' }, [
         el('h2', {}, [title]),
-        el('span', { class: 'caption' }, [caption]),
+        typeof caption === 'string' ? el('span', { class: 'caption' }, [caption]) : caption,
       ]),
       el('div', { class: 'card-body' }, [body]),
     ]);
@@ -243,7 +318,7 @@ export function createApp(root: HTMLElement): App {
       el('main', { class: 'views' }, [
         card(
           'Folded',
-          'Drag to draw a fold line',
+          viewTools,
           el('div', {}, [el('div', { class: 'view-frame' }, [foldedSvg]), statusBar]),
           'view-card',
         ),
@@ -267,7 +342,9 @@ export function createApp(root: HTMLElement): App {
   const hintFor = (p: Phase): string => {
     switch (p.kind) {
       case 'idle':
-        return 'Drag on the folded sheet to draw a fold line.';
+        return tool === 'move'
+          ? 'Drag to pan and scroll to zoom. Switch back to Fold to add creases.'
+          : 'Drag on the folded sheet to draw a fold line. Scroll to zoom, hold Space to pan.';
       case 'dragging':
         return 'Release to set the fold line.';
       case 'choose-side':
@@ -292,6 +369,11 @@ export function createApp(root: HTMLElement): App {
     } else if (phase.kind === 'animating') {
       options = { animation: phase.animation };
     }
+    foldedSvg.setAttribute('viewBox', cameraViewBox(state.size, camera));
+    zoomReadout.textContent = `${Math.round(camera.zoom * 100)}%`;
+    foldedSvg.dataset['tool'] = tool;
+    toolFold.setAttribute('aria-pressed', String(tool === 'fold'));
+    toolMove.setAttribute('aria-pressed', String(tool === 'move'));
     foldedSvg.innerHTML = renderFolded(state, options);
     unfoldedSvg.innerHTML = renderUnfolded(state);
     statFolds.textContent = String(state.foldCount);
@@ -348,6 +430,8 @@ export function createApp(root: HTMLElement): App {
     enqueue(async () => {
       history.reset();
       phase = { kind: 'idle' };
+      // Presets start from the flat sheet, so show all of it like Reset does.
+      camera = defaultCamera(history.state.size);
       render();
       for (const step of preset.steps) {
         const side = sideOf(step.line, step.movingPoint);
@@ -356,22 +440,78 @@ export function createApp(root: HTMLElement): App {
     });
 
   // --- Pointer interaction ---------------------------------------------------
-  const toModel = (event: PointerEvent): Vec => {
+  /** Sheet units per CSS pixel at the current zoom. */
+  const unitsPerPixel = (): number =>
+    visibleExtent(history.state.size, camera) / foldedSvg.getBoundingClientRect().width;
+
+  const toModel = (client: Vec): Vec => {
     const rect = foldedSvg.getBoundingClientRect();
-    const [vx, vy, vw, vh] = viewBox(history.state.size).split(' ').map(Number) as [
-      number,
-      number,
-      number,
-      number,
-    ];
-    const x = vx + ((event.clientX - rect.left) / rect.width) * vw;
-    const y = vy + ((event.clientY - rect.top) / rect.height) * vh;
+    const [vx, vy, vw, vh] = (foldedSvg.getAttribute('viewBox') ?? viewBox(history.state.size))
+      .split(' ')
+      .map(Number) as [number, number, number, number];
+    const x = vx + ((client.x - rect.left) / rect.width) * vw;
+    const y = vy + ((client.y - rect.top) / rect.height) * vh;
     return fromSvgPoint(vec(x, y), history.state.size);
   };
 
+  const clientPoint = (event: PointerEvent | WheelEvent): Vec => vec(event.clientX, event.clientY);
+
+  const setCamera = (next: Camera): void => {
+    camera = { centre: next.centre, zoom: clampZoom(next.zoom) };
+    render();
+  };
+
+  /** Move the view by a pointer displacement given in CSS pixels. */
+  const panBy = (dx: number, dy: number): void => {
+    const k = unitsPerPixel();
+    setCamera({ centre: add(camera.centre, vec(-dx * k, dy * k)), zoom: camera.zoom });
+  };
+
+  /** Zoom by `factor` while keeping the model point under `client` fixed. */
+  const zoomAt = (client: Vec, factor: number): void => {
+    const zoom = clampZoom(camera.zoom * factor);
+    const applied = zoom / camera.zoom;
+    if (applied === 1) return;
+    const anchor = toModel(client);
+    const centre = add(anchor, scale(sub(camera.centre, anchor), 1 / applied));
+    setCamera({ centre, zoom });
+  };
+
+  const fitView = (): void => setCamera(fitCamera(history.state.size, foldedPoints(history.state)));
+  const fullView = (): void => setCamera(defaultCamera(history.state.size));
+
+  const setTool = (next: Tool): void => {
+    tool = next;
+    if (phase.kind === 'dragging' || phase.kind === 'choose-side') phase = { kind: 'idle' };
+    render();
+  };
+
+  const endNavigation = (): void => {
+    navigation = null;
+    pointers.clear();
+    foldedSvg.classList.remove('is-panning');
+  };
+
   foldedSvg.addEventListener('pointerdown', (event) => {
+    pointers.set(event.pointerId, clientPoint(event));
+    if (pointers.size === 2) {
+      // A second finger: whatever the first one was doing becomes a pinch.
+      if (phase.kind === 'dragging') phase = { kind: 'idle' };
+      navigation = { kind: 'pinch' };
+      foldedSvg.setPointerCapture(event.pointerId);
+      render();
+      return;
+    }
+    const wantsPan = event.button === 1 || (event.button === 0 && (tool === 'move' || spaceHeld));
+    if (wantsPan) {
+      event.preventDefault();
+      navigation = { kind: 'pan', pointerId: event.pointerId };
+      foldedSvg.setPointerCapture(event.pointerId);
+      foldedSvg.classList.add('is-panning');
+      return;
+    }
     if (event.button !== 0) return;
-    const p = toModel(event);
+    const p = toModel(clientPoint(event));
     if (phase.kind === 'choose-side') {
       const side = sideOf(phase.line, p);
       const l = phase.line;
@@ -385,7 +525,27 @@ export function createApp(root: HTMLElement): App {
   });
 
   foldedSvg.addEventListener('pointermove', (event) => {
-    const p = toModel(event);
+    const client = clientPoint(event);
+    const previous = pointers.get(event.pointerId);
+    if (previous) pointers.set(event.pointerId, client);
+
+    if (navigation?.kind === 'pan' && navigation.pointerId === event.pointerId && previous) {
+      panBy(client.x - previous.x, client.y - previous.y);
+      return;
+    }
+    if (navigation?.kind === 'pinch' && previous && pointers.size === 2) {
+      const [a, b] = [...pointers.values()] as [Vec, Vec];
+      const other = a === client ? b : a;
+      const before = distance(previous, other);
+      const after = distance(client, other);
+      const mid = scale(add(client, other), 0.5);
+      const midBefore = scale(add(previous, other), 0.5);
+      panBy(mid.x - midBefore.x, mid.y - midBefore.y);
+      if (before > 0) zoomAt(mid, after / before);
+      return;
+    }
+
+    const p = toModel(client);
     statCursor.textContent = String(layersAt(history.state, p));
     if (phase.kind === 'dragging') {
       phase = { ...phase, to: p };
@@ -399,15 +559,34 @@ export function createApp(root: HTMLElement): App {
     }
   });
 
-  foldedSvg.addEventListener('pointerup', (event) => {
+  const pointerEnd = (event: PointerEvent): void => {
+    pointers.delete(event.pointerId);
+    if (navigation) {
+      if (pointers.size === 0) endNavigation();
+      else if (navigation.kind === 'pinch' && pointers.size === 1) {
+        // Lifting one finger of a pinch continues as a pan with the other.
+        const [remaining] = [...pointers.keys()] as [number];
+        navigation = { kind: 'pan', pointerId: remaining };
+      }
+      return;
+    }
     if (phase.kind !== 'dragging') return;
-    const to = toModel(event);
+    const to = toModel(clientPoint(event));
     if (distance(phase.from, to) < MIN_DRAG) {
       phase = { kind: 'idle' };
     } else {
       phase = { kind: 'choose-side', line: line(phase.from, to) };
     }
     render();
+  };
+  foldedSvg.addEventListener('pointerup', pointerEnd);
+  foldedSvg.addEventListener('pointercancel', (event) => {
+    pointers.delete(event.pointerId);
+    if (navigation && pointers.size === 0) endNavigation();
+    if (phase.kind === 'dragging') {
+      phase = { kind: 'idle' };
+      render();
+    }
   });
 
   foldedSvg.addEventListener('pointerleave', () => {
@@ -417,6 +596,30 @@ export function createApp(root: HTMLElement): App {
       render();
     }
   });
+
+  foldedSvg.addEventListener(
+    'wheel',
+    (event) => {
+      event.preventDefault();
+      // Pixel deltas from trackpads are small; line deltas from mouse wheels are not.
+      const delta =
+        event.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? event.deltaY : event.deltaY * 16;
+      zoomAt(clientPoint(event), Math.exp(-delta * 0.0025));
+    },
+    { passive: false },
+  );
+
+  foldedSvg.addEventListener('dblclick', (event) => {
+    if (tool === 'move' || spaceHeld) {
+      event.preventDefault();
+      fitView();
+    }
+  });
+
+  toolFold.addEventListener('click', () => setTool('fold'));
+  toolMove.addEventListener('click', () => setTool('move'));
+  fitButton.addEventListener('click', fitView);
+  fullButton.addEventListener('click', fullView);
 
   // --- Buttons ---------------------------------------------------------------
   const undo = (): void => {
@@ -429,6 +632,7 @@ export function createApp(root: HTMLElement): App {
     if (phase.kind === 'animating') return;
     history.reset();
     phase = { kind: 'idle' };
+    camera = defaultCamera(history.state.size);
     render();
   };
   undoButton.addEventListener('click', undo);
@@ -450,10 +654,38 @@ export function createApp(root: HTMLElement): App {
       return;
     }
     const inField = event.target instanceof HTMLInputElement;
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !inField) {
+    if (inField) return;
+    const modifier = event.ctrlKey || event.metaKey;
+    if (modifier && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       undo();
+    } else if (!modifier && !event.altKey && event.key === ' ') {
+      // A button focused by a mouse click would be re-activated on key up;
+      // keyboard users (focus-visible) keep the native behaviour.
+      const active = document.activeElement;
+      if (active instanceof HTMLButtonElement && active.matches(':focus-visible')) return;
+      if (active instanceof HTMLButtonElement) active.blur();
+      if (!event.repeat) {
+        spaceHeld = true;
+        foldedSvg.dataset['space'] = 'held';
+      }
+      event.preventDefault();
+    } else if (!modifier && !event.altKey && event.key.toLowerCase() === 'f') {
+      fitView();
+    } else if (!modifier && !event.altKey && event.key === '0') {
+      fullView();
     }
+  });
+  document.addEventListener('keyup', (event) => {
+    if (event.key === ' ') {
+      spaceHeld = false;
+      delete foldedSvg.dataset['space'];
+    }
+  });
+  window.addEventListener('blur', () => {
+    spaceHeld = false;
+    delete foldedSvg.dataset['space'];
+    endNavigation();
   });
 
   render();
@@ -464,6 +696,11 @@ export function createApp(root: HTMLElement): App {
     get state() {
       return history.state;
     },
+    get camera() {
+      return camera;
+    },
+    fitView,
+    fullView,
     fold(l, side, layers = ALL_LAYERS) {
       const result = history.fold(l, side, layers);
       phase = { kind: 'idle' };
