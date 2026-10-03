@@ -182,6 +182,18 @@ input {
   stroke-linejoin: round;
 }
 
+.btn-sm {
+  padding: 4px 9px;
+  font-size: 0.82rem;
+  gap: 5px;
+  box-shadow: none;
+}
+
+.btn-sm svg {
+  width: 14px;
+  height: 14px;
+}
+
 kbd {
   font-family: var(--font-mono);
   font-size: 0.72rem;
@@ -218,7 +230,7 @@ kbd {
 
 .card-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 14px 18px 0;
@@ -236,6 +248,47 @@ kbd {
 .card-head .caption {
   font-size: 0.82rem;
   color: var(--muted);
+}
+
+.card-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.tool-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel-2);
+}
+
+.tool-toggle button {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.tool-toggle button[aria-pressed='true'] {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(42, 33, 26, 0.12);
+}
+
+.zoom {
+  min-width: 3.2em;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .card-body {
@@ -389,7 +442,48 @@ kbd {
   min-width: 0;
 }
 
-.view-card .card-body {
+.view-card .card-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.tool-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel-2);
+}
+
+.tool-toggle button {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.tool-toggle button[aria-pressed='true'] {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(42, 33, 26, 0.12);
+}
+
+.zoom {
+  min-width: 3.2em;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.card-body {
   padding: 12px;
 }
 
@@ -421,6 +515,15 @@ kbd {
 
 .folded-view[data-phase='animating'] {
   cursor: progress;
+}
+
+.folded-view[data-tool='move'],
+.folded-view[data-space='held'] {
+  cursor: grab;
+}
+
+.folded-view.is-panning {
+  cursor: grabbing;
 }
 
 .status-bar {
