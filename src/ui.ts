@@ -19,6 +19,7 @@ import { Timeline } from './timeline';
 import {
   type FoldStep,
   type Paper,
+  stepToJson,
   type Sequence,
   DEFAULT_BACK,
   DEFAULT_FRONT,
@@ -42,6 +43,8 @@ import {
   foldedPoints,
   maxLayers,
   topLayers,
+  bottomLayers,
+  type Placement,
 } from './paper';
 import {
   type Camera,
@@ -102,6 +105,7 @@ const LAYOUT_ICONS: Record<Layout, string> = {
   focus: '<rect x="2.5" y="4" width="15" height="12" rx="1" />',
 };
 const RAIL_ICONS = {
+  step: '<path d="M4 15.5 14.5 5a1.5 1.5 0 0 1 2.1 2.1L6.1 17.6 3 18Z" /><path d="M12.5 7l2.1 2.1" />',
   paper:
     '<path d="M4 3.5h8l4 4v9A1.5 1.5 0 0 1 14.5 18h-9A1.5 1.5 0 0 1 4 16.5Z" /><path d="M12 3.5v4h4" />',
   library:
@@ -154,10 +158,11 @@ const LAYOUTS: readonly { readonly id: Layout; readonly label: string; readonly 
   ];
 const LAYOUT_KEY = 'origamio.layout';
 /** Panels that open from the icon rail on the left. */
-type Panel = 'library' | 'paper' | 'file' | 'keys';
+type Panel = 'library' | 'paper' | 'step' | 'file' | 'keys';
 const PANELS: readonly { readonly id: Panel; readonly label: string; readonly title: string }[] = [
   { id: 'library', label: 'Library', title: 'Presets to load onto the timeline' },
   { id: 'paper', label: 'Paper', title: 'Size of the sheet' },
+  { id: 'step', label: 'Step', title: 'Edit the selected step' },
   { id: 'file', label: 'File', title: 'Name, import, export and clear' },
   { id: 'keys', label: 'Shortcuts', title: 'Keyboard shortcuts' },
 ];
@@ -320,6 +325,8 @@ export function createApp(root: HTMLElement): App {
   const rememberedSpeed = Number(remembered(SPEED_KEY));
   let speed = SPEEDS.includes(rememberedSpeed) ? rememberedSpeed : 1;
   let playing = false;
+  /** Index of the step whose line is being redrawn on the folded sheet. */
+  let redrawing: number | null = null;
   let sequenceName = 'My sequence';
   let timelineMessage = '';
   let navigation: Navigation | null = null;
@@ -540,6 +547,9 @@ export function createApp(root: HTMLElement): App {
     el('p', { class: 'help' }, ['Size and colours are saved in exported files.']),
   ]);
 
+  // --- Step panel (filled by renderStepPanel) ------------------------------------
+  const stepPanel = el('div', { class: 'panel-section step-panel' });
+
   const keysPanel = el(
     'table',
     { class: 'keys' },
@@ -747,6 +757,7 @@ export function createApp(root: HTMLElement): App {
   ]);
   const panelContents: Record<Panel, HTMLElement> = {
     paper: paperPanel,
+    step: stepPanel,
     library: el('div', { class: 'groups' }, [
       el('details', { class: 'group', open: '' }, [
         el('summary', {}, [icon(COLLAPSE_ICON), 'Presets']),
@@ -990,6 +1001,9 @@ export function createApp(root: HTMLElement): App {
   const hintFor = (p: Phase): string => {
     switch (p.kind) {
       case 'idle': {
+        if (redrawing !== null) {
+          return `Redrawing step ${redrawing + 1}: drag the new fold line, then click the side that flips (Esc cancels).`;
+        }
         const next = timeline.next;
         if (next) return `Next: ${describeStep(next)}. Press → to apply it or play (P).`;
         return tool === 'move'
@@ -999,7 +1013,9 @@ export function createApp(root: HTMLElement): App {
       case 'dragging':
         return 'Release to set the fold line.';
       case 'choose-side':
-        return 'Click the side that should flip over (Esc to cancel).';
+        return redrawing !== null
+          ? `Click the side that flips for step ${redrawing + 1} (Esc to cancel).`
+          : 'Click the side that should flip over (Esc to cancel).';
       case 'animating':
         return playing ? 'Playing… (P or Esc to pause after this step)' : 'Folding…';
     }
@@ -1035,6 +1051,7 @@ export function createApp(root: HTMLElement): App {
     foldedSvg.innerHTML = renderFolded(state, options);
     unfoldedSvg.innerHTML = renderUnfolded(state);
     renderTimeline();
+    renderStepPanel();
     // The layer view is framed at the aspect ratio its frame actually has.
     const rect = layersSvg.getBoundingClientRect();
     const aspect = rect.width > 0 && rect.height > 0 ? rect.width / rect.height : undefined;
@@ -1148,6 +1165,225 @@ export function createApp(root: HTMLElement): App {
     renderTimeline();
   };
 
+  // --- Step inspector ----------------------------------------------------------
+  let stepSignature = '';
+  const numberField = (
+    value: number,
+    onChange: (n: number) => void,
+    label: string,
+  ): HTMLInputElement => {
+    const input = el('input', {
+      type: 'number',
+      step: '0.01',
+      class: 'ctl',
+      value: String(+value.toFixed(4)),
+      'aria-label': label,
+    });
+    input.addEventListener('change', () => {
+      const n = Number(input.value);
+      if (Number.isFinite(n)) onChange(n);
+    });
+    return input;
+  };
+
+  const renderStepPanel = (): void => {
+    const index = selected;
+    const step = index === null ? undefined : timeline.steps[index];
+    const signature =
+      step && index !== null
+        ? `${index}|${timeline.length}|${JSON.stringify(stepToJson(step))}|${timeline.effect(index)}|${redrawing}`
+        : `none|${timeline.length}`;
+    if (signature === stepSignature) return;
+    stepSignature = signature;
+    if (!step || index === null) {
+      stepPanel.replaceChildren(
+        el('p', { class: 'help' }, [
+          timeline.length === 0
+            ? 'Fold something or load a preset, then select a step on the timeline.'
+            : 'Select a step on the timeline (click a clip) to edit it here.',
+        ]),
+      );
+      return;
+    }
+    const at = index;
+    const update = (
+      patch: Partial<Pick<FoldStep, 'line' | 'side' | 'options'>>,
+      what: string,
+    ): void => {
+      if (phase.kind === 'animating') return;
+      playing = false;
+      timeline.update(at, patch);
+      afterEdit(`${what} of step ${at + 1} changed.`, at);
+    };
+    const options = step.options;
+    const layers = options.layers ?? ALL_LAYERS;
+
+    const nameField = el('input', {
+      type: 'text',
+      class: 'ctl',
+      value: step.label ?? '',
+      placeholder: describeStep({ line: step.line, side: step.side, options }),
+      'aria-label': 'Step name',
+    });
+    nameField.addEventListener('change', () => renameStep(at, nameField.value));
+
+    const layerKind = el('select', { class: 'ctl', 'aria-label': 'Layers that move' });
+    for (const [value, text] of [
+      ['all', 'All layers'],
+      ['top', 'Top n layers'],
+      ['bottom', 'Bottom n layers'],
+    ] as const) {
+      const option = el('option', { value }, [text]);
+      if (value === layers.kind) option.selected = true;
+      layerKind.append(option);
+    }
+    const layerN = el('input', {
+      type: 'number',
+      min: '1',
+      step: '1',
+      class: 'ctl',
+      value: String(layers.kind === 'all' ? 1 : layers.count),
+      'aria-label': 'Number of layers',
+    });
+    layerN.disabled = layers.kind === 'all';
+    const applyLayers = (): void => {
+      const kind = layerKind.value;
+      const count = Math.max(1, Math.floor(Number(layerN.value) || 1));
+      const next: LayerSelection =
+        kind === 'top' ? topLayers(count) : kind === 'bottom' ? bottomLayers(count) : ALL_LAYERS;
+      const rest: FoldOptions = { ...options };
+      delete (rest as { layers?: LayerSelection }).layers;
+      update({ options: next.kind === 'all' ? rest : { ...rest, layers: next } }, 'Layers');
+    };
+    layerKind.addEventListener('change', applyLayers);
+    layerN.addEventListener('change', applyLayers);
+
+    const placement = el('select', { class: 'ctl', 'aria-label': 'Where the moved paper lands' });
+    for (const [value, text] of [
+      ['top', 'On top (valley fold)'],
+      ['bottom', 'Underneath (fold made on the back)'],
+      ['inside', 'Inside (reverse fold)'],
+    ] as const) {
+      const option = el('option', { value }, [text]);
+      if (value === (options.placement ?? 'top')) option.selected = true;
+      placement.append(option);
+    }
+    placement.addEventListener('change', () => {
+      const rest: FoldOptions = { ...options };
+      delete (rest as { placement?: Placement }).placement;
+      const value = placement.value;
+      update(
+        { options: value === 'top' ? rest : { ...rest, placement: value as Placement } },
+        'Placement',
+      );
+    });
+
+    const flipButton = el('button', { type: 'button', class: 'btn panel-action' }, [
+      'Flip which side moves',
+    ]);
+    flipButton.addEventListener('click', () => update({ side: step.side === 1 ? -1 : 1 }, 'Side'));
+    const redrawButton = el('button', { type: 'button', class: 'btn panel-action' }, [
+      redrawing === at ? 'Redrawing… (Esc cancels)' : 'Redraw the line on the folded sheet',
+    ]);
+    redrawButton.addEventListener('click', () => startRedraw(at));
+    const setLine = (which: 'a' | 'b', axis: 'x' | 'y', n: number): void => {
+      const a = { ...step.line.a };
+      const b = { ...step.line.b };
+      (which === 'a' ? a : b)[axis] = n;
+      if (distance(a, b) < 1e-6) {
+        say('Could not change the line: the two points would coincide.');
+        return;
+      }
+      update({ line: line(a, b) }, 'Line');
+    };
+    const lineRow = (which: 'a' | 'b'): HTMLElement =>
+      el('div', { class: 'size-row line-row' }, [
+        el('span', { class: 'field-label' }, [which === 'a' ? 'From' : 'To']),
+        numberField(step.line[which].x, (n) => setLine(which, 'x', n), `${which} x`),
+        numberField(step.line[which].y, (n) => setLine(which, 'y', n), `${which} y`),
+      ]);
+
+    const limits: HTMLElement[] = [];
+    for (const [key, text] of [
+      ['region', 'Only facets inside a region of the unfolded sheet'],
+      ['window', 'Only facets inside a window of the folded sheet'],
+    ] as const) {
+      const polygon = options[key];
+      if (!polygon) continue;
+      const remove = el('button', { type: 'button', class: 'btn' }, ['Remove']);
+      remove.addEventListener('click', () => {
+        const { region, window, ...others } = options;
+        const rest: FoldOptions =
+          key === 'region'
+            ? { ...others, ...(window ? { window } : {}) }
+            : { ...others, ...(region ? { region } : {}) };
+        update({ options: rest }, key === 'region' ? 'Region' : 'Window');
+      });
+      limits.push(
+        el('div', { class: 'limit-row' }, [
+          el('span', {}, [`${text} (${polygon.length} points)`]),
+          remove,
+        ]),
+      );
+    }
+
+    const effect = timeline.effect(at);
+    stepPanel.replaceChildren(
+      el('p', { class: 'help step-title' }, [
+        `Step ${at + 1} of ${timeline.length}`,
+        effect === false ? ' — moves nothing where it now sits' : '',
+      ]),
+      el('label', { class: 'field' }, [el('span', { class: 'field-label' }, ['Name']), nameField]),
+      el('div', { class: 'field' }, [
+        el('span', { class: 'field-label' }, ['Layers that move']),
+        el('div', { class: 'size-row layers-row' }, [layerKind, layerN]),
+      ]),
+      el('label', { class: 'field' }, [
+        el('span', { class: 'field-label' }, ['Where the moved paper lands']),
+        placement,
+      ]),
+      el('div', { class: 'field' }, [
+        el('span', { class: 'field-label' }, [
+          `Fold line (folded coordinates at this step; the ${step.side === 1 ? 'left' : 'right'} side moves)`,
+        ]),
+        lineRow('a'),
+        lineRow('b'),
+        el('div', { class: 'panel-actions' }, [flipButton, redrawButton]),
+      ]),
+      ...(limits.length > 0
+        ? [
+            el('div', { class: 'field' }, [
+              el('span', { class: 'field-label' }, ['Limits']),
+              ...limits,
+            ]),
+          ]
+        : []),
+      el('p', { class: 'help' }, [
+        'Every change replays the steps after this one; a step that then moves nothing is ',
+        'marked on the timeline.',
+      ]),
+    );
+  };
+
+  /** Rewind to just before step `index` and take the next drawn line as its new line. */
+  const startRedraw = (index: number): void => {
+    if (phase.kind === 'animating') return;
+    playing = false;
+    redrawing = index;
+    timeline.seek(index);
+    phase = { kind: 'idle' };
+    stepSignature = '';
+    render();
+    say(`Draw the new line for step ${index + 1} on the folded sheet.`);
+  };
+
+  const cancelRedraw = (): void => {
+    if (redrawing === null) return;
+    redrawing = null;
+    stepSignature = '';
+    render();
+  };
+
   // --- Folding ---------------------------------------------------------------
   const animate = (result: FoldResult): Promise<void> =>
     new Promise((resolve) => {
@@ -1187,7 +1423,7 @@ export function createApp(root: HTMLElement): App {
     render();
     say(
       dead > 0
-        ? `${message} ${dead} later step${dead === 1 ? '' : 's'} now move nothing.`
+        ? `${message} ${dead} later step${dead === 1 ? ' now moves' : 's now move'} nothing.`
         : message,
     );
   };
@@ -1391,7 +1627,7 @@ export function createApp(root: HTMLElement): App {
       say('Nothing to undo.');
       return;
     }
-    selected = null;
+    if (selected !== null && selected >= timeline.length) selected = null;
     afterEdit('Undid the last edit.');
   };
 
@@ -1402,7 +1638,7 @@ export function createApp(root: HTMLElement): App {
       say('Nothing to redo.');
       return;
     }
-    selected = null;
+    if (selected !== null && selected >= timeline.length) selected = null;
     afterEdit('Redid the edit.');
   };
 
@@ -1452,6 +1688,13 @@ export function createApp(root: HTMLElement): App {
   const openMenu = (index: number, x: number, y: number): void => {
     const items: [string, () => void, boolean?][] = [
       ['Rename', () => startRename(index)],
+      [
+        'Edit…',
+        () => {
+          selected = index;
+          setPanel('step');
+        },
+      ],
       ['Go to this step', () => jumpTo(index + 1)],
       ['Duplicate', () => duplicateStep(index)],
       ['Move left', () => moveStep(index, index - 1), index === 0],
@@ -1560,8 +1803,18 @@ export function createApp(root: HTMLElement): App {
     if (phase.kind === 'choose-side') {
       const side = sideOf(phase.line, p);
       const l = phase.line;
-      // A fold made by hand is inserted at the playhead; later steps stay.
       playing = false;
+      if (redrawing !== null) {
+        const at = redrawing;
+        redrawing = null;
+        timeline.update(at, { line: l, side });
+        timeline.seek(at + 1);
+        selected = at;
+        stepSignature = '';
+        afterEdit(`Line of step ${at + 1} redrawn.`, at);
+        return;
+      }
+      // A fold made by hand is inserted at the playhead; later steps stay.
       void enqueue(() => insertFold(l, side, selectedLayers()));
       return;
     }
@@ -1881,6 +2134,7 @@ export function createApp(root: HTMLElement): App {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (!menu.hidden) closeMenu();
+      else if (redrawing !== null && phase.kind === 'idle') cancelRedraw();
       else if (playing) pause();
       else if (phase.kind === 'choose-side' || phase.kind === 'dragging') phase = { kind: 'idle' };
       else if (openPanel) setPanel(null);

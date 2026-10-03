@@ -56,6 +56,12 @@ reflections and convex polygon clipping.
   each step's line is written in the coordinates of the sheet as it is at
   that moment, a step that no longer moves anything after an edit is marked
   with red hatching so it can be fixed.
+- **A step inspector.** The Step panel on the rail edits the selected step:
+  its name, which layers move (all, top _n_, bottom _n_), where the moved
+  paper lands (on top, underneath, inside), which side moves, the two points
+  of the fold line, and any region or window limit a preset step carries.
+  _Redraw the line_ rewinds to just before the step and takes the next line
+  you draw on the folded sheet as its new line.
 - **Timeline, replay, import and export.** Every fold, whether made by hand
   or by a preset, lands on an editing-style timeline under the views: a ruler,
   one clip per step and a playhead you can drag. Step back and forward (also
@@ -82,8 +88,9 @@ reflections and convex polygon clipping.
 
 The page is a workbench that fills the window and never scrolls as a whole: a
 fixed header with the layout switch, an icon rail on the left whose buttons
-open the Library (presets, in groups), File (name, import, export, new) and
-Shortcuts panels, the workspace with the three view cards and the timeline
+open the Library (presets, in groups), Paper (size and colours), Step (the
+selected step's parameters), File (name, import, export, new) and Shortcuts
+panels, the workspace with the three view cards and the timeline
 card under them, and a footer with the version and links. Every view card has
 the same anatomy: a head with the title and one row of tools, the canvas, and
 two lines underneath (status and statistics for the folded sheet; legend and
