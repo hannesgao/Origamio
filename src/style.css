@@ -20,6 +20,14 @@
   --sheet-stroke: #c8b9a6;
   --unfolded-front: #f3d8b8;
   --unfolded-back: #e0ba8e;
+  --track: #2a2420;
+  --track-tick: #4a403a;
+  --track-text: #d8ccbe;
+  --clip-done: #c97b2c;
+  --clip-done-edge: #e8923a;
+  --clip-done-text: #fff6ea;
+  --clip-pending: #3a322c;
+  --playhead: #ff5a4f;
 
   /* Tallest a sheet view may grow: the viewport minus header, card chrome and gaps. */
   --view-max: calc(100vh - 230px);
@@ -52,6 +60,14 @@
     --sheet-stroke: #5a4c3f;
     --unfolded-front: #c99a66;
     --unfolded-back: #9a6b3d;
+    --track: #15110f;
+    --track-tick: #332b26;
+    --track-text: #cfc3b5;
+    --clip-done: #b56a22;
+    --clip-done-edge: #e8923a;
+    --clip-done-text: #fff6ea;
+    --clip-pending: #241f1b;
+    --playhead: #ff6b61;
   }
 }
 
@@ -761,11 +777,27 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+}
+
+.transport-group {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
 }
 
 .transport {
-  padding: 4px 8px;
+  padding: 4px 9px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.transport:hover:not(:disabled) {
+  background: var(--panel);
 }
 
 .transport svg {
@@ -777,16 +809,39 @@ kbd {
   stroke-linejoin: round;
 }
 
-.timeline-position {
-  margin-left: 8px;
-  font-family: var(--font-mono);
+.transport.is-playing {
+  color: var(--accent);
+}
+
+.tl-speed-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.82rem;
   color: var(--muted);
+}
+
+.tl-speed {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.timeline-position {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--track);
+  color: var(--track-text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
 
 .timeline-message {
-  margin-left: 8px;
   font-size: 0.85rem;
   color: var(--muted);
 }
@@ -795,70 +850,151 @@ kbd {
   color: var(--danger);
 }
 
-.steps {
-  display: flex;
-  gap: 6px;
-  margin: 0;
-  padding: 4px 2px;
-  list-style: none;
+/* The track: dark like an editing timeline in both themes. */
+.tl-scroll {
+  position: relative;
   overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--track);
+  cursor: col-resize;
+  user-select: none;
   scrollbar-width: thin;
+  scrollbar-color: var(--track-tick) transparent;
 }
 
-.step {
-  display: inline-flex;
+.tl-scroll.is-scrubbing {
+  cursor: grabbing;
+}
+
+.tl-lanes {
+  position: relative;
+  min-width: 100%;
+  height: 74px;
+}
+
+.tl-ruler {
+  position: relative;
+  height: 22px;
+  border-bottom: 1px solid var(--track-tick);
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--track-tick) 0 1px,
+    transparent 1px 26px
+  );
+  background-size: 104px 8px;
+  background-position: 0 100%;
+  background-repeat: repeat-x;
+}
+
+.tl-tick {
+  position: absolute;
+  top: 2px;
+  padding-left: 4px;
+  border-left: 1px solid var(--track-text);
+  color: var(--track-text);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.tl-track {
+  position: relative;
+  height: 52px;
+  background-image: linear-gradient(to right, var(--track-tick) 1px, transparent 1px);
+  background-size: 104px 100%;
+}
+
+.tl-clip {
+  position: absolute;
+  top: 7px;
+  height: 38px;
+  display: flex;
   align-items: center;
   gap: 6px;
-  flex: none;
-  padding: 5px 10px 5px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--muted);
-  font-size: 0.82rem;
-  white-space: nowrap;
+  padding: 0 8px;
+  margin-left: 2px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+  color: var(--track-text);
+  font-size: 0.76rem;
+  line-height: 1.15;
   cursor: pointer;
-  transition:
-    border-color 120ms ease,
-    background-color 120ms ease,
-    color 120ms ease;
+  overflow: hidden;
 }
 
-.step b {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.6em;
-  height: 1.6em;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--panel-2);
+.tl-clip span {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.tl-clip b {
+  flex: none;
   font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+  opacity: 0.8;
 }
 
-.step.done {
-  color: var(--ink);
-  border-color: var(--border-strong);
+.tl-clip.done {
+  background: var(--clip-done);
+  border-color: var(--clip-done-edge);
+  color: var(--clip-done-text);
 }
 
-.step.done b {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.step.current {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.step.pending {
+.tl-clip.pending {
+  background: var(--clip-pending);
+  border-color: var(--track-tick);
   border-style: dashed;
 }
 
-.step:hover {
-  border-color: var(--accent);
+.tl-clip.current {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.tl-clip:hover {
+  filter: brightness(1.1);
+}
+
+.tl-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--playhead);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.tl-playhead-head {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%);
+  background: var(--playhead);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* The status line under the folded sheet is two lines tall whatever it says. */
+.status-bar {
+  min-height: calc(2 * 1.45em);
+  align-items: flex-start;
+}
+
+.status-bar .status-dot {
+  margin-top: 0.55em;
+}
+
+.status-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* --- SVG content ----------------------------------------------------------- */
@@ -998,13 +1134,17 @@ kbd {
     padding-bottom: 10px;
   }
 
-  .steps {
-    padding: 2px 2px;
+  .tl-lanes {
+    height: 64px;
   }
 
-  .step {
-    padding: 3px 8px 3px 4px;
-    font-size: 0.78rem;
+  .tl-track {
+    height: 42px;
+  }
+
+  .tl-clip {
+    top: 5px;
+    height: 32px;
   }
 
   #app {

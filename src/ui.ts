@@ -54,6 +54,12 @@ import {
 } from './render';
 
 export const ANIMATION_MS = 800;
+/** Pause between two steps when playing, at speed 1. */
+const STEP_GAP_MS = 250;
+/** Width of one step on the timeline track, in CSS pixels. */
+const CLIP_WIDTH = 104;
+const SPEEDS: readonly number[] = [0.25, 0.5, 1, 2, 4];
+const SPEED_KEY = 'origamio.speed';
 /** Drags shorter than this (in sheet units) are ignored. */
 const MIN_DRAG = 0.02;
 
@@ -203,6 +209,8 @@ export function createApp(root: HTMLElement): App {
     : 'side-by-side';
   let sidebarHidden = remembered(SIDEBAR_KEY) === 'hidden';
   let timelineCollapsed = remembered(TIMELINE_KEY) === 'collapsed';
+  const rememberedSpeed = Number(remembered(SPEED_KEY));
+  let speed = SPEEDS.includes(rememberedSpeed) ? rememberedSpeed : 1;
   /** Steps of the loaded sequence still to apply; undone folds come back here. */
   let pending: FoldStep[] = [];
   let playing = false;
@@ -271,12 +279,18 @@ export function createApp(root: HTMLElement): App {
     el('button', { type: 'button', class: 'btn btn-sm transport', title }, [
       icon(TRANSPORT_ICONS[name]),
     ]);
-  const startButton = transport('start', 'Back to the flat sheet (keeps the steps)');
+  const startButton = transport('start', 'Back to the flat sheet (Home)');
   const backButton = transport('back', 'One step back (←)');
-  const playButton = transport('play', 'Play the remaining steps');
+  const playButton = transport('play', 'Play the remaining steps (P)');
   const forwardButton = transport('forward', 'One step forward (→)');
-  const endButton = transport('end', 'Apply all remaining steps at once');
-  const positionReadout = el('span', { class: 'timeline-position' }, ['0 / 0']);
+  const endButton = transport('end', 'Apply all remaining steps at once (End)');
+  const speedSelect = el('select', { class: 'tl-speed', 'aria-label': 'Playback speed' });
+  for (const value of SPEEDS) {
+    const option = el('option', { value: String(value) }, [`${value}×`]);
+    if (value === speed) option.selected = true;
+    speedSelect.append(option);
+  }
+  const positionReadout = el('span', { class: 'timeline-position' }, ['00 / 00']);
   const timelineStatus = el('span', { class: 'timeline-message', role: 'status' });
   const nameInput = el('input', {
     type: 'text',
@@ -311,7 +325,13 @@ export function createApp(root: HTMLElement): App {
     },
     [icon(COLLAPSE_ICON)],
   );
-  const stepList = el('ol', { class: 'steps', 'aria-label': 'Fold steps' });
+  // The track: a ruler with one tick per step, the step clips, and a playhead
+  // that sits on the boundary after the last applied step.
+  const ruler = el('div', { class: 'tl-ruler' });
+  const track = el('div', { class: 'tl-track', role: 'list', 'aria-label': 'Fold steps' });
+  const playhead = el('div', { class: 'tl-playhead' }, [el('div', { class: 'tl-playhead-head' })]);
+  const lanes = el('div', { class: 'tl-lanes' }, [ruler, track, playhead]);
+  const scroller = el('div', { class: 'tl-scroll' }, [lanes]);
   const timelineCard = el('section', { class: 'card timeline-card' }, [
     el('div', { class: 'card-head' }, [
       el('h2', {}, ['Timeline']),
@@ -325,15 +345,18 @@ export function createApp(root: HTMLElement): App {
     ]),
     el('div', { class: 'card-body' }, [
       el('div', { class: 'transport-bar' }, [
-        startButton,
-        backButton,
-        playButton,
-        forwardButton,
-        endButton,
+        el('div', { class: 'transport-group' }, [
+          startButton,
+          backButton,
+          playButton,
+          forwardButton,
+          endButton,
+        ]),
+        el('label', { class: 'tl-speed-label' }, ['Speed', speedSelect]),
         positionReadout,
         timelineStatus,
       ]),
-      stepList,
+      scroller,
       importInput,
     ]),
   ]);
@@ -547,16 +570,19 @@ export function createApp(root: HTMLElement): App {
 
   const hintFor = (p: Phase): string => {
     switch (p.kind) {
-      case 'idle':
+      case 'idle': {
+        const next = pending[0];
+        if (next) return `Next: ${describeStep(next)}. Press → to apply it or play (P).`;
         return tool === 'move'
-          ? 'Drag to pan and scroll to zoom. Switch back to Fold to add creases.'
-          : 'Drag on the folded sheet to draw a fold line. Scroll to zoom, hold Space to pan.';
+          ? 'Drag to pan, scroll to zoom. Switch back to Fold to add creases.'
+          : 'Drag to draw a fold line. Scroll to zoom, hold Space to pan.';
+      }
       case 'dragging':
         return 'Release to set the fold line.';
       case 'choose-side':
         return 'Click the side that should flip over (Esc to cancel).';
       case 'animating':
-        return 'Folding…';
+        return playing ? 'Playing… (P or Esc to pause after this step)' : 'Folding…';
     }
   };
 
@@ -630,6 +656,16 @@ export function createApp(root: HTMLElement): App {
   };
 
   let timelineSignature = '';
+  const two = (n: number): string => String(n).padStart(2, '0');
+
+  /** Keep the playhead in view, scrolling the track when needed. */
+  const revealPlayhead = (): void => {
+    const x = history.steps.length * CLIP_WIDTH;
+    const { scrollLeft, clientWidth } = scroller;
+    if (x < scrollLeft + 24) scroller.scrollLeft = Math.max(0, x - clientWidth / 3);
+    else if (x > scrollLeft + clientWidth - 24) scroller.scrollLeft = x - (2 * clientWidth) / 3;
+  };
+
   const renderTimeline = (): void => {
     const applied = history.steps;
     const total = applied.length + pending.length;
@@ -641,35 +677,51 @@ export function createApp(root: HTMLElement): App {
     playButton.disabled = pending.length === 0 && !playing;
     playButton.innerHTML = '';
     playButton.append(icon(playing ? TRANSPORT_ICONS.pause : TRANSPORT_ICONS.play));
-    playButton.title = playing ? 'Pause after this step' : 'Play the remaining steps';
+    playButton.title = playing ? 'Pause after this step (P)' : 'Play the remaining steps (P)';
+    playButton.classList.toggle('is-playing', playing);
     exportButton.disabled = total === 0;
-    positionReadout.textContent = `${applied.length} / ${total}`;
+    positionReadout.textContent = `${two(applied.length)} / ${two(total)}`;
     timelineStatus.textContent = timelineMessage;
     timelineStatus.classList.toggle('is-error', timelineMessage.startsWith('Could not'));
+    timelineCard.classList.toggle('is-playing', playing);
 
-    const signature = `${applied.length}|${pending.length}|${playing}|${busy}|${applied
+    // The playhead moves every frame while a step animates.
+    const progress = phase.kind === 'animating' ? phase.animation.progress : 1;
+    const head = (applied.length - 1 + progress) * CLIP_WIDTH;
+    playhead.style.left = `${Math.max(0, head)}px`;
+
+    const signature = `${applied.length}|${pending.length}|${applied
       .map(describeStep)
       .join()}|${pending.map(describeStep).join()}`;
     if (signature === timelineSignature) return;
     timelineSignature = signature;
-    const items: HTMLElement[] = [];
-    const chip = (index: number, label: string, state: string): HTMLElement =>
+    lanes.style.width = `${Math.max(1, total) * CLIP_WIDTH + CLIP_WIDTH / 2}px`;
+    const ticks: HTMLElement[] = [];
+    for (let i = 0; i <= total; i++) {
+      ticks.push(el('span', { class: 'tl-tick', style: `left: ${i * CLIP_WIDTH}px` }, [two(i)]));
+    }
+    ruler.replaceChildren(...ticks);
+    const clips: HTMLElement[] = [];
+    const clip = (index: number, step: FoldStep, state: string): HTMLElement =>
       el(
-        'li',
-        { class: `step ${state}`, 'data-index': String(index), title: `Go to step ${index}` },
-        [el('b', {}, [String(index)]), el('span', {}, [label])],
+        'div',
+        {
+          class: `tl-clip ${state}`,
+          role: 'listitem',
+          'data-index': String(index),
+          title: `${describeStep(step)} — click to go to step ${index}`,
+          style: `left: ${(index - 1) * CLIP_WIDTH}px; width: ${CLIP_WIDTH - 4}px`,
+        },
+        [el('b', {}, [two(index)]), el('span', {}, [describeStep(step)])],
       );
-    items.push(chip(0, 'Flat sheet', applied.length === 0 ? 'done current' : 'done'));
     applied.forEach((step, i) => {
-      items.push(
-        chip(i + 1, describeStep(step), i + 1 === applied.length ? 'done current' : 'done'),
-      );
+      clips.push(clip(i + 1, step, i + 1 === applied.length ? 'done current' : 'done'));
     });
     pending.forEach((step, i) => {
-      items.push(chip(applied.length + i + 1, describeStep(step), 'pending'));
+      clips.push(clip(applied.length + i + 1, step, 'pending'));
     });
-    stepList.replaceChildren(...items);
-    stepList.querySelector('.current')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    track.replaceChildren(...clips);
+    revealPlayhead();
   };
 
   const say = (message: string): void => {
@@ -683,7 +735,7 @@ export function createApp(root: HTMLElement): App {
       const movedIds = new Set(result.movedIds);
       const start = performance.now();
       const tick = (now: number): void => {
-        const progress = Math.min(1, (now - start) / ANIMATION_MS);
+        const progress = Math.min(1, ((now - start) * speed) / ANIMATION_MS);
         phase = {
           kind: 'animating',
           animation: { movedIds, line: result.line, progress },
@@ -769,12 +821,17 @@ export function createApp(root: HTMLElement): App {
     renderTimeline();
   };
 
+  const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
   const play = (): void => {
     if (playing || pending.length === 0) return;
     playing = true;
     renderTimeline();
     void enqueue(async () => {
-      while (playing && pending.length > 0) await applyNext();
+      while (playing && pending.length > 0) {
+        await applyNext();
+        if (playing && pending.length > 0) await wait(STEP_GAP_MS / speed);
+      }
       playing = false;
       render();
     });
@@ -1061,7 +1118,13 @@ export function createApp(root: HTMLElement): App {
   presetButtons.forEach((button, i) => {
     button.addEventListener('click', () => {
       const entry = LIBRARY[i];
-      if (entry) void loadSequence(entry.sequence, true);
+      if (entry) {
+        void loadSequence(entry.sequence).then(() =>
+          say(
+            `Loaded "${entry.sequence.name}": ${entry.sequence.steps.length} steps. Step with → or play.`,
+          ),
+        );
+      }
     });
   });
   startButton.addEventListener('click', () => jumpTo(0));
@@ -1069,10 +1132,39 @@ export function createApp(root: HTMLElement): App {
   forwardButton.addEventListener('click', () => void stepForward());
   endButton.addEventListener('click', () => jumpTo(history.steps.length + pending.length));
   playButton.addEventListener('click', () => (playing ? pause() : play()));
-  stepList.addEventListener('click', (event) => {
-    const chip = event.target instanceof Element ? event.target.closest('[data-index]') : null;
-    if (chip) jumpTo(Number(chip.getAttribute('data-index')));
+  speedSelect.addEventListener('change', () => {
+    speed = Number(speedSelect.value) || 1;
+    remember(SPEED_KEY, String(speed));
   });
+
+  // Scrubbing: drag anywhere on the ruler or the track to move the playhead
+  // from boundary to boundary; a click on a clip goes to the end of that step.
+  let scrubbing = false;
+  const boundaryAt = (clientX: number): number => {
+    const left = lanes.getBoundingClientRect().left;
+    const total = history.steps.length + pending.length;
+    return Math.max(0, Math.min(total, Math.round((clientX - left) / CLIP_WIDTH)));
+  };
+  scroller.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || phase.kind === 'animating') return;
+    const clipHit = event.target instanceof Element ? event.target.closest('.tl-clip') : null;
+    scrubbing = true;
+    scroller.setPointerCapture(event.pointerId);
+    scroller.classList.add('is-scrubbing');
+    if (clipHit && !event.shiftKey) jumpTo(Number(clipHit.getAttribute('data-index')));
+    else jumpTo(boundaryAt(event.clientX));
+  });
+  scroller.addEventListener('pointermove', (event) => {
+    if (!scrubbing || phase.kind === 'animating') return;
+    const index = boundaryAt(event.clientX);
+    if (index !== history.steps.length) jumpTo(index);
+  });
+  const endScrub = (): void => {
+    scrubbing = false;
+    scroller.classList.remove('is-scrubbing');
+  };
+  scroller.addEventListener('pointerup', endScrub);
+  scroller.addEventListener('pointercancel', endScrub);
   nameInput.addEventListener('input', () => {
     sequenceName = nameInput.value;
   });
@@ -1090,12 +1182,14 @@ export function createApp(root: HTMLElement): App {
   });
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && (phase.kind === 'choose-side' || phase.kind === 'dragging')) {
-      phase = { kind: 'idle' };
+    if (event.key === 'Escape') {
+      if (playing) pause();
+      if (phase.kind === 'choose-side' || phase.kind === 'dragging') phase = { kind: 'idle' };
       render();
       return;
     }
-    const inField = event.target instanceof HTMLInputElement;
+    const inField =
+      event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement;
     if (inField) return;
     const modifier = event.ctrlKey || event.metaKey;
     if (modifier && event.key.toLowerCase() === 'z') {
@@ -1112,6 +1206,15 @@ export function createApp(root: HTMLElement): App {
         foldedSvg.dataset['space'] = 'held';
       }
       event.preventDefault();
+    } else if (!modifier && !event.altKey && event.key.toLowerCase() === 'p') {
+      if (playing) pause();
+      else play();
+    } else if (!modifier && !event.altKey && event.key === 'Home') {
+      event.preventDefault();
+      jumpTo(0);
+    } else if (!modifier && !event.altKey && event.key === 'End') {
+      event.preventDefault();
+      jumpTo(history.steps.length + pending.length);
     } else if (!modifier && !event.altKey && event.key === 'ArrowRight') {
       event.preventDefault();
       void stepForward();
