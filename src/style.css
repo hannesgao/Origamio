@@ -741,6 +741,10 @@ kbd {
   .view-card .btn-sm {
     gap: 0;
   }
+
+  .view-card .zoom {
+    display: none;
+  }
 }
 
 /* Short screens (16:9 monitors and laptops): tighter spacing and a compact sidebar. */
