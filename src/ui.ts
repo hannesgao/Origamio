@@ -140,6 +140,12 @@ const LAYOUTS: readonly { readonly id: Layout; readonly label: string; readonly 
 const LAYOUT_KEY = 'origamio.layout';
 const SIDEBAR_KEY = 'origamio.sidebar';
 const TIMELINE_KEY = 'origamio.timeline';
+/** Secondary view cards that can be collapsed to their header. */
+type CollapsibleCard = 'unfolded' | 'layers';
+const CARD_KEYS: Record<CollapsibleCard, string> = {
+  unfolded: 'origamio.card.unfolded',
+  layers: 'origamio.card.layers',
+};
 
 /** Read a remembered preference; storage may be unavailable or blocked. */
 function remembered(key: string): string | null {
@@ -207,6 +213,10 @@ export function createApp(root: HTMLElement): App {
     : 'folded-large';
   let sidebarHidden = remembered(SIDEBAR_KEY) === 'hidden';
   let timelineCollapsed = remembered(TIMELINE_KEY) === 'collapsed';
+  const cardCollapsed: Record<CollapsibleCard, boolean> = {
+    unfolded: remembered(CARD_KEYS.unfolded) === 'collapsed',
+    layers: remembered(CARD_KEYS.layers) === 'collapsed',
+  };
   const rememberedSpeed = Number(remembered(SPEED_KEY));
   let speed = SPEEDS.includes(rememberedSpeed) ? rememberedSpeed : 1;
   /** Steps of the loaded sequence still to apply; undone folds come back here. */
@@ -415,8 +425,27 @@ export function createApp(root: HTMLElement): App {
     value: '0.06',
     'aria-label': 'Gap between layers',
   });
+  const cardToggle = (id: CollapsibleCard, name: string): HTMLButtonElement =>
+    el(
+      'button',
+      {
+        type: 'button',
+        class: 'btn btn-sm collapse card-toggle',
+        'aria-expanded': 'true',
+        'data-card': id,
+        title: `Collapse the ${name} view`,
+      },
+      [icon(COLLAPSE_ICON)],
+    );
+  const unfoldedToggle = cardToggle('unfolded', 'crease pattern');
+  const layersToggle = cardToggle('layers', 'layer');
+  const unfoldedTools = el('div', { class: 'card-tools' }, [
+    el('span', { class: 'caption' }, ['Crease pattern, live']),
+    unfoldedToggle,
+  ]);
   const layerTools = el('div', { class: 'card-tools' }, [
     el('label', { class: 'range-label' }, ['Gap', liftInput]),
+    layersToggle,
   ]);
 
   const stat = (value: HTMLElement, label: string): HTMLElement =>
@@ -473,9 +502,9 @@ export function createApp(root: HTMLElement): App {
         ),
         card(
           'Unfolded',
-          'Crease pattern, live',
+          unfoldedTools,
           el('div', {}, [el('div', { class: 'view-frame' }, [unfoldedSvg]), legend]),
-          'view-card',
+          'view-card unfolded-card',
         ),
         card(
           'Layers',
@@ -487,7 +516,7 @@ export function createApp(root: HTMLElement): App {
               'any view to find it in the others.',
             ]),
           ]),
-          'view-card view-card-wide',
+          'view-card view-card-wide layers-card',
         ),
         timelineCard,
       ]),
@@ -501,6 +530,17 @@ export function createApp(root: HTMLElement): App {
     root.dataset['timeline'] = timelineCollapsed ? 'collapsed' : 'shown';
     collapseButton.setAttribute('aria-expanded', String(!timelineCollapsed));
     collapseButton.title = timelineCollapsed ? 'Expand the timeline' : 'Collapse the timeline';
+    for (const [id, toggle, name] of [
+      ['unfolded', unfoldedToggle, 'crease pattern'],
+      ['layers', layersToggle, 'layer'],
+    ] as const) {
+      const collapsed = cardCollapsed[id];
+      root.dataset[id === 'unfolded' ? 'cardUnfolded' : 'cardLayers'] = collapsed
+        ? 'collapsed'
+        : 'open';
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+      toggle.title = `${collapsed ? 'Expand' : 'Collapse'} the ${name} view`;
+    }
     layoutButtons.forEach((button, i) => {
       button.setAttribute('aria-pressed', String(LAYOUTS[i]?.id === layout));
     });
@@ -510,6 +550,13 @@ export function createApp(root: HTMLElement): App {
   const setLayout = (next: Layout): void => {
     layout = next;
     remember(LAYOUT_KEY, next);
+    applyLayout();
+    render();
+  };
+
+  const toggleCard = (id: CollapsibleCard): void => {
+    cardCollapsed[id] = !cardCollapsed[id];
+    remember(CARD_KEYS[id], cardCollapsed[id] ? 'collapsed' : 'open');
     applyLayout();
     render();
   };
@@ -1069,6 +1116,8 @@ export function createApp(root: HTMLElement): App {
   });
   sidebarButton.addEventListener('click', toggleSidebar);
   collapseButton.addEventListener('click', toggleTimeline);
+  unfoldedToggle.addEventListener('click', () => toggleCard('unfolded'));
+  layersToggle.addEventListener('click', () => toggleCard('layers'));
 
   toolFold.addEventListener('click', () => setTool('fold'));
   toolMove.addEventListener('click', () => setTool('move'));
