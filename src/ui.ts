@@ -94,7 +94,13 @@ const LAYOUT_ICONS: Record<Layout, string> = {
     '<rect x="2.5" y="4" width="9" height="12" rx="1" /><rect x="13" y="4" width="4.5" height="5" rx="1" /><rect x="13" y="11" width="4.5" height="5" rx="1" />',
   focus: '<rect x="2.5" y="4" width="15" height="12" rx="1" />',
 };
-const SIDEBAR_ICON = '<rect x="2.5" y="4" width="15" height="12" rx="1.5" /><path d="M7.5 4v12" />';
+const RAIL_ICONS = {
+  library:
+    '<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H9v14H5.5A1.5 1.5 0 0 1 4 15.5Z" /><path d="M11 3h3.5A1.5 1.5 0 0 1 16 4.5v11a1.5 1.5 0 0 1-1.5 1.5H11Z" /><path d="M6 7h1.5M12.5 7H14" />',
+  file: '<path d="M3 5.5A1.5 1.5 0 0 1 4.5 4H8l2 2h5.5A1.5 1.5 0 0 1 17 7.5v7A1.5 1.5 0 0 1 15.5 16h-11A1.5 1.5 0 0 1 3 14.5Z" />',
+  keys: '<rect x="2.5" y="5" width="15" height="10" rx="1.5" /><path d="M6 8h1M9 8h1M12 8h1M15 8h.01M6 11h1M9 11h1M12 11h1M15 11h.01M7 13.5h6" />',
+};
+const CLOSE_ICON = '<path d="m5 5 10 10M15 5 5 15" />';
 const TRANSPORT_ICONS = {
   start: '<path d="M5 4v12" /><path d="M15 4 7.5 10 15 16Z" />',
   back: '<path d="M14 4 6.5 10 14 16Z" />',
@@ -138,8 +144,17 @@ const LAYOUTS: readonly { readonly id: Layout; readonly label: string; readonly 
     { id: 'focus', label: 'Focus', title: 'Only the folded view' },
   ];
 const LAYOUT_KEY = 'origamio.layout';
-const SIDEBAR_KEY = 'origamio.sidebar';
-const TIMELINE_KEY = 'origamio.timeline';
+/** Panels that open from the icon rail on the left. */
+type Panel = 'library' | 'file' | 'keys';
+const PANELS: readonly { readonly id: Panel; readonly label: string; readonly title: string }[] = [
+  { id: 'library', label: 'Library', title: 'Presets to load onto the timeline' },
+  { id: 'file', label: 'File', title: 'Name, import, export and clear' },
+  { id: 'keys', label: 'Shortcuts', title: 'Keyboard shortcuts' },
+];
+const PANEL_KEY = 'origamio.panel';
+const DRAWER_KEY = 'origamio.drawer';
+/** Below this width the views sit behind tabs and the panel floats over the workspace. */
+const NARROW_QUERY = '(max-width: 1339px)';
 /** The view shown on its own: on narrow screens, and in the Focus layout. */
 type ViewTab = 'folded' | 'unfolded' | 'layers';
 const VIEW_TABS: readonly { readonly id: ViewTab; readonly label: string }[] = [
@@ -220,8 +235,11 @@ export function createApp(root: HTMLElement): App {
   let layout: Layout = LAYOUTS.some((l) => l.id === rememberedLayout)
     ? (rememberedLayout as Layout)
     : 'folded-large';
-  let sidebarHidden = remembered(SIDEBAR_KEY) === 'hidden';
-  let timelineCollapsed = remembered(TIMELINE_KEY) === 'collapsed';
+  const rememberedPanel = remembered(PANEL_KEY);
+  let openPanel: Panel | null = PANELS.some((p) => p.id === rememberedPanel)
+    ? (rememberedPanel as Panel)
+    : null;
+  let drawerOpen = remembered(DRAWER_KEY) !== 'closed';
   const rememberedTab = remembered(TAB_KEY);
   let activeTab: ViewTab = VIEW_TABS.some((t) => t.id === rememberedTab)
     ? (rememberedTab as ViewTab)
@@ -263,11 +281,6 @@ export function createApp(root: HTMLElement): App {
       el('span', { class: 'btn-label' }, [l.label]),
     ]),
   );
-  const sidebarButton = el(
-    'button',
-    { type: 'button', class: 'btn', 'aria-pressed': 'true', title: 'Show or hide the library' },
-    [icon(SIDEBAR_ICON), el('span', { class: 'btn-label' }, ['Library'])],
-  );
   const layoutSwitch = el(
     'div',
     { class: 'tool-toggle layout-switch', role: 'group', 'aria-label': 'Layout' },
@@ -285,56 +298,31 @@ export function createApp(root: HTMLElement): App {
     ),
   );
 
-  // --- Timeline DOM ----------------------------------------------------------
+  // --- Transport and track (the dock at the bottom) --------------------------
   const transport = (name: keyof typeof TRANSPORT_ICONS, title: string): HTMLButtonElement =>
-    el('button', { type: 'button', class: 'btn btn-sm transport', title }, [
-      icon(TRANSPORT_ICONS[name]),
-    ]);
+    el('button', { type: 'button', class: 'btn transport', title }, [icon(TRANSPORT_ICONS[name])]);
   const startButton = transport('start', 'Back to the flat sheet (Home)');
   const backButton = transport('back', 'One step back (←)');
   const playButton = transport('play', 'Play the remaining steps (P)');
   const forwardButton = transport('forward', 'One step forward (→)');
   const endButton = transport('end', 'Apply all remaining steps at once (End)');
-  const speedSelect = el('select', { class: 'tl-speed', 'aria-label': 'Playback speed' });
+  const speedSelect = el('select', { class: 'tl-speed ctl', 'aria-label': 'Playback speed' });
   for (const value of SPEEDS) {
     const option = el('option', { value: String(value) }, [`${value}×`]);
     if (value === speed) option.selected = true;
     speedSelect.append(option);
   }
-  const positionReadout = el('span', { class: 'timeline-position' }, ['00 / 00']);
+  const positionReadout = el('span', { class: 'timeline-position ctl' }, ['00 / 00']);
   const timelineStatus = el('span', { class: 'timeline-message', role: 'status' });
-  const nameInput = el('input', {
-    type: 'text',
-    class: 'name-input',
-    value: sequenceName,
-    'aria-label': 'Sequence name',
-    placeholder: 'Sequence name',
-  });
-  const importInput = el('input', { type: 'file', accept: 'application/json,.json', hidden: '' });
-  const importButton = el(
-    'button',
-    { type: 'button', class: 'btn btn-sm', title: 'Load a sequence from a JSON file' },
-    [icon(IMPORT_ICON), el('span', { class: 'btn-label' }, ['Import'])],
-  );
-  const exportButton = el(
-    'button',
-    { type: 'button', class: 'btn btn-sm', title: 'Save the timeline as a JSON file' },
-    [icon(EXPORT_ICON), el('span', { class: 'btn-label' }, ['Export'])],
-  );
-  const newButton = el(
-    'button',
-    { type: 'button', class: 'btn btn-sm', title: 'Clear the sheet and the timeline' },
-    [icon(NEW_ICON), el('span', { class: 'btn-label' }, ['New'])],
-  );
-  const collapseButton = el(
+  const drawerToggle = el(
     'button',
     {
       type: 'button',
-      class: 'btn btn-sm collapse',
+      class: 'btn collapse drawer-toggle',
       'aria-expanded': 'true',
-      title: 'Collapse the timeline',
+      title: 'Hide the track',
     },
-    [icon(COLLAPSE_ICON)],
+    [icon(COLLAPSE_ICON), el('span', { class: 'btn-label' }, ['Track'])],
   );
   // The track: a ruler with one tick per step, the step clips, and a playhead
   // that sits on the boundary after the last applied step.
@@ -343,38 +331,81 @@ export function createApp(root: HTMLElement): App {
   const playhead = el('div', { class: 'tl-playhead' }, [el('div', { class: 'tl-playhead-head' })]);
   const lanes = el('div', { class: 'tl-lanes' }, [ruler, track, playhead]);
   const scroller = el('div', { class: 'tl-scroll' }, [lanes]);
-  const timelineCard = el('section', { class: 'card timeline-card' }, [
-    el('div', { class: 'card-head' }, [
-      el('h2', {}, ['Timeline']),
-      el('div', { class: 'card-tools' }, [
-        nameInput,
-        importButton,
-        exportButton,
-        newButton,
-        collapseButton,
+  const drawer = el('div', { class: 'drawer' }, [scroller]);
+  const dock = el('footer', { class: 'dock' }, [
+    el('div', { class: 'transport-bar' }, [
+      el('div', { class: 'transport-group' }, [
+        startButton,
+        backButton,
+        playButton,
+        forwardButton,
+        endButton,
       ]),
+      el('label', { class: 'tl-speed-label' }, [
+        el('span', { class: 'btn-label' }, ['Speed']),
+        speedSelect,
+      ]),
+      positionReadout,
+      timelineStatus,
+      drawerToggle,
     ]),
-    el('div', { class: 'card-body' }, [
-      el('div', { class: 'transport-bar' }, [
-        el('div', { class: 'transport-group' }, [
-          startButton,
-          backButton,
-          playButton,
-          forwardButton,
-          endButton,
-        ]),
-        el('label', { class: 'tl-speed-label' }, [
-          el('span', { class: 'btn-label' }, ['Speed']),
-          speedSelect,
-        ]),
-        positionReadout,
-        timelineStatus,
-      ]),
-      scroller,
-      importInput,
+    drawer,
+  ]);
+
+  // --- File panel contents -----------------------------------------------------
+  const nameInput = el('input', {
+    type: 'text',
+    class: 'name-input ctl',
+    value: sequenceName,
+    'aria-label': 'Sequence name',
+    placeholder: 'Sequence name',
+  });
+  const importInput = el('input', { type: 'file', accept: 'application/json,.json', hidden: '' });
+  const importButton = el(
+    'button',
+    { type: 'button', class: 'btn panel-action', title: 'Load a sequence from a JSON file' },
+    [icon(IMPORT_ICON), el('span', {}, ['Import file…'])],
+  );
+  const exportButton = el(
+    'button',
+    { type: 'button', class: 'btn panel-action', title: 'Save the timeline as a JSON file' },
+    [icon(EXPORT_ICON), el('span', {}, ['Export file'])],
+  );
+  const newButton = el(
+    'button',
+    { type: 'button', class: 'btn panel-action', title: 'Clear the sheet and the timeline' },
+    [icon(NEW_ICON), el('span', {}, ['New sheet'])],
+  );
+  const filePanel = el('div', { class: 'panel-section' }, [
+    el('label', { class: 'field' }, [el('span', { class: 'field-label' }, ['Name']), nameInput]),
+    el('div', { class: 'panel-actions' }, [exportButton, importButton, newButton]),
+    el('p', { class: 'help' }, [
+      'A file holds every step on the timeline, applied and pending, in the origamio-sequence ',
+      'JSON format described in the README.',
     ]),
   ]);
 
+  const keysPanel = el(
+    'table',
+    { class: 'keys' },
+    (
+      [
+        ['Drag', 'Draw a fold line, then click the side that flips'],
+        ['Esc', 'Cancel the line, or pause playback'],
+        ['← / →', 'One step back or forward'],
+        ['P', 'Play or pause'],
+        ['Home / End', 'Flat sheet or last step'],
+        ['Ctrl+Z', 'Undo (one step back)'],
+        ['Scroll', 'Zoom around the pointer'],
+        ['Space + drag', 'Pan the folded view'],
+        ['F / 0', 'Fit the sheet or show it whole'],
+      ] as const
+    ).map(([key, what]) =>
+      el('tr', {}, [el('th', {}, [el('kbd', {}, [key])]), el('td', {}, [what])]),
+    ),
+  );
+
+  // --- Folded view controls ----------------------------------------------------
   const statFolds = el('span', { class: 'stat-value' }, ['0']);
   const statLayers = el('span', { class: 'stat-value' }, ['1']);
   const statFacets = el('span', { class: 'stat-value' }, ['1']);
@@ -399,12 +430,12 @@ export function createApp(root: HTMLElement): App {
   );
   const fitButton = el(
     'button',
-    { type: 'button', class: 'btn btn-sm', title: 'Fit the folded sheet into view (F)' },
+    { type: 'button', class: 'btn', title: 'Fit the folded sheet into view (F)' },
     [icon(FIT_ICON), el('span', { class: 'btn-label' }, ['Fit'])],
   );
   const fullButton = el(
     'button',
-    { type: 'button', class: 'btn btn-sm', title: 'Show the whole sheet (0)' },
+    { type: 'button', class: 'btn', title: 'Show the whole sheet (0)' },
     [icon(FULL_ICON), el('span', { class: 'btn-label' }, ['Full'])],
   );
   const zoomReadout = el('span', { class: 'zoom', title: 'Zoom; scroll on the sheet to change' }, [
@@ -457,7 +488,7 @@ export function createApp(root: HTMLElement): App {
       'button',
       {
         type: 'button',
-        class: 'btn btn-sm collapse card-toggle',
+        class: 'btn collapse card-toggle',
         'aria-expanded': 'true',
         'data-card': id,
         title: `Collapse the ${name} view`,
@@ -477,7 +508,6 @@ export function createApp(root: HTMLElement): App {
 
   const stat = (value: HTMLElement, label: string): HTMLElement =>
     el('div', { class: 'stat' }, [value, el('span', { class: 'stat-label' }, [label])]);
-
   statsRow.append(
     stat(statFolds, 'folds'),
     stat(statLayers, 'max layers'),
@@ -505,6 +535,66 @@ export function createApp(root: HTMLElement): App {
     el('span', {}, [el('i', { class: 'swatch swatch-crease' }), 'Crease']),
   ]);
 
+  const foldedFrame = el('div', { class: 'view-frame' }, [foldedSvg]);
+  const unfoldedFrame = el('div', { class: 'view-frame' }, [unfoldedSvg]);
+  const layersFrame = el('div', { class: 'view-frame view-frame-wide' }, [layersSvg]);
+  const foldedCard = card(
+    'Folded',
+    viewTools,
+    el('div', {}, [foldedFrame, statusBar]),
+    'view-card folded-card',
+  );
+  const unfoldedCard = card(
+    'Unfolded',
+    unfoldedTools,
+    el('div', {}, [unfoldedFrame, legend]),
+    'view-card unfolded-card',
+  );
+  const layersCard = card(
+    'Layers',
+    layerTools,
+    el('div', {}, [
+      layersFrame,
+      el('p', { class: 'help view-help' }, [
+        'The stack seen from the front, each layer lifted a little. Point at a facet in ',
+        'any view to find it in the others.',
+      ]),
+    ]),
+    'view-card layers-card',
+  );
+  const viewsGrid = el('main', { class: 'views' }, [foldedCard, unfoldedCard, layersCard]);
+  const workspace = el('div', { class: 'workspace' }, [viewsGrid]);
+
+  // --- Rail and panel ------------------------------------------------------------
+  const railButtons = PANELS.map((panel) =>
+    el(
+      'button',
+      {
+        type: 'button',
+        class: 'rail-button',
+        'aria-pressed': 'false',
+        'data-panel': panel.id,
+        title: panel.label,
+      },
+      [icon(RAIL_ICONS[panel.id])],
+    ),
+  );
+  const rail = el('nav', { class: 'rail', 'aria-label': 'Panels' }, railButtons);
+  const panelTitle = el('h2', {}, ['']);
+  const panelClose = el('button', { type: 'button', class: 'btn panel-close', title: 'Close' }, [
+    icon(CLOSE_ICON),
+  ]);
+  const panelBody = el('div', { class: 'panel-body' });
+  const panel = el('aside', { class: 'panel', hidden: '' }, [
+    el('div', { class: 'panel-head' }, [panelTitle, panelClose]),
+    panelBody,
+  ]);
+  const panelContents: Record<Panel, HTMLElement> = {
+    library: el('div', { class: 'preset-list' }, presetButtons),
+    file: filePanel,
+    keys: keysPanel,
+  };
+
   root.replaceChildren(
     el('header', { class: 'topbar' }, [
       el('div', { class: 'brand' }, [
@@ -514,54 +604,91 @@ export function createApp(root: HTMLElement): App {
           el('p', {}, ['Fold a square sheet along any line and watch the creases appear.']),
         ]),
       ]),
-      el('div', { class: 'actions' }, [layoutSwitch, sidebarButton]),
+      el('div', { class: 'actions' }, [layoutSwitch]),
     ]),
-    el('div', { class: 'workspace' }, [
-      el('aside', { class: 'sidebar' }, [
-        card('Library', '', el('div', { class: 'preset-list' }, presetButtons)),
-      ]),
-      el('main', { class: 'views' }, [
-        viewTabs,
-        card(
-          'Folded',
-          viewTools,
-          el('div', {}, [el('div', { class: 'view-frame' }, [foldedSvg]), statusBar]),
-          'view-card folded-card',
-        ),
-        card(
-          'Unfolded',
-          unfoldedTools,
-          el('div', {}, [el('div', { class: 'view-frame' }, [unfoldedSvg]), legend]),
-          'view-card unfolded-card',
-        ),
-        card(
-          'Layers',
-          layerTools,
-          el('div', {}, [
-            el('div', { class: 'view-frame view-frame-wide' }, [layersSvg]),
-            el('p', { class: 'help view-help' }, [
-              'The stack seen from the front, each layer lifted a little. Point at a facet in ',
-              'any view to find it in the others.',
-            ]),
-          ]),
-          'view-card view-card-wide layers-card',
-        ),
-        timelineCard,
-      ]),
-    ]),
+    el('div', { class: 'body' }, [rail, panel, workspace]),
+    dock,
+    importInput,
   );
 
   // --- Layout ----------------------------------------------------------------
+  const narrowQuery = window.matchMedia(NARROW_QUERY);
+
+  /**
+   * Size every visible view frame so that the cards fill the workspace height
+   * without scrolling. The chrome of a card (head, status line, padding) is
+   * measured, the rest of the height goes to the frame, and the frame never
+   * grows wider than its card.
+   */
+  const fitViews = (): void => {
+    const styles = getComputedStyle(viewsGrid);
+    const gap = parseFloat(styles.rowGap) || 0;
+    const height =
+      workspace.clientHeight - 2 * (parseFloat(getComputedStyle(workspace).paddingTop) || 0);
+    const chrome = (cardEl: HTMLElement, frame: HTMLElement): number =>
+      cardEl.offsetHeight - frame.offsetHeight;
+    const widthOf = (frame: HTMLElement): number => frame.parentElement?.clientWidth ?? 0;
+    const place = (frame: HTMLElement, budget: number, wide: boolean): void => {
+      const side = Math.max(96, budget);
+      const width = wide ? Math.min(widthOf(frame), 2 * side) : Math.min(widthOf(frame), side);
+      frame.style.width = `${Math.floor(width)}px`;
+    };
+    const tabsHeight = viewTabs.isConnected ? viewTabs.offsetHeight + gap : 0;
+    const single = narrowQuery.matches || layout === 'focus';
+    if (single) {
+      for (const [cardEl, frame, wide] of [
+        [foldedCard, foldedFrame, false],
+        [unfoldedCard, unfoldedFrame, false],
+        [layersCard, layersFrame, true],
+      ] as const) {
+        if (cardEl.offsetParent === null) continue;
+        place(frame, height - tabsHeight - chrome(cardEl, frame), wide);
+      }
+      return;
+    }
+    if (layout === 'side-by-side') {
+      place(foldedFrame, height - chrome(foldedCard, foldedFrame), false);
+      place(unfoldedFrame, height - chrome(unfoldedCard, unfoldedFrame), false);
+      place(layersFrame, height - chrome(layersCard, layersFrame), false);
+      return;
+    }
+    // folded-large: the folded sheet takes the column, the two others share the other one.
+    place(foldedFrame, height - chrome(foldedCard, foldedFrame), false);
+    const open = (['unfolded', 'layers'] as const).filter((id) => !cardCollapsed[id]);
+    const collapsedHeight = (['unfolded', 'layers'] as const)
+      .filter((id) => cardCollapsed[id])
+      .reduce((sum, id) => sum + (id === 'unfolded' ? unfoldedCard : layersCard).offsetHeight, 0);
+    const chromes =
+      (open.includes('unfolded') ? chrome(unfoldedCard, unfoldedFrame) : 0) +
+      (open.includes('layers') ? chrome(layersCard, layersFrame) : 0);
+    const each = (height - gap - collapsedHeight - chromes) / Math.max(1, open.length);
+    if (open.includes('unfolded')) place(unfoldedFrame, each, false);
+    if (open.includes('layers')) place(layersFrame, each, false);
+  };
+
+  let fitFrame = 0;
+  const scheduleFit = (): void => {
+    cancelAnimationFrame(fitFrame);
+    fitFrame = requestAnimationFrame(() => {
+      fitViews();
+      render();
+    });
+  };
+
   const applyLayout = (): void => {
     root.dataset['layout'] = layout;
-    root.dataset['sidebar'] = sidebarHidden ? 'hidden' : 'shown';
-    root.dataset['timeline'] = timelineCollapsed ? 'collapsed' : 'shown';
     root.dataset['tab'] = activeTab;
+    root.dataset['panel'] = openPanel ?? 'closed';
+    root.dataset['drawer'] = drawerOpen ? 'open' : 'closed';
+    const wantTabs = layout === 'focus' || narrowQuery.matches;
+    if (wantTabs && !viewTabs.isConnected) viewsGrid.prepend(viewTabs);
+    if (!wantTabs && viewTabs.isConnected) viewTabs.remove();
     tabButtons.forEach((button, i) => {
       button.setAttribute('aria-selected', String(VIEW_TABS[i]?.id === activeTab));
     });
-    collapseButton.setAttribute('aria-expanded', String(!timelineCollapsed));
-    collapseButton.title = timelineCollapsed ? 'Expand the timeline' : 'Collapse the timeline';
+    drawerToggle.setAttribute('aria-expanded', String(drawerOpen));
+    drawerToggle.title = drawerOpen ? 'Hide the track' : 'Show the track';
+    drawer.hidden = !drawerOpen;
     for (const [id, toggle, name] of [
       ['unfolded', unfoldedToggle, 'crease pattern'],
       ['layers', layersToggle, 'layer'],
@@ -576,42 +703,45 @@ export function createApp(root: HTMLElement): App {
     layoutButtons.forEach((button, i) => {
       button.setAttribute('aria-pressed', String(LAYOUTS[i]?.id === layout));
     });
-    sidebarButton.setAttribute('aria-pressed', String(!sidebarHidden));
+    railButtons.forEach((button, i) => {
+      button.setAttribute('aria-pressed', String(PANELS[i]?.id === openPanel));
+    });
+    panel.hidden = openPanel === null;
+    if (openPanel) {
+      panelTitle.textContent = PANELS.find((p) => p.id === openPanel)?.label ?? '';
+      panelBody.replaceChildren(panelContents[openPanel]);
+    }
+    scheduleFit();
   };
 
   const setLayout = (next: Layout): void => {
     layout = next;
     remember(LAYOUT_KEY, next);
     applyLayout();
-    render();
   };
 
   const setTab = (next: ViewTab): void => {
     activeTab = next;
     remember(TAB_KEY, next);
     applyLayout();
-    render();
   };
 
   const toggleCard = (id: CollapsibleCard): void => {
     cardCollapsed[id] = !cardCollapsed[id];
     remember(CARD_KEYS[id], cardCollapsed[id] ? 'collapsed' : 'open');
     applyLayout();
-    render();
   };
 
-  const toggleTimeline = (): void => {
-    timelineCollapsed = !timelineCollapsed;
-    remember(TIMELINE_KEY, timelineCollapsed ? 'collapsed' : 'shown');
+  const toggleDrawer = (): void => {
+    drawerOpen = !drawerOpen;
+    remember(DRAWER_KEY, drawerOpen ? 'open' : 'closed');
     applyLayout();
-    render();
   };
 
-  const toggleSidebar = (): void => {
-    sidebarHidden = !sidebarHidden;
-    remember(SIDEBAR_KEY, sidebarHidden ? 'hidden' : 'shown');
+  const setPanel = (next: Panel | null): void => {
+    openPanel = next;
+    remember(PANEL_KEY, next ?? '');
     applyLayout();
-    render();
   };
 
   // --- Rendering -------------------------------------------------------------
@@ -753,7 +883,7 @@ export function createApp(root: HTMLElement): App {
     positionReadout.textContent = `${two(applied.length)} / ${two(total)}`;
     timelineStatus.textContent = timelineMessage;
     timelineStatus.classList.toggle('is-error', timelineMessage.startsWith('Could not'));
-    timelineCard.classList.toggle('is-playing', playing);
+    dock.classList.toggle('is-playing', playing);
 
     // The playhead moves every frame while a step animates.
     const progress = phase.kind === 'animating' ? phase.animation.progress : 1;
@@ -1144,17 +1274,19 @@ export function createApp(root: HTMLElement): App {
     svg.addEventListener('pointerleave', () => setHighlight([]));
   }
   liftInput.addEventListener('input', render);
-  let resizeFrame = 0;
-  window.addEventListener('resize', () => {
-    cancelAnimationFrame(resizeFrame);
-    resizeFrame = requestAnimationFrame(render);
-  });
+  window.addEventListener('resize', scheduleFit);
 
   layoutButtons.forEach((button, i) => {
     button.addEventListener('click', () => setLayout(LAYOUTS[i]?.id ?? 'side-by-side'));
   });
-  sidebarButton.addEventListener('click', toggleSidebar);
-  collapseButton.addEventListener('click', toggleTimeline);
+  drawerToggle.addEventListener('click', toggleDrawer);
+  railButtons.forEach((button, i) => {
+    const id = PANELS[i]?.id ?? null;
+    button.addEventListener('click', () => setPanel(openPanel === id ? null : id));
+  });
+  panelClose.addEventListener('click', () => setPanel(null));
+  narrowQuery.addEventListener('change', applyLayout);
+  new ResizeObserver(scheduleFit).observe(workspace);
   unfoldedToggle.addEventListener('click', () => toggleCard('unfolded'));
   tabButtons.forEach((button, i) => {
     button.addEventListener('click', () => setTab(VIEW_TABS[i]?.id ?? 'folded'));
@@ -1257,7 +1389,8 @@ export function createApp(root: HTMLElement): App {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (playing) pause();
-      if (phase.kind === 'choose-side' || phase.kind === 'dragging') phase = { kind: 'idle' };
+      else if (phase.kind === 'choose-side' || phase.kind === 'dragging') phase = { kind: 'idle' };
+      else if (openPanel) setPanel(null);
       render();
       return;
     }
