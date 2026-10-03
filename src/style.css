@@ -183,24 +183,63 @@ input {
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* Focus: only the folded sheet, centred. */
+/* The tab strip: shown in the Focus layout and on narrow screens. */
+.view-tabs {
+  display: none;
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
+.view-tabs button {
+  padding: 5px 16px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.view-tabs button[aria-selected='true'] {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(42, 33, 26, 0.12);
+}
+
+/* Focus: one view at a time, chosen with the tabs, centred. */
 #app[data-layout='focus'] .views {
   grid-template-columns: minmax(0, 1fr);
 }
 
-#app[data-layout='focus'] .view-card:not(.folded-card) {
-  display: none;
+#app[data-layout='focus'] .view-tabs {
+  display: inline-flex;
 }
 
-#app[data-layout='focus'] .folded-card {
+#app[data-layout='focus'] .view-card {
+  display: none;
   max-width: max(calc(var(--view-max) + 26px), 760px);
   margin: 0 auto;
   width: 100%;
 }
 
-/* Leave room for the status bar under the sheet. */
-#app[data-layout='focus'] .folded-card .view-frame {
-  width: min(100%, calc(var(--view-max) - 48px));
+#app[data-layout='focus'][data-tab='folded'] .folded-card,
+#app[data-layout='focus'][data-tab='unfolded'] .unfolded-card,
+#app[data-layout='focus'][data-tab='layers'] .layers-card {
+  display: block;
+}
+
+/* Leave room for the tab strip and the status line under the sheet. */
+#app[data-layout='focus'] .view-card .view-frame {
+  width: min(100%, calc(var(--view-max) - 84px));
+}
+
+#app[data-layout='focus'] .view-card .view-frame-wide {
+  width: min(100%, calc(var(--view-max) - 84px));
+  aspect-ratio: 1 / 1;
+}
+
+#app[data-layout='focus'] .card-toggle {
+  display: none;
 }
 
 /* Folded large: the folded sheet takes two thirds, the other two stack beside it. */
@@ -1152,6 +1191,84 @@ kbd {
 }
 
 /* --- Responsive ------------------------------------------------------------ */
+
+/* Narrow screens (under the three-up breakpoint): one view at a time, with tabs. */
+@media (max-width: 1339px) {
+  .view-tabs {
+    display: inline-flex;
+  }
+
+  .views {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .view-card {
+    display: none;
+  }
+
+  #app[data-tab='folded'] .folded-card,
+  #app[data-tab='unfolded'] .unfolded-card,
+  #app[data-tab='layers'] .layers-card {
+    display: block;
+    grid-column: 1 / -1;
+    grid-row: auto;
+    max-width: none;
+  }
+
+  /* A collapsed card is still the whole tab here. */
+  #app[data-card-unfolded='collapsed'] .unfolded-card .card-body,
+  #app[data-card-layers='collapsed'] .layers-card .card-body {
+    display: block;
+  }
+
+  .card-toggle {
+    display: none;
+  }
+
+  /* Outranks the per-layout frame rules; the cap also leaves room for the tab strip. */
+  #app[data-layout][data-tab] .views .view-card .view-frame {
+    width: min(100%, calc(var(--view-max) - 50px));
+    aspect-ratio: 1 / 1;
+  }
+
+  #app[data-layout][data-tab] .views .view-card .view-frame-wide {
+    width: min(100%, calc(2 * (var(--view-max) - 50px)));
+    aspect-ratio: 2 / 1;
+  }
+}
+
+/* Phones: the transport bar stays reachable at the bottom of the screen. */
+@media (max-width: 700px) {
+  #app {
+    padding-bottom: 84px;
+  }
+
+  .timeline-card .transport-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    margin: 0;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    box-shadow: 0 -8px 24px -16px rgba(42, 33, 26, 0.35);
+  }
+
+  .timeline-message,
+  .tl-speed-label .btn-label {
+    display: none;
+  }
+
+  .timeline-card .transport-bar {
+    gap: 8px;
+  }
+
+  .brand p {
+    display: none;
+  }
+}
 
 /* Wide screens: the three sheets share one row and the layer view turns square. */
 @media (min-width: 1340px) {
