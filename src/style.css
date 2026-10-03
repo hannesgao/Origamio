@@ -186,11 +186,30 @@ select {
   line-height: 1.1;
 }
 
-.brand p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.8rem;
-  white-space: nowrap;
+/* The sequence name, editable in place; it looks like text until pointed at. */
+.project-name {
+  flex: 0 1 420px;
+  min-width: 80px;
+  height: var(--ctl-h);
+  margin: 0 auto 0 0;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+}
+
+.project-name:hover {
+  border-color: var(--border);
+}
+
+.project-name:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--panel);
 }
 
 .actions {
@@ -1041,28 +1060,15 @@ kbd {
 }
 
 .timeline-position {
-  display: inline-flex;
+  display: none;
   align-items: center;
   padding: 0 10px;
+  white-space: nowrap;
   border-radius: 8px;
   background: var(--track);
   color: var(--track-text);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-}
-
-.timeline-message {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.timeline-message.is-error {
-  color: var(--danger);
 }
 
 .drawer-toggle {
@@ -1081,30 +1087,76 @@ kbd {
   display: none;
 }
 
-.footer {
+/* The status bar: sheet, position on the timeline, the latest message. */
+.statusbar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 18px;
   height: 32px;
   padding: 0 16px;
   border-top: 1px solid var(--border);
   background: var(--panel);
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   color: var(--muted);
   white-space: nowrap;
 }
 
-.footer a {
+.status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.status-swatches {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.status-steps {
+  font-variant-numeric: tabular-nums;
+}
+
+.status-message {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+
+.status-message.is-error {
+  color: var(--danger);
+}
+
+.status-version {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  text-decoration: none;
+}
+
+.status-version:hover {
+  color: var(--accent);
+}
+
+.about {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.about a {
   color: var(--accent);
   text-decoration: none;
 }
 
-.footer a:hover {
+.about a:hover {
   text-decoration: underline;
-}
-
-.footer-hint {
-  margin-left: auto;
 }
 
 /* Library panel groups. */
@@ -1487,10 +1539,6 @@ kbd {
     width: min(var(--panel-w), calc(100vw - var(--rail-w)));
     box-shadow: var(--shadow);
   }
-
-  .brand p {
-    display: none;
-  }
 }
 
 @media (max-width: 700px) {
@@ -1504,10 +1552,14 @@ kbd {
 
   .tl-speed-label .btn-label,
   .drawer-toggle .btn-label,
-  .timeline-message,
   .timeline-head h2,
-  .footer {
+  .statusbar,
+  .project-name {
     display: none;
+  }
+
+  .timeline-position {
+    display: inline-flex;
   }
 
   /* The transport stays reachable at the bottom edge; the track scrolls with the page. */
