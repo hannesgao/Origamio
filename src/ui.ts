@@ -14,7 +14,14 @@ import {
   sub,
   vec,
 } from './geometry';
-import { type Preset, PRESETS } from './presets';
+import { LIBRARY } from './library';
+import {
+  type FoldStep,
+  type Sequence,
+  SequenceError,
+  parseSequence,
+  serializeSequence,
+} from './sequence';
 import {
   type FoldOptions,
   type FoldResult,
@@ -83,6 +90,18 @@ const LAYOUT_ICONS: Record<Layout, string> = {
   focus: '<rect x="2.5" y="4" width="15" height="12" rx="1" />',
 };
 const SIDEBAR_ICON = '<rect x="2.5" y="4" width="15" height="12" rx="1.5" /><path d="M7.5 4v12" />';
+const TRANSPORT_ICONS = {
+  start: '<path d="M5 4v12" /><path d="M15 4 7.5 10 15 16Z" />',
+  back: '<path d="M14 4 6.5 10 14 16Z" />',
+  play: '<path d="M6 4l10 6-10 6Z" />',
+  pause: '<path d="M6 4v12" /><path d="M14 4v12" />',
+  forward: '<path d="M6 4l7.5 6L6 16Z" />',
+  end: '<path d="M15 4v12" /><path d="M5 4l7.5 6L5 16Z" />',
+};
+const IMPORT_ICON = '<path d="M10 3v10" /><path d="m6 9 4 4 4-4" /><path d="M4 16h12" />';
+const EXPORT_ICON = '<path d="M10 13V3" /><path d="m6 7 4-4 4 4" /><path d="M4 16h12" />';
+const NEW_ICON = '<path d="M10 4v12" /><path d="M4 10h12" />';
+const COLLAPSE_ICON = '<path d="m5 8 5 5 5-5" />';
 const RESET_ICON = '<path d="M4.5 10a5.5 5.5 0 1 0 1.6-3.9" /><path d="M4.5 3.5V7H8" />';
 
 /** A small inline icon drawn with strokes in the current text colour. */
@@ -116,6 +135,7 @@ const LAYOUTS: readonly { readonly id: Layout; readonly label: string; readonly 
   ];
 const LAYOUT_KEY = 'origamio.layout';
 const SIDEBAR_KEY = 'origamio.sidebar';
+const TIMELINE_KEY = 'origamio.timeline';
 
 /** Read a remembered preference; storage may be unavailable or blocked. */
 function remembered(key: string): string | null {
@@ -151,7 +171,17 @@ export interface App {
   readonly history: FoldHistory;
   /** Apply a fold immediately (no animation). Returns false when nothing moved. */
   fold(line: Line, side: Side, layers?: LayerSelection): boolean;
-  runPreset(preset: Preset): Promise<void>;
+  /** Replace the sheet and the timeline with `sequence`; plays it when asked. */
+  loadSequence(sequence: Sequence, play?: boolean): Promise<void>;
+  /** Every step on the timeline, applied and pending, as a sequence. */
+  exportSequence(): Sequence;
+  /** Steps on the timeline that have not been applied yet. */
+  readonly pending: readonly FoldStep[];
+  stepForward(): Promise<void>;
+  stepBack(): void;
+  jumpTo(index: number): void;
+  play(): void;
+  pause(): void;
   undo(): void;
   reset(): void;
   readonly state: PaperState;
@@ -172,6 +202,12 @@ export function createApp(root: HTMLElement): App {
     ? (rememberedLayout as Layout)
     : 'side-by-side';
   let sidebarHidden = remembered(SIDEBAR_KEY) === 'hidden';
+  let timelineCollapsed = remembered(TIMELINE_KEY) === 'collapsed';
+  /** Steps of the loaded sequence still to apply; undone folds come back here. */
+  let pending: FoldStep[] = [];
+  let playing = false;
+  let sequenceName = 'My sequence';
+  let timelineMessage = '';
   let navigation: Navigation | null = null;
   /** Last known position of every pointer that is down on the folded view. */
   const pointers = new Map<number, Vec>();
@@ -219,16 +255,88 @@ export function createApp(root: HTMLElement): App {
     { type: 'button', class: 'btn', title: 'Back to the flat sheet' },
     [icon(RESET_ICON), 'Reset'],
   );
-  const presetButtons = PRESETS.map((preset) =>
+  const presetButtons = LIBRARY.map(({ id, sequence }) =>
     el(
       'button',
-      { type: 'button', class: 'preset', 'data-preset': preset.id, title: preset.title },
+      { type: 'button', class: 'preset', 'data-preset': id, title: sequence.description ?? '' },
       [
-        el('span', { class: 'preset-label' }, [preset.label]),
-        el('span', { class: 'preset-desc' }, [preset.title]),
+        el('span', { class: 'preset-label' }, [sequence.name]),
+        el('span', { class: 'preset-desc' }, [sequence.description ?? '']),
       ],
     ),
   );
+
+  // --- Timeline DOM ----------------------------------------------------------
+  const transport = (name: keyof typeof TRANSPORT_ICONS, title: string): HTMLButtonElement =>
+    el('button', { type: 'button', class: 'btn btn-sm transport', title }, [
+      icon(TRANSPORT_ICONS[name]),
+    ]);
+  const startButton = transport('start', 'Back to the flat sheet (keeps the steps)');
+  const backButton = transport('back', 'One step back (←)');
+  const playButton = transport('play', 'Play the remaining steps');
+  const forwardButton = transport('forward', 'One step forward (→)');
+  const endButton = transport('end', 'Apply all remaining steps at once');
+  const positionReadout = el('span', { class: 'timeline-position' }, ['0 / 0']);
+  const timelineStatus = el('span', { class: 'timeline-message', role: 'status' });
+  const nameInput = el('input', {
+    type: 'text',
+    class: 'name-input',
+    value: sequenceName,
+    'aria-label': 'Sequence name',
+    placeholder: 'Sequence name',
+  });
+  const importInput = el('input', { type: 'file', accept: 'application/json,.json', hidden: '' });
+  const importButton = el(
+    'button',
+    { type: 'button', class: 'btn btn-sm', title: 'Load a sequence from a JSON file' },
+    [icon(IMPORT_ICON), el('span', { class: 'btn-label' }, ['Import'])],
+  );
+  const exportButton = el(
+    'button',
+    { type: 'button', class: 'btn btn-sm', title: 'Save the timeline as a JSON file' },
+    [icon(EXPORT_ICON), el('span', { class: 'btn-label' }, ['Export'])],
+  );
+  const newButton = el(
+    'button',
+    { type: 'button', class: 'btn btn-sm', title: 'Clear the sheet and the timeline' },
+    [icon(NEW_ICON), el('span', { class: 'btn-label' }, ['New'])],
+  );
+  const collapseButton = el(
+    'button',
+    {
+      type: 'button',
+      class: 'btn btn-sm collapse',
+      'aria-expanded': 'true',
+      title: 'Collapse the timeline',
+    },
+    [icon(COLLAPSE_ICON)],
+  );
+  const stepList = el('ol', { class: 'steps', 'aria-label': 'Fold steps' });
+  const timelineCard = el('section', { class: 'card timeline-card' }, [
+    el('div', { class: 'card-head' }, [
+      el('h2', {}, ['Timeline']),
+      el('div', { class: 'card-tools' }, [
+        nameInput,
+        importButton,
+        exportButton,
+        newButton,
+        collapseButton,
+      ]),
+    ]),
+    el('div', { class: 'card-body' }, [
+      el('div', { class: 'transport-bar' }, [
+        startButton,
+        backButton,
+        playButton,
+        forwardButton,
+        endButton,
+        positionReadout,
+        timelineStatus,
+      ]),
+      stepList,
+      importInput,
+    ]),
+  ]);
 
   const statFolds = el('span', { class: 'stat-value' }, ['0']);
   const statLayers = el('span', { class: 'stat-value' }, ['1']);
@@ -372,6 +480,7 @@ export function createApp(root: HTMLElement): App {
           ]),
           'view-card view-card-wide',
         ),
+        timelineCard,
       ]),
     ]),
   );
@@ -380,6 +489,9 @@ export function createApp(root: HTMLElement): App {
   const applyLayout = (): void => {
     root.dataset['layout'] = layout;
     root.dataset['sidebar'] = sidebarHidden ? 'hidden' : 'shown';
+    root.dataset['timeline'] = timelineCollapsed ? 'collapsed' : 'shown';
+    collapseButton.setAttribute('aria-expanded', String(!timelineCollapsed));
+    collapseButton.title = timelineCollapsed ? 'Expand the timeline' : 'Collapse the timeline';
     layoutButtons.forEach((button, i) => {
       button.setAttribute('aria-pressed', String(LAYOUTS[i]?.id === layout));
     });
@@ -389,6 +501,13 @@ export function createApp(root: HTMLElement): App {
   const setLayout = (next: Layout): void => {
     layout = next;
     remember(LAYOUT_KEY, next);
+    applyLayout();
+    render();
+  };
+
+  const toggleTimeline = (): void => {
+    timelineCollapsed = !timelineCollapsed;
+    remember(TIMELINE_KEY, timelineCollapsed ? 'collapsed' : 'shown');
     applyLayout();
     render();
   };
@@ -447,6 +566,10 @@ export function createApp(root: HTMLElement): App {
   const render = (): void => {
     const state = history.state;
     let options = {};
+    const next = pending[0];
+    if (phase.kind === 'idle' && next && !playing) {
+      options = { preview: { line: next.line, side: next.side } };
+    }
     if (phase.kind === 'dragging') {
       if (distance(phase.from, phase.to) >= MIN_DRAG) {
         options = { preview: { line: line(phase.from, phase.to) } };
@@ -466,6 +589,7 @@ export function createApp(root: HTMLElement): App {
     toolMove.setAttribute('aria-pressed', String(tool === 'move'));
     foldedSvg.innerHTML = renderFolded(state, options);
     unfoldedSvg.innerHTML = renderUnfolded(state);
+    renderTimeline();
     // The layer view is framed at the aspect ratio its frame actually has.
     const rect = layersSvg.getBoundingClientRect();
     const aspect = rect.width > 0 && rect.height > 0 ? rect.width / rect.height : undefined;
@@ -490,6 +614,67 @@ export function createApp(root: HTMLElement): App {
     foldedSvg.dataset['phase'] = phase.kind;
     statusBar.dataset['phase'] = phase.kind;
     hint.textContent = hintFor(phase);
+  };
+
+  // --- Timeline --------------------------------------------------------------
+  const describeStep = (step: FoldStep): string => {
+    if (step.label) return step.label;
+    const { layers, placement } = step.options;
+    const which =
+      !layers || layers.kind === 'all'
+        ? 'Fold all'
+        : layers.kind === 'top'
+          ? `Fold top ${layers.count}`
+          : `Fold bottom ${layers.count}`;
+    return placement && placement !== 'top' ? `${which} (${placement})` : which;
+  };
+
+  let timelineSignature = '';
+  const renderTimeline = (): void => {
+    const applied = history.steps;
+    const total = applied.length + pending.length;
+    const busy = phase.kind === 'animating';
+    startButton.disabled = busy || applied.length === 0;
+    backButton.disabled = busy || applied.length === 0;
+    forwardButton.disabled = busy || pending.length === 0;
+    endButton.disabled = busy || pending.length === 0;
+    playButton.disabled = pending.length === 0 && !playing;
+    playButton.innerHTML = '';
+    playButton.append(icon(playing ? TRANSPORT_ICONS.pause : TRANSPORT_ICONS.play));
+    playButton.title = playing ? 'Pause after this step' : 'Play the remaining steps';
+    exportButton.disabled = total === 0;
+    positionReadout.textContent = `${applied.length} / ${total}`;
+    timelineStatus.textContent = timelineMessage;
+    timelineStatus.classList.toggle('is-error', timelineMessage.startsWith('Could not'));
+
+    const signature = `${applied.length}|${pending.length}|${playing}|${busy}|${applied
+      .map(describeStep)
+      .join()}|${pending.map(describeStep).join()}`;
+    if (signature === timelineSignature) return;
+    timelineSignature = signature;
+    const items: HTMLElement[] = [];
+    const chip = (index: number, label: string, state: string): HTMLElement =>
+      el(
+        'li',
+        { class: `step ${state}`, 'data-index': String(index), title: `Go to step ${index}` },
+        [el('b', {}, [String(index)]), el('span', {}, [label])],
+      );
+    items.push(chip(0, 'Flat sheet', applied.length === 0 ? 'done current' : 'done'));
+    applied.forEach((step, i) => {
+      items.push(
+        chip(i + 1, describeStep(step), i + 1 === applied.length ? 'done current' : 'done'),
+      );
+    });
+    pending.forEach((step, i) => {
+      items.push(chip(applied.length + i + 1, describeStep(step), 'pending'));
+    });
+    stepList.replaceChildren(...items);
+    stepList.querySelector('.current')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  };
+
+  const say = (message: string): void => {
+    timelineMessage = message;
+    renderTimeline();
   };
 
   // --- Folding ---------------------------------------------------------------
@@ -535,17 +720,111 @@ export function createApp(root: HTMLElement): App {
     return queue;
   };
 
-  const runPreset = (preset: Preset): Promise<void> =>
+  /** Apply the next pending step; animated unless `instant`. */
+  const applyNext = async (instant = false): Promise<void> => {
+    const step = pending.shift();
+    if (!step) return;
+    if (instant) {
+      history.fold(step.line, step.side, step.options, step.label);
+      return;
+    }
+    const result = history.fold(step.line, step.side, step.options, step.label);
+    if (result) await animate(result);
+  };
+
+  const stepForward = (): Promise<void> =>
     enqueue(async () => {
+      if (pending.length === 0) return;
+      await applyNext();
+      render();
+    });
+
+  const stepBack = (): void => {
+    if (phase.kind === 'animating') return;
+    const undone = history.undo();
+    if (undone) pending.unshift(undone);
+    phase = { kind: 'idle' };
+    render();
+  };
+
+  /** Go to the state after `index` steps without animation. */
+  const jumpTo = (index: number): void => {
+    if (phase.kind === 'animating') return;
+    playing = false;
+    while (history.steps.length > index) {
+      const undone = history.undo();
+      if (!undone) break;
+      pending.unshift(undone);
+    }
+    while (history.steps.length < index && pending.length > 0) {
+      const step = pending.shift() as FoldStep;
+      history.fold(step.line, step.side, step.options, step.label);
+    }
+    phase = { kind: 'idle' };
+    render();
+  };
+
+  const pause = (): void => {
+    playing = false;
+    renderTimeline();
+  };
+
+  const play = (): void => {
+    if (playing || pending.length === 0) return;
+    playing = true;
+    renderTimeline();
+    void enqueue(async () => {
+      while (playing && pending.length > 0) await applyNext();
+      playing = false;
+      render();
+    });
+  };
+
+  const loadSequence = (sequence: Sequence, autoplay = false): Promise<void> => {
+    playing = false;
+    return enqueue(async () => {
       history.reset();
+      pending = [...sequence.steps];
+      sequenceName = sequence.name;
+      nameInput.value = sequence.name;
+      timelineMessage = '';
       phase = { kind: 'idle' };
-      // Presets start from the flat sheet, so show all of it like Reset does.
+      // Sequences start from the flat sheet, so show all of it like Reset does.
       camera = defaultCamera(history.state.size);
       render();
-      for (const { line: l, movingPoint, ...options } of preset.steps) {
-        await foldAnimated(l, sideOf(l, movingPoint), options);
-      }
+      if (autoplay) play();
     });
+  };
+
+  const exportSequence = (): Sequence => ({
+    name: sequenceName.trim() || 'My sequence',
+    steps: [...history.steps, ...pending],
+  });
+
+  const downloadSequence = (): void => {
+    const sequence = exportSequence();
+    const blob = new Blob([serializeSequence(sequence)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const slug = sequence.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const anchor = el('a', { href: url, download: `${slug || 'sequence'}.json` });
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    say(`Saved ${sequence.steps.length} steps.`);
+  };
+
+  const importFile = async (file: File): Promise<void> => {
+    try {
+      const sequence = parseSequence(await file.text());
+      await loadSequence(sequence);
+      say(`Loaded "${sequence.name}": ${sequence.steps.length} steps. Press play.`);
+    } catch (error) {
+      const reason = error instanceof SequenceError ? error.message : 'unreadable file';
+      say(`Could not load ${file.name}: ${reason}`);
+    }
+  };
 
   // --- Pointer interaction ---------------------------------------------------
   /** Sheet units per CSS pixel at the current zoom. */
@@ -623,6 +902,9 @@ export function createApp(root: HTMLElement): App {
     if (phase.kind === 'choose-side') {
       const side = sideOf(phase.line, p);
       const l = phase.line;
+      // A fold made by hand starts a new branch: pending steps are dropped.
+      pending = [];
+      playing = false;
       void enqueue(() => foldAnimated(l, side, selectedLayers()));
       return;
     }
@@ -745,6 +1027,7 @@ export function createApp(root: HTMLElement): App {
     button.addEventListener('click', () => setLayout(LAYOUTS[i]?.id ?? 'side-by-side'));
   });
   sidebarButton.addEventListener('click', toggleSidebar);
+  collapseButton.addEventListener('click', toggleTimeline);
 
   toolFold.addEventListener('click', () => setTool('fold'));
   toolMove.addEventListener('click', () => setTool('move'));
@@ -752,15 +1035,23 @@ export function createApp(root: HTMLElement): App {
   fullButton.addEventListener('click', fullView);
 
   // --- Buttons ---------------------------------------------------------------
-  const undo = (): void => {
-    if (phase.kind === 'animating') return;
-    history.undo();
-    phase = { kind: 'idle' };
-    render();
-  };
+  /** Undo is a step back: the fold stays on the timeline and can be replayed. */
+  const undo = (): void => stepBack();
+  /** Reset returns to the flat sheet but keeps every step on the timeline. */
   const reset = (): void => {
     if (phase.kind === 'animating') return;
+    jumpTo(0);
+    camera = defaultCamera(history.state.size);
+    render();
+  };
+  const clear = (): void => {
+    if (phase.kind === 'animating') return;
+    playing = false;
     history.reset();
+    pending = [];
+    sequenceName = 'My sequence';
+    nameInput.value = sequenceName;
+    timelineMessage = '';
     phase = { kind: 'idle' };
     camera = defaultCamera(history.state.size);
     render();
@@ -769,8 +1060,29 @@ export function createApp(root: HTMLElement): App {
   resetButton.addEventListener('click', reset);
   presetButtons.forEach((button, i) => {
     button.addEventListener('click', () => {
-      void runPreset(PRESETS[i] as Preset);
+      const entry = LIBRARY[i];
+      if (entry) void loadSequence(entry.sequence, true);
     });
+  });
+  startButton.addEventListener('click', () => jumpTo(0));
+  backButton.addEventListener('click', stepBack);
+  forwardButton.addEventListener('click', () => void stepForward());
+  endButton.addEventListener('click', () => jumpTo(history.steps.length + pending.length));
+  playButton.addEventListener('click', () => (playing ? pause() : play()));
+  stepList.addEventListener('click', (event) => {
+    const chip = event.target instanceof Element ? event.target.closest('[data-index]') : null;
+    if (chip) jumpTo(Number(chip.getAttribute('data-index')));
+  });
+  nameInput.addEventListener('input', () => {
+    sequenceName = nameInput.value;
+  });
+  exportButton.addEventListener('click', downloadSequence);
+  newButton.addEventListener('click', clear);
+  importButton.addEventListener('click', () => importInput.click());
+  importInput.addEventListener('change', () => {
+    const file = importInput.files?.[0];
+    if (file) void importFile(file);
+    importInput.value = '';
   });
   layerTop.addEventListener('change', () => layerCount.focus());
   layerCount.addEventListener('input', () => {
@@ -800,6 +1112,12 @@ export function createApp(root: HTMLElement): App {
         foldedSvg.dataset['space'] = 'held';
       }
       event.preventDefault();
+    } else if (!modifier && !event.altKey && event.key === 'ArrowRight') {
+      event.preventDefault();
+      void stepForward();
+    } else if (!modifier && !event.altKey && event.key === 'ArrowLeft') {
+      event.preventDefault();
+      stepBack();
     } else if (!modifier && !event.altKey && event.key.toLowerCase() === 'f') {
       fitView();
     } else if (!modifier && !event.altKey && event.key === '0') {
@@ -834,12 +1152,22 @@ export function createApp(root: HTMLElement): App {
     fitView,
     fullView,
     fold(l, side, layers = ALL_LAYERS) {
+      pending = [];
       const result = history.fold(l, side, layers);
       phase = { kind: 'idle' };
       render();
       return result !== null;
     },
-    runPreset,
+    loadSequence,
+    exportSequence,
+    get pending() {
+      return pending;
+    },
+    stepForward,
+    stepBack,
+    jumpTo,
+    play,
+    pause,
     undo,
     reset,
   };

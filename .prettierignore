@@ -2,3 +2,5 @@ node_modules/
 dist/
 coverage/
 package-lock.json
+# Generated sequence files keep their own compact point formatting.
+presets/

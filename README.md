@@ -42,6 +42,12 @@ reflections and convex polygon clipping.
   at the folded sheet outlines every facet under the cursor.
 - **Light and dark themes.** The interface follows the operating system's
   colour scheme.
+- **Timeline, replay, import and export.** Every fold, whether made by hand
+  or by a preset, lands on a timeline under the views. Step back and forward
+  (also with the arrow keys), play and pause, click a step to jump to it, or
+  jump to the start or the end. Undone steps stay on the timeline until a new
+  fold by hand replaces them. The whole timeline can be saved as a JSON file
+  and loaded again later; the presets ship in the same format.
 - **Three layouts.** The header switches between _Side by side_ (all three
   views in a row), _Folded large_ (a big folded view with the other two
   stacked beside it) and _Focus_ (only the folded view), and the _Controls_
@@ -74,12 +80,20 @@ unfolded crease pattern.
 5. **Try a preset.** Each preset starts from a flat sheet and plays its folds
    one after another with the animation. Buttons are disabled while a fold is
    animating.
-6. **Read the stack.** The Layers card draws the folded sheet from the front
+6. **Replay and share.** The Timeline card lists the steps so far and the
+   steps still to come. The transport buttons go to the start, one step back,
+   play or pause, one step forward, and to the end; clicking a step jumps
+   there without animation. _Export_ saves the timeline as JSON, _Import_
+   loads such a file onto a fresh sheet (press play to watch it), _New_
+   clears everything. The name field becomes the file name. The arrow button
+   at the right collapses the timeline to its header; the choice is
+   remembered.
+7. **Read the stack.** The Layers card draws the folded sheet from the front
    with each layer lifted by the _Gap_ slider; set it to zero for a plain side
    view. Move the pointer over a facet in the Unfolded or Layers view to see
    where it sits in the folded sheet, or over the folded sheet to see all
    facets stacked under the cursor.
-7. **Look closer.** The folded sheet gets small quickly, so the Folded card has
+8. **Look closer.** The folded sheet gets small quickly, so the Folded card has
    its own navigation: _Fit_ frames the folded sheet, _Full_ shows the whole
    square again, the mouse wheel zooms around the pointer, and the _Move_ tool
    (or holding Space, or the middle mouse button) lets you drag the view. On a
@@ -95,6 +109,7 @@ Keyboard shortcuts:
 | F                       | Fit the folded sheet into view                  |
 | 0                       | Show the whole sheet                            |
 | Space (held)            | Drag to pan instead of drawing a fold line      |
+| → / ←                   | One step forward or back on the timeline        |
 
 ## Getting started
 
@@ -171,6 +186,47 @@ pick the face colour.
 `FoldHistory` keeps the list of states so that undo is a pop; states are never
 mutated, so a fold that moves nothing is rejected without changing history.
 
+### Sequence files
+
+Presets live in `presets/*.json` and anything you fold can be exported to the
+same format. A file is an object with `format` `"origamio-sequence"`,
+`version` `1`, a `name`, an optional `description` and a list of `steps`.
+Every step is one call of `fold` on the sheet as it is at that moment:
+
+```json
+{
+  "line": [
+    [0.5, 0.207107],
+    [0.207107, 0.5]
+  ],
+  "side": 1,
+  "layers": { "top": 1 },
+  "region": [
+    [0, 0.5],
+    [0.5, 0.5],
+    [0.5, 1],
+    [0, 1]
+  ],
+  "placement": "inside",
+  "label": "Petal fold"
+}
+```
+
+| Field       | Meaning                                                                                                   |
+| ----------- | --------------------------------------------------------------------------------------------------------- |
+| `line`      | Two points on the fold line, in the **folded** coordinates of that step (unit sheet, origin bottom left). |
+| `side`      | `1` or `-1`: the half-plane to the left or to the right of the directed line flips over.                  |
+| `layers`    | `"all"` (default), `{ "top": k }` or `{ "bottom": k }`.                                                   |
+| `region`    | Optional convex polygon in **unfolded** coordinates; only facets inside it take part.                     |
+| `window`    | Optional convex polygon in **folded** coordinates; only facets inside it take part.                       |
+| `placement` | `"top"` (default), `"bottom"` or `"inside"`, see above.                                                   |
+| `label`     | Optional name shown on the timeline.                                                                      |
+
+`src/sequence.ts` parses and validates files (errors name the offending field)
+and serialises them with points kept on one line. The preset files are
+generated from the geometry in `src/presets.ts`: `npm run presets:write`
+rewrites them and `npm test` fails when they are out of date.
+
 ### Code layout
 
 | File              | Responsibility                                                                   |
@@ -180,10 +236,13 @@ mutated, so a fold that moves nothing is rejected without changing history.
 | `src/geometry.ts` | Vectors, lines, affine transforms, reflections, convex clipping and intersection |
 | `src/paper.ts`    | Facet model, `fold`, layer selection, statistics, undo history                   |
 | `src/render.ts`   | SVG markup for the three views, the fold animation and the folded-view camera    |
-| `src/presets.ts`  | Scripted fold sequences, including the crane                                     |
+| `src/sequence.ts` | The JSON sequence format: parse, validate, serialise                             |
+| `src/presets.ts`  | Geometry of the shipped sequences, including the crane; source of `presets/`     |
+| `src/library.ts`  | Loads `presets/*.json` for the app                                               |
 | `src/ui.ts`       | Page layout, toolbar, pointer interaction, animation loop, shortcuts             |
 | `src/style.css`   | Theme tokens (light and dark), layout, controls and SVG styling                  |
-| `tests/`          | Vitest specs for geometry, paper model, camera and layer view, plus fold presets |
+| `presets/`        | The shipped sequences as JSON, generated from `src/presets.ts`                   |
+| `tests/`          | Vitest specs for geometry, paper, camera, layer view, sequences and the presets  |
 
 ## Contributing
 

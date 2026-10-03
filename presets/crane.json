@@ -1,0 +1,280 @@
+{
+  "format": "origamio-sequence",
+  "version": 1,
+  "name": "Crane",
+  "description": "Diagonals, preliminary base, bird base, narrow the points, close the model, reverse fold neck, tail and head, wings down",
+  "steps": [
+    {
+      "line": [
+        [0, 0],
+        [1, 1]
+      ],
+      "side": 1,
+      "label": "Pre-crease"
+    },
+    {
+      "line": [
+        [0, 0],
+        [1, 1]
+      ],
+      "side": -1,
+      "layers": {
+        "top": 1
+      },
+      "label": "Unfold"
+    },
+    {
+      "line": [
+        [1, 0],
+        [0, 1]
+      ],
+      "side": 1,
+      "label": "Pre-crease"
+    },
+    {
+      "line": [
+        [1, 0],
+        [0, 1]
+      ],
+      "side": -1,
+      "layers": {
+        "top": 1
+      },
+      "label": "Unfold"
+    },
+    {
+      "line": [
+        [0.5, 0],
+        [0.5, 1]
+      ],
+      "side": -1,
+      "label": "Right half over"
+    },
+    {
+      "line": [
+        [0, 0.5],
+        [1, 0.5]
+      ],
+      "side": 1,
+      "label": "Top half down"
+    },
+    {
+      "line": [
+        [0, 0],
+        [0.92388, 0.382683]
+      ],
+      "side": -1,
+      "region": [
+        [0, 0.5],
+        [0.5, 0.5],
+        [0.5, 1],
+        [0, 1]
+      ],
+      "label": "Kite fold"
+    },
+    {
+      "line": [
+        [0, 0],
+        [0.382683, 0.92388]
+      ],
+      "side": 1,
+      "region": [
+        [0, 0.5],
+        [0.5, 0.5],
+        [0.5, 1],
+        [0, 1]
+      ],
+      "label": "Kite fold"
+    },
+    {
+      "line": [
+        [0.5, 0.207107],
+        [0.207107, 0.5]
+      ],
+      "side": 1,
+      "region": [
+        [0, 0.5],
+        [0.5, 0.5],
+        [0.5, 1],
+        [0, 1]
+      ],
+      "label": "Petal fold"
+    },
+    {
+      "line": [
+        [0, 0],
+        [0.92388, 0.382683]
+      ],
+      "side": -1,
+      "region": [
+        [0, 0],
+        [0.5, 0],
+        [0.5, 0.5],
+        [0, 0.5]
+      ],
+      "placement": "bottom",
+      "label": "Kite fold"
+    },
+    {
+      "line": [
+        [0, 0],
+        [0.382683, 0.92388]
+      ],
+      "side": 1,
+      "region": [
+        [0, 0],
+        [0.5, 0],
+        [0.5, 0.5],
+        [0, 0.5]
+      ],
+      "placement": "bottom",
+      "label": "Kite fold"
+    },
+    {
+      "line": [
+        [0.5, 0.207107],
+        [0.207107, 0.5]
+      ],
+      "side": 1,
+      "region": [
+        [0, 0],
+        [0.5, 0],
+        [0.5, 0.5],
+        [0, 0.5]
+      ],
+      "placement": "bottom",
+      "label": "Petal fold"
+    },
+    {
+      "line": [
+        [0.707107, 0.707107],
+        [0.151537, -0.124363]
+      ],
+      "side": 1,
+      "region": [
+        [0, 0.5],
+        [0.5, 0.5],
+        [0.5, 1],
+        [0, 1]
+      ],
+      "label": "Narrow point"
+    },
+    {
+      "line": [
+        [0.707107, 0.707107],
+        [-0.124363, 0.151537]
+      ],
+      "side": -1,
+      "region": [
+        [0, 0.5],
+        [0.5, 0.5],
+        [0.5, 1],
+        [0, 1]
+      ],
+      "label": "Narrow point"
+    },
+    {
+      "line": [
+        [0.707107, 0.707107],
+        [0.151537, -0.124363]
+      ],
+      "side": 1,
+      "region": [
+        [0, 0],
+        [0.5, 0],
+        [0.5, 0.5],
+        [0, 0.5]
+      ],
+      "placement": "bottom",
+      "label": "Narrow point"
+    },
+    {
+      "line": [
+        [0.707107, 0.707107],
+        [-0.124363, 0.151537]
+      ],
+      "side": -1,
+      "region": [
+        [0, 0],
+        [0.5, 0],
+        [0.5, 0.5],
+        [0, 0.5]
+      ],
+      "placement": "bottom",
+      "label": "Narrow point"
+    },
+    {
+      "line": [
+        [0, 0],
+        [1, 1]
+      ],
+      "side": 1,
+      "label": "Close along centre"
+    },
+    {
+      "line": [
+        [0.438406, 0.438406],
+        [0.612054, 1.423214]
+      ],
+      "side": -1,
+      "region": [
+        [0, 0.5],
+        [0.5, 0.5],
+        [0.5, 1],
+        [0, 1]
+      ],
+      "placement": "inside",
+      "label": "Reverse fold neck"
+    },
+    {
+      "line": [
+        [0.438406, 0.438406],
+        [0.264758, 1.423214]
+      ],
+      "side": -1,
+      "region": [
+        [0, 0],
+        [0.5, 0],
+        [0.5, 0.5],
+        [0, 0.5]
+      ],
+      "placement": "inside",
+      "label": "Reverse fold tail"
+    },
+    {
+      "line": [
+        [0.324299, 0.683109],
+        [0.666319, 1.622802]
+      ],
+      "side": 1,
+      "region": [
+        [0, 0.5],
+        [0.5, 0.5],
+        [0.5, 1],
+        [0, 1]
+      ],
+      "window": [
+        [0.33234, 0.374767],
+        [0.898026, 0.940452],
+        [0.494975, 1.343503],
+        [-0.070711, 0.777817]
+      ],
+      "placement": "inside",
+      "label": "Reverse fold head"
+    },
+    {
+      "line": [
+        [0.353553, 0.353553],
+        [0.353553, 1.353553]
+      ],
+      "side": 1,
+      "window": [
+        [0.565685, -0.848528],
+        [1.555635, 0.141421],
+        [0.847821, 0.849235],
+        [-0.142128, -0.140714]
+      ],
+      "label": "Wings down"
+    }
+  ]
+}

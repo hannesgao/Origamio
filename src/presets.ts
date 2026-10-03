@@ -4,8 +4,9 @@
  * placement options of `fold`. Coordinates are for a unit sheet with its
  * lower-left corner at the origin.
  */
-import { type Line, type Polygon, type Vec, line, vec } from './geometry';
+import { type Line, type Polygon, type Vec, line, sideOf, vec } from './geometry';
 import { type LayerSelection, type Placement, topLayers } from './paper';
+import { type FoldStep, type Sequence } from './sequence';
 
 export interface PresetStep {
   readonly line: Line;
@@ -14,6 +15,7 @@ export interface PresetStep {
   readonly region?: Polygon;
   readonly window?: Polygon;
   readonly placement?: Placement;
+  readonly label?: string;
 }
 
 export interface Preset {
@@ -21,6 +23,16 @@ export interface Preset {
   readonly label: string;
   readonly title: string;
   readonly steps: readonly PresetStep[];
+}
+
+/** A preset as replayable data: the moving point becomes a side. */
+export function presetToSequence(preset: Preset): Sequence {
+  const steps: FoldStep[] = preset.steps.map((s) => {
+    const { line: l, movingPoint, label, ...options } = s;
+    const step: FoldStep = { line: l, side: sideOf(l, movingPoint), options };
+    return label ? { ...step, label } : step;
+  });
+  return { name: preset.label, description: preset.title, steps };
 }
 
 type StepOptions = Omit<PresetStep, 'line' | 'movingPoint'>;
@@ -31,9 +43,11 @@ const step = (a: Vec, b: Vec, movingPoint: Vec, options: StepOptions = {}): Pres
   ...options,
 });
 
-const halfLeftRight = step(vec(0.5, 0), vec(0.5, 1), vec(1, 0.5));
-const halfTopBottom = step(vec(0, 0.5), vec(1, 0.5), vec(0.25, 1));
-const quarterLeftRight = step(vec(0.25, 0), vec(0.25, 1), vec(0.5, 0.25));
+const halfLeftRight = step(vec(0.5, 0), vec(0.5, 1), vec(1, 0.5), { label: 'Right half over' });
+const halfTopBottom = step(vec(0, 0.5), vec(1, 0.5), vec(0.25, 1), { label: 'Top half down' });
+const quarterLeftRight = step(vec(0.25, 0), vec(0.25, 1), vec(0.5, 0.25), {
+  label: 'Right half over',
+});
 
 // --- Crane -------------------------------------------------------------------
 //
@@ -79,9 +93,9 @@ const petalLine = (): [Vec, Vec] => [vec(0.5, TAN_22_5 / 2), vec(TAN_22_5 / 2, 0
 
 /** Petal fold one layer of the preliminary base into a point: two kite folds, then lift. */
 const petal = (region: Polygon, placement: Placement): PresetStep[] => [
-  step(...kiteRight(), E, { region, placement }),
-  step(...kiteLeft(), H, { region, placement }),
-  step(...petalLine(), A, { region, placement }),
+  step(...kiteRight(), E, { region, placement, label: 'Kite fold' }),
+  step(...kiteLeft(), H, { region, placement, label: 'Kite fold' }),
+  step(...petalLine(), A, { region, placement, label: 'Petal fold' }),
 ];
 
 /** A point `distance` from `origin` along the (u, v) direction `angle`. */
@@ -102,26 +116,28 @@ const narrowPoint = (region: Polygon, placement: Placement): PresetStep[] => {
     step(tip, alongUv(tip, Math.PI + Math.PI / 16, 1), uv(0.5, -TAN_22_5 / 2), {
       region,
       placement,
+      label: 'Narrow point',
     }),
     step(tip, alongUv(tip, Math.PI - Math.PI / 16, 1), uv(0.5, TAN_22_5 / 2), {
       region,
       placement,
+      label: 'Narrow point',
     }),
   ];
 };
 
 /** Inside reverse fold of a point lying along the centre line beyond u = `at`. */
-const reverseFold = (at: number, angle: number, region: Polygon): PresetStep => {
+const reverseFold = (at: number, angle: number, region: Polygon, label: string): PresetStep => {
   const pivot = uv(at, 0);
-  return step(pivot, alongUv(pivot, angle, 1), uv(1, 0), { region, placement: 'inside' });
+  return step(pivot, alongUv(pivot, angle, 1), uv(1, 0), { region, placement: 'inside', label });
 };
 
 const deg = (d: number): number => (d * Math.PI) / 180;
 
 /** Pre-crease a line: fold everything over, then fold the top layer back. */
 const crease = (a: Vec, b: Vec, movingPoint: Vec, movedTo: Vec): PresetStep[] => [
-  step(a, b, movingPoint),
-  step(a, b, movedTo, { layers: topLayers(1) }),
+  step(a, b, movingPoint, { label: 'Pre-crease' }),
+  step(a, b, movedTo, { layers: topLayers(1), label: 'Unfold' }),
 ];
 
 function craneSteps(): PresetStep[] {
@@ -154,18 +170,19 @@ function craneSteps(): PresetStep[] {
     ...narrowPoint(Q4, 'top'),
     ...narrowPoint(Q1, 'bottom'),
     // Fold the model in half along its centre line.
-    step(A, vec(1, 1), H),
+    step(A, vec(1, 1), H, { label: 'Close along centre' }),
     // Neck and tail: inside reverse folds of the two points.
-    reverseFold(neckBase, neckAngle / 2, Q4),
-    reverseFold(neckBase, deg(55), Q1),
+    reverseFold(neckBase, neckAngle / 2, Q4, 'Reverse fold neck'),
+    reverseFold(neckBase, deg(55), Q1, 'Reverse fold tail'),
     // Head: reverse fold the tip of the neck forward.
     step(headAt, headCrease, alongUv(headAt, neckAngle, 1), {
       region: Q4,
       window: neckWindow,
       placement: 'inside',
+      label: 'Reverse fold head',
     }),
     // Wings down.
-    step(wingPivot, wingCrease, A, { window: wingWindow }),
+    step(wingPivot, wingCrease, A, { window: wingWindow, label: 'Wings down' }),
   ];
 }
 
@@ -180,19 +197,31 @@ export const PRESETS: readonly Preset[] = [
     id: 'corner-loose',
     label: 'Halves + loose corner',
     title: 'Fold in half twice, then fold the loose corner where the four sheet corners stack',
-    steps: [halfLeftRight, halfTopBottom, step(vec(0.2, 0), vec(0, 0.2), vec(0, 0))],
+    steps: [
+      halfLeftRight,
+      halfTopBottom,
+      step(vec(0.2, 0), vec(0, 0.2), vec(0, 0), { label: 'Loose corner' }),
+    ],
   },
   {
     id: 'corner-two-edges',
     label: 'Halves + centre corner',
     title: 'Fold in half twice, then fold the corner where both folded edges meet',
-    steps: [halfLeftRight, halfTopBottom, step(vec(0.5, 0.3), vec(0.3, 0.5), vec(0.5, 0.5))],
+    steps: [
+      halfLeftRight,
+      halfTopBottom,
+      step(vec(0.5, 0.3), vec(0.3, 0.5), vec(0.5, 0.5), { label: 'Centre corner' }),
+    ],
   },
   {
     id: 'corner-one-edge',
     label: 'Halves + single-edge corner',
     title: 'Fold in half twice, then fold a corner that has only one folded edge',
-    steps: [halfLeftRight, halfTopBottom, step(vec(0.3, 0), vec(0.5, 0.2), vec(0.5, 0))],
+    steps: [
+      halfLeftRight,
+      halfTopBottom,
+      step(vec(0.3, 0), vec(0.5, 0.2), vec(0.5, 0), { label: 'Single-edge corner' }),
+    ],
   },
   {
     id: 'crane',

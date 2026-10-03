@@ -410,11 +410,25 @@ export function foldedCentre(state: PaperState): Vec {
  * An undoable sequence of paper states. States are immutable, so undo simply
  * returns to the previous object.
  */
+/** A fold that was applied, as recorded by FoldHistory. */
+export interface AppliedFold {
+  readonly line: Line;
+  readonly side: Side;
+  readonly options: FoldOptions;
+  readonly label?: string;
+}
+
 export class FoldHistory {
   private readonly states: PaperState[];
+  private readonly folds: AppliedFold[] = [];
 
   constructor(initial: PaperState = createPaper()) {
     this.states = [initial];
+  }
+
+  /** The folds applied so far, oldest first. */
+  get steps(): readonly AppliedFold[] {
+    return this.folds;
   }
 
   get state(): PaperState {
@@ -434,20 +448,26 @@ export class FoldHistory {
     line: Line,
     side: Side,
     options: LayerSelection | FoldOptions = ALL_LAYERS,
+    label?: string,
   ): FoldResult | null {
     const result = fold(this.state, line, side, options);
     if (result.movedIds.length === 0) return null;
     this.states.push(result.state);
+    const opts: FoldOptions = 'kind' in options ? { layers: options } : options;
+    this.folds.push(label ? { line, side, options: opts, label } : { line, side, options: opts });
     return result;
   }
 
-  undo(): PaperState {
-    if (this.states.length > 1) this.states.pop();
-    return this.state;
+  /** Take back the last fold; returns it so that it can be replayed. */
+  undo(): AppliedFold | null {
+    if (this.states.length <= 1) return null;
+    this.states.pop();
+    return this.folds.pop() ?? null;
   }
 
   reset(): PaperState {
     this.states.length = 1;
+    this.folds.length = 0;
     return this.state;
   }
 }
