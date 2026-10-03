@@ -29,6 +29,11 @@ reflections and convex polygon clipping.
   and then fold one of three kinds of corner: the loose corner where the four
   sheet corners stack, the corner where both folded edges meet, and a corner
   with a single folded edge.
+- **Layer view.** A third card shows the folded stack obliquely with every
+  layer lifted a little, so the stacking order is visible at a glance; a slider
+  sets the gap. While a flap is folding it rises out of the plane. Pointing at
+  a facet in any view outlines the same facet in the other two, and pointing
+  at the folded sheet outlines every facet under the cursor.
 - **Light and dark themes.** The interface follows the operating system's
   colour scheme and works down to phone widths, where the two sheets stack
   above the controls.
@@ -54,7 +59,12 @@ unfolded crease pattern.
 5. **Try a preset.** Each preset starts from a flat sheet and plays its folds
    one after another with the animation. Buttons are disabled while a fold is
    animating.
-6. **Look closer.** The folded sheet gets small quickly, so the Folded card has
+6. **Read the stack.** The Layers card draws the folded sheet from the front
+   with each layer lifted by the _Gap_ slider; set it to zero for a plain side
+   view. Move the pointer over a facet in the Unfolded or Layers view to see
+   where it sits in the folded sheet, or over the folded sheet to see all
+   facets stacked under the cursor.
+7. **Look closer.** The folded sheet gets small quickly, so the Folded card has
    its own navigation: _Fit_ frames the folded sheet, _Full_ shows the whole
    square again, the mouse wheel zooms around the pointer, and the _Move_ tool
    (or holding Space, or the middle mouse button) lets you drag the view. On a
@@ -148,10 +158,10 @@ mutated, so a fold that moves nothing is rejected without changing history.
 | `src/main.ts`     | Entry point: loads the stylesheet and creates the app                            |
 | `src/geometry.ts` | Vectors, lines, affine transforms, reflections, convex clipping and intersection |
 | `src/paper.ts`    | Facet model, `fold`, layer selection, statistics, undo history                   |
-| `src/render.ts`   | SVG markup for both views, the fold animation and the folded-view camera         |
+| `src/render.ts`   | SVG markup for the three views, the fold animation and the folded-view camera    |
 | `src/ui.ts`       | Page layout, toolbar, pointer interaction, animation loop, presets, shortcuts    |
 | `src/style.css`   | Theme tokens (light and dark), layout, controls and SVG styling                  |
-| `tests/`          | Vitest specs for the geometry, the paper model and the camera, plus fold presets |
+| `tests/`          | Vitest specs for geometry, paper model, camera and layer view, plus fold presets |
 
 ## Contributing
 
