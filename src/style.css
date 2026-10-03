@@ -509,6 +509,37 @@ kbd {
   gap: 6px;
 }
 
+.size-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.size-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-variant-numeric: tabular-nums;
+}
+
+.size-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.paper-preset[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.paper-current {
+  margin: 0;
+}
+
 .panel-action {
   justify-content: flex-start;
 }

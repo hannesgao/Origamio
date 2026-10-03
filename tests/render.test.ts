@@ -21,6 +21,16 @@ describe('camera', () => {
     expect(parse(viewBox(1))).toEqual([-VIEW_PADDING, -VIEW_PADDING, 1.2, 1.2]);
   });
 
+  it('centres the default camera on a rectangular sheet', () => {
+    expect(defaultCamera(1, 0.5).centre).toEqual(vec(0.5, 0.25));
+    const [x, y, w, h] = parse(viewBox(1, 0.5));
+    expect(w).toBeCloseTo(1.2);
+    expect(h).toBeCloseTo(1.2);
+    // The sheet (SVG y from 0.5 to 1) sits in the middle of the box.
+    expect(x).toBeCloseTo(-0.1);
+    expect(y).toBeCloseTo(0.75 - 0.6);
+  });
+
   it('halves the visible extent when zooming in twice', () => {
     const camera = { centre: vec(0.25, 0.25), zoom: 2 };
     expect(visibleExtent(1, camera)).toBeCloseTo(0.6);

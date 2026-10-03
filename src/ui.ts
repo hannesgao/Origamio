@@ -17,7 +17,10 @@ import {
 import { LIBRARY } from './library';
 import {
   type FoldStep,
+  type Paper,
   type Sequence,
+  DEFAULT_PAPER,
+  MAX_PAPER_SIDE,
   SequenceError,
   parseSequence,
   serializeSequence,
@@ -76,9 +79,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-function svgElement(size: number, className: string): SVGSVGElement {
+function svgElement(width: number, height: number, className: string): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('viewBox', viewBox(size));
+  svg.setAttribute('viewBox', viewBox(width, height));
   svg.setAttribute('class', className);
   return svg;
 }
@@ -95,6 +98,8 @@ const LAYOUT_ICONS: Record<Layout, string> = {
   focus: '<rect x="2.5" y="4" width="15" height="12" rx="1" />',
 };
 const RAIL_ICONS = {
+  paper:
+    '<path d="M4 3.5h8l4 4v9A1.5 1.5 0 0 1 14.5 18h-9A1.5 1.5 0 0 1 4 16.5Z" /><path d="M12 3.5v4h4" />',
   library:
     '<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H9v14H5.5A1.5 1.5 0 0 1 4 15.5Z" /><path d="M11 3h3.5A1.5 1.5 0 0 1 16 4.5v11a1.5 1.5 0 0 1-1.5 1.5H11Z" /><path d="M6 7h1.5M12.5 7H14" />',
   file: '<path d="M3 5.5A1.5 1.5 0 0 1 4.5 4H8l2 2h5.5A1.5 1.5 0 0 1 17 7.5v7A1.5 1.5 0 0 1 15.5 16h-11A1.5 1.5 0 0 1 3 14.5Z" />',
@@ -145,13 +150,41 @@ const LAYOUTS: readonly { readonly id: Layout; readonly label: string; readonly 
   ];
 const LAYOUT_KEY = 'origamio.layout';
 /** Panels that open from the icon rail on the left. */
-type Panel = 'library' | 'file' | 'keys';
+type Panel = 'library' | 'paper' | 'file' | 'keys';
 const PANELS: readonly { readonly id: Panel; readonly label: string; readonly title: string }[] = [
   { id: 'library', label: 'Library', title: 'Presets to load onto the timeline' },
+  { id: 'paper', label: 'Paper', title: 'Size of the sheet' },
   { id: 'file', label: 'File', title: 'Name, import, export and clear' },
   { id: 'keys', label: 'Shortcuts', title: 'Keyboard shortcuts' },
 ];
 const PANEL_KEY = 'origamio.panel';
+
+/** Sheet shapes offered in the Paper panel; the longer side is always 1. */
+const PAPER_PRESETS: readonly {
+  readonly id: string;
+  readonly label: string;
+  readonly paper: Paper;
+}[] = [
+  { id: 'square', label: 'Square 1:1', paper: { width: 1, height: 1 } },
+  { id: 'a-series', label: 'A series 1:√2', paper: { width: 1, height: 0.7071 } },
+  { id: '4-3', label: '4:3', paper: { width: 1, height: 0.75 } },
+  { id: '3-2', label: '3:2', paper: { width: 1, height: 0.6667 } },
+  { id: '16-9', label: '16:9', paper: { width: 1, height: 0.5625 } },
+];
+
+const samePaper = (a: Paper, b: Paper): boolean =>
+  Math.abs(a.width - b.width) < 1e-6 && Math.abs(a.height - b.height) < 1e-6;
+
+const describePaper = (paper: Paper): string => {
+  const preset = PAPER_PRESETS.find((p) => samePaper(p.paper, paper));
+  const portrait = PAPER_PRESETS.find((p) =>
+    samePaper({ width: p.paper.height, height: p.paper.width }, paper),
+  );
+  const dims = `${+paper.width.toFixed(4)} × ${+paper.height.toFixed(4)}`;
+  if (preset) return `${preset.label} (${dims})`;
+  if (portrait) return `${portrait.label} portrait (${dims})`;
+  return `Custom (${dims})`;
+};
 const DRAWER_KEY = 'origamio.drawer';
 /** Below this width the views sit behind tabs and the panel floats over the workspace. */
 const NARROW_QUERY = '(max-width: 1339px)';
@@ -211,6 +244,9 @@ export interface App {
   exportSequence(): Sequence;
   /** Steps on the timeline that have not been applied yet. */
   readonly pending: readonly FoldStep[];
+  /** The sheet being folded. */
+  readonly paper: Paper;
+  setPaper(paper: Paper): void;
   stepForward(): Promise<void>;
   stepBack(): void;
   jumpTo(index: number): void;
@@ -225,10 +261,11 @@ export interface App {
 }
 
 export function createApp(root: HTMLElement): App {
-  const history = new FoldHistory(createPaper());
+  let paper: Paper = DEFAULT_PAPER;
+  let history = new FoldHistory(createPaper(paper.width, paper.height));
   let phase: Phase = { kind: 'idle' };
   let queue: Promise<void> = Promise.resolve();
-  let camera: Camera = defaultCamera(history.state.size);
+  let camera: Camera = defaultCamera(history.state.width, history.state.height);
   let tool: Tool = 'fold';
   let spaceHeld = false;
   const rememberedLayout = remembered(LAYOUT_KEY);
@@ -260,9 +297,9 @@ export function createApp(root: HTMLElement): App {
   const pointers = new Map<number, Vec>();
 
   // --- DOM -----------------------------------------------------------------
-  const foldedSvg = svgElement(history.state.size, 'view folded-view');
-  const unfoldedSvg = svgElement(history.state.size, 'view unfolded-view');
-  const layersSvg = svgElement(history.state.size, 'view layers-view');
+  const foldedSvg = svgElement(paper.width, paper.height, 'view folded-view');
+  const unfoldedSvg = svgElement(paper.width, paper.height, 'view unfolded-view');
+  const layersSvg = svgElement(paper.width, paper.height, 'view layers-view');
   const views = [foldedSvg, unfoldedSvg, layersSvg];
 
   const layerAll = el('input', { type: 'radio', name: 'layers', value: 'all', checked: '' });
@@ -383,6 +420,63 @@ export function createApp(root: HTMLElement): App {
     el('p', { class: 'help' }, [
       'A file holds every step on the timeline, applied and pending, in the origamio-sequence ',
       'JSON format described in the README.',
+    ]),
+  ]);
+
+  // --- Paper panel ---------------------------------------------------------------
+  const paperButtons = PAPER_PRESETS.map((preset) =>
+    el(
+      'button',
+      {
+        type: 'button',
+        class: 'preset paper-preset',
+        'data-paper': preset.id,
+        'aria-pressed': 'false',
+      },
+      [el('span', { class: 'preset-label' }, [preset.label])],
+    ),
+  );
+  const paperWidth = el('input', {
+    type: 'number',
+    class: 'ctl',
+    min: '0.1',
+    max: String(MAX_PAPER_SIDE),
+    step: '0.01',
+    value: '1',
+    'aria-label': 'Sheet width',
+  });
+  const paperHeight = el('input', {
+    type: 'number',
+    class: 'ctl',
+    min: '0.1',
+    max: String(MAX_PAPER_SIDE),
+    step: '0.01',
+    value: '1',
+    'aria-label': 'Sheet height',
+  });
+  const paperApply = el('button', { type: 'button', class: 'btn panel-action' }, ['Use this size']);
+  const paperSwap = el(
+    'button',
+    { type: 'button', class: 'btn panel-action', title: 'Swap width and height' },
+    ['Rotate (portrait / landscape)'],
+  );
+  const paperCurrent = el('p', { class: 'help paper-current' }, ['']);
+  const paperPanel = el('div', { class: 'panel-section' }, [
+    paperCurrent,
+    el('div', { class: 'preset-list' }, paperButtons),
+    el('div', { class: 'field' }, [
+      el('span', { class: 'field-label' }, ['Custom (width × height, longer side 1 is usual)']),
+      el('div', { class: 'size-row' }, [
+        paperWidth,
+        el('span', {}, ['×']),
+        paperHeight,
+        paperApply,
+      ]),
+    ]),
+    paperSwap,
+    el('p', { class: 'help' }, [
+      'Changing the paper rewinds to the flat sheet and keeps every step on the timeline, so ',
+      'play to see them on the new sheet. The size is saved in exported files.',
     ]),
   ]);
 
@@ -592,6 +686,7 @@ export function createApp(root: HTMLElement): App {
     panelBody,
   ]);
   const panelContents: Record<Panel, HTMLElement> = {
+    paper: paperPanel,
     library: el('div', { class: 'groups' }, [
       el('details', { class: 'group', open: '' }, [
         el('summary', {}, [icon(COLLAPSE_ICON), 'Presets']),
@@ -746,6 +841,14 @@ export function createApp(root: HTMLElement): App {
     });
     railButtons.forEach((button, i) => {
       button.setAttribute('aria-pressed', String(PANELS[i]?.id === openPanel));
+    });
+    paperCurrent.textContent = `Current sheet: ${describePaper(paper)}`;
+    paperButtons.forEach((button, i) => {
+      const preset = PAPER_PRESETS[i];
+      button.setAttribute(
+        'aria-pressed',
+        String(preset !== undefined && samePaper(preset.paper, paper)),
+      );
     });
     panel.hidden = openPanel === null;
     if (openPanel) {
@@ -1082,6 +1185,9 @@ export function createApp(root: HTMLElement): App {
   const loadSequence = (sequence: Sequence, autoplay = false): Promise<void> => {
     playing = false;
     return enqueue(async () => {
+      const wanted = sequence.paper ?? DEFAULT_PAPER;
+      const paperChanged = !samePaper(wanted, paper);
+      if (paperChanged) setPaper(wanted, false);
       history.reset();
       pending = [...sequence.steps];
       sequenceName = sequence.name;
@@ -1089,14 +1195,35 @@ export function createApp(root: HTMLElement): App {
       timelineMessage = '';
       phase = { kind: 'idle' };
       // Sequences start from the flat sheet, so show all of it like Reset does.
-      camera = defaultCamera(history.state.size);
+      camera = defaultCamera(history.state.width, history.state.height);
       render();
+      if (paperChanged) say(`Sheet set to ${describePaper(paper)} for "${sequence.name}".`);
       if (autoplay) play();
     });
   };
 
+  /** Replace the sheet, keeping every step on the timeline as pending. */
+  const setPaper = (next: Paper, announce = true): void => {
+    if (phase.kind === 'animating') return;
+    playing = false;
+    const steps = [...history.steps, ...pending];
+    paper = { width: next.width, height: next.height };
+    history = new FoldHistory(createPaper(paper.width, paper.height));
+    pending = steps;
+    for (const svg of [unfoldedSvg, layersSvg]) {
+      svg.setAttribute('viewBox', viewBox(paper.width, paper.height));
+    }
+    camera = defaultCamera(paper.width, paper.height);
+    phase = { kind: 'idle' };
+    paperWidth.value = String(+paper.width.toFixed(4));
+    paperHeight.value = String(+paper.height.toFixed(4));
+    applyLayout();
+    if (announce) say(`Sheet is now ${describePaper(paper)}; ${steps.length} steps rewound.`);
+  };
+
   const exportSequence = (): Sequence => ({
     name: sequenceName.trim() || 'My sequence',
+    paper,
     steps: [...history.steps, ...pending],
   });
 
@@ -1132,7 +1259,9 @@ export function createApp(root: HTMLElement): App {
 
   const toModel = (client: Vec): Vec => {
     const rect = foldedSvg.getBoundingClientRect();
-    const [vx, vy, vw, vh] = (foldedSvg.getAttribute('viewBox') ?? viewBox(history.state.size))
+    const [vx, vy, vw, vh] = (
+      foldedSvg.getAttribute('viewBox') ?? viewBox(history.state.width, history.state.height)
+    )
       .split(' ')
       .map(Number) as [number, number, number, number];
     const x = vx + ((client.x - rect.left) / rect.width) * vw;
@@ -1164,7 +1293,7 @@ export function createApp(root: HTMLElement): App {
   };
 
   const fitView = (): void => setCamera(fitCamera(history.state.size, foldedPoints(history.state)));
-  const fullView = (): void => setCamera(defaultCamera(history.state.size));
+  const fullView = (): void => setCamera(defaultCamera(history.state.width, history.state.height));
 
   const setTool = (next: Tool): void => {
     tool = next;
@@ -1327,6 +1456,27 @@ export function createApp(root: HTMLElement): App {
     button.addEventListener('click', () => setPanel(openPanel === id ? null : id));
   });
   panelClose.addEventListener('click', () => setPanel(null));
+  paperButtons.forEach((button, i) => {
+    button.addEventListener('click', () => {
+      const preset = PAPER_PRESETS[i];
+      if (preset) setPaper(preset.paper);
+    });
+  });
+  const customPaper = (): Paper | null => {
+    const width = Number(paperWidth.value);
+    const height = Number(paperHeight.value);
+    const ok = (n: number): boolean => Number.isFinite(n) && n > 0 && n <= MAX_PAPER_SIDE;
+    if (!ok(width) || !ok(height)) {
+      say(`Could not use that size: sides must be between 0 and ${MAX_PAPER_SIDE}.`);
+      return null;
+    }
+    return { width, height };
+  };
+  paperApply.addEventListener('click', () => {
+    const next = customPaper();
+    if (next) setPaper(next);
+  });
+  paperSwap.addEventListener('click', () => setPaper({ width: paper.height, height: paper.width }));
   narrowQuery.addEventListener('change', applyLayout);
   new ResizeObserver(scheduleFit).observe(workspace);
   unfoldedToggle.addEventListener('click', () => toggleCard('unfolded'));
@@ -1347,7 +1497,7 @@ export function createApp(root: HTMLElement): App {
   const reset = (): void => {
     if (phase.kind === 'animating') return;
     jumpTo(0);
-    camera = defaultCamera(history.state.size);
+    camera = defaultCamera(history.state.width, history.state.height);
     render();
   };
   const clear = (): void => {
@@ -1359,7 +1509,7 @@ export function createApp(root: HTMLElement): App {
     nameInput.value = sequenceName;
     timelineMessage = '';
     phase = { kind: 'idle' };
-    camera = defaultCamera(history.state.size);
+    camera = defaultCamera(history.state.width, history.state.height);
     render();
   };
   presetButtons.forEach((button, i) => {
@@ -1368,7 +1518,7 @@ export function createApp(root: HTMLElement): App {
       if (entry) {
         void loadSequence(entry.sequence).then(() =>
           say(
-            `Loaded "${entry.sequence.name}": ${entry.sequence.steps.length} steps. Step with → or play.`,
+            `Loaded "${entry.sequence.name}": ${entry.sequence.steps.length} steps on a ${describePaper(paper)} sheet. Step with → or play.`,
           ),
         );
       }
@@ -1514,6 +1664,10 @@ export function createApp(root: HTMLElement): App {
     get pending() {
       return pending;
     },
+    get paper() {
+      return paper;
+    },
+    setPaper,
     stepForward,
     stepBack,
     jumpTo,

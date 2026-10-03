@@ -70,9 +70,9 @@ export const MAX_ZOOM = 16;
 
 export const clampZoom = (zoom: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
-/** The camera that shows the whole sheet. */
-export const defaultCamera = (size: number): Camera => ({
-  centre: { x: size / 2, y: size / 2 },
+/** The camera that shows the whole sheet, centred on it. */
+export const defaultCamera = (width: number, height = width): Camera => ({
+  centre: { x: width / 2, y: height / 2 },
   zoom: 1,
 });
 
@@ -103,8 +103,9 @@ export function fitCamera(size: number, points: readonly Vec[]): Camera {
   };
 }
 
-/** The common viewBox used by both views, in sheet units. */
-export const viewBox = (size: number): string => cameraViewBox(size, defaultCamera(size));
+/** The viewBox that frames the whole unfolded sheet, in sheet units. */
+export const viewBox = (width: number, height = width): string =>
+  cameraViewBox(Math.max(width, height), defaultCamera(width, height));
 
 /** SVG `points` attribute. The y axis is flipped so the model's +y points up. */
 export const pointsAttr = (poly: Polygon, size: number): string =>
@@ -222,7 +223,7 @@ export function renderUnfolded(state: PaperState): string {
   const size = state.size;
   const parts: string[] = [];
   parts.push(
-    `<rect class="sheet-outline" x="0" y="0" width="${fmt(size)}" height="${fmt(size)}" />`,
+    `<rect class="sheet-outline" x="0" y="${fmt(size - state.height)}" width="${fmt(state.width)}" height="${fmt(state.height)}" />`,
   );
   for (const facet of state.facets) {
     parts.push(

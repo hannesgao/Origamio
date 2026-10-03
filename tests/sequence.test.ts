@@ -73,6 +73,23 @@ describe('sequence JSON', () => {
     expect(replayed.steps[1]?.label).toBe('Tuck the corner');
   });
 
+  it('carries the paper and defaults to the unit square', () => {
+    const sequence = { name: 'Rect', paper: { width: 1, height: 0.75 }, steps: [half] };
+    const text = serializeSequence(sequence);
+    expect(text).toContain('"paper": {');
+    const parsed = parseSequence(text);
+    expect(parsed.paper).toEqual({ width: 1, height: 0.75 });
+    expect(
+      parseSequence(serializeSequence({ name: 'Square', steps: [half] })).paper,
+    ).toBeUndefined();
+    expect(() =>
+      parseSequence({ ...sequenceToJson(sequence), paper: { width: 0, height: 1 } }),
+    ).toThrow('sequence.paper');
+    expect(() => parseSequence({ ...sequenceToJson(sequence), paper: { width: 1 } })).toThrow(
+      'sequence.paper',
+    );
+  });
+
   it('rejects malformed input with the path of the problem', () => {
     const base = { format: 'origamio-sequence', version: 1, name: 'x', steps: [] };
     const bad = (patch: object, message: string): void => {
