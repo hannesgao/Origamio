@@ -140,6 +140,15 @@ const LAYOUTS: readonly { readonly id: Layout; readonly label: string; readonly 
 const LAYOUT_KEY = 'origamio.layout';
 const SIDEBAR_KEY = 'origamio.sidebar';
 const TIMELINE_KEY = 'origamio.timeline';
+/** The view shown on its own: on narrow screens, and in the Focus layout. */
+type ViewTab = 'folded' | 'unfolded' | 'layers';
+const VIEW_TABS: readonly { readonly id: ViewTab; readonly label: string }[] = [
+  { id: 'folded', label: 'Folded' },
+  { id: 'unfolded', label: 'Unfolded' },
+  { id: 'layers', label: 'Layers' },
+];
+const TAB_KEY = 'origamio.tab';
+
 /** Secondary view cards that can be collapsed to their header. */
 type CollapsibleCard = 'unfolded' | 'layers';
 const CARD_KEYS: Record<CollapsibleCard, string> = {
@@ -213,6 +222,10 @@ export function createApp(root: HTMLElement): App {
     : 'folded-large';
   let sidebarHidden = remembered(SIDEBAR_KEY) === 'hidden';
   let timelineCollapsed = remembered(TIMELINE_KEY) === 'collapsed';
+  const rememberedTab = remembered(TAB_KEY);
+  let activeTab: ViewTab = VIEW_TABS.some((t) => t.id === rememberedTab)
+    ? (rememberedTab as ViewTab)
+    : 'folded';
   const cardCollapsed: Record<CollapsibleCard, boolean> = {
     unfolded: remembered(CARD_KEYS.unfolded) === 'collapsed',
     layers: remembered(CARD_KEYS.layers) === 'collapsed',
@@ -350,7 +363,10 @@ export function createApp(root: HTMLElement): App {
           forwardButton,
           endButton,
         ]),
-        el('label', { class: 'tl-speed-label' }, ['Speed', speedSelect]),
+        el('label', { class: 'tl-speed-label' }, [
+          el('span', { class: 'btn-label' }, ['Speed']),
+          speedSelect,
+        ]),
         positionReadout,
         timelineStatus,
       ]),
@@ -425,6 +441,17 @@ export function createApp(root: HTMLElement): App {
     value: '0.06',
     'aria-label': 'Gap between layers',
   });
+  const tabButtons = VIEW_TABS.map((tab) =>
+    el('button', { type: 'button', role: 'tab', 'aria-selected': 'false', 'data-tab': tab.id }, [
+      tab.label,
+    ]),
+  );
+  const viewTabs = el(
+    'div',
+    { class: 'view-tabs tool-toggle', role: 'tablist', 'aria-label': 'View' },
+    tabButtons,
+  );
+
   const cardToggle = (id: CollapsibleCard, name: string): HTMLButtonElement =>
     el(
       'button',
@@ -494,6 +521,7 @@ export function createApp(root: HTMLElement): App {
         card('Library', '', el('div', { class: 'preset-list' }, presetButtons)),
       ]),
       el('main', { class: 'views' }, [
+        viewTabs,
         card(
           'Folded',
           viewTools,
@@ -528,6 +556,10 @@ export function createApp(root: HTMLElement): App {
     root.dataset['layout'] = layout;
     root.dataset['sidebar'] = sidebarHidden ? 'hidden' : 'shown';
     root.dataset['timeline'] = timelineCollapsed ? 'collapsed' : 'shown';
+    root.dataset['tab'] = activeTab;
+    tabButtons.forEach((button, i) => {
+      button.setAttribute('aria-selected', String(VIEW_TABS[i]?.id === activeTab));
+    });
     collapseButton.setAttribute('aria-expanded', String(!timelineCollapsed));
     collapseButton.title = timelineCollapsed ? 'Expand the timeline' : 'Collapse the timeline';
     for (const [id, toggle, name] of [
@@ -550,6 +582,13 @@ export function createApp(root: HTMLElement): App {
   const setLayout = (next: Layout): void => {
     layout = next;
     remember(LAYOUT_KEY, next);
+    applyLayout();
+    render();
+  };
+
+  const setTab = (next: ViewTab): void => {
+    activeTab = next;
+    remember(TAB_KEY, next);
     applyLayout();
     render();
   };
@@ -1117,6 +1156,9 @@ export function createApp(root: HTMLElement): App {
   sidebarButton.addEventListener('click', toggleSidebar);
   collapseButton.addEventListener('click', toggleTimeline);
   unfoldedToggle.addEventListener('click', () => toggleCard('unfolded'));
+  tabButtons.forEach((button, i) => {
+    button.addEventListener('click', () => setTab(VIEW_TABS[i]?.id ?? 'folded'));
+  });
   layersToggle.addEventListener('click', () => toggleCard('layers'));
 
   toolFold.addEventListener('click', () => setTool('fold'));
