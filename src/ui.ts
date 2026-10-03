@@ -14,7 +14,9 @@ import {
   sub,
   vec,
 } from './geometry';
+import { type Preset, PRESETS } from './presets';
 import {
+  type FoldOptions,
   type FoldResult,
   type LayerSelection,
   type PaperState,
@@ -47,53 +49,6 @@ import {
 export const ANIMATION_MS = 800;
 /** Drags shorter than this (in sheet units) are ignored. */
 const MIN_DRAG = 0.02;
-
-export interface PresetStep {
-  readonly line: Line;
-  readonly movingPoint: Vec;
-  readonly layers?: LayerSelection;
-}
-
-export interface Preset {
-  readonly id: string;
-  readonly label: string;
-  readonly title: string;
-  readonly steps: readonly PresetStep[];
-}
-
-const stepOf = (a: Vec, b: Vec, movingPoint: Vec, layers?: LayerSelection): PresetStep =>
-  layers ? { line: line(a, b), movingPoint, layers } : { line: line(a, b), movingPoint };
-
-const halfLeftRight = stepOf(vec(0.5, 0), vec(0.5, 1), vec(1, 0.5));
-const halfTopBottom = stepOf(vec(0, 0.5), vec(1, 0.5), vec(0.25, 1));
-const quarterLeftRight = stepOf(vec(0.25, 0), vec(0.25, 1), vec(0.5, 0.25));
-
-export const PRESETS: readonly Preset[] = [
-  {
-    id: 'three-halves',
-    label: 'Fold in half ×3',
-    title: 'Left over right, top over bottom, left over right again',
-    steps: [halfLeftRight, halfTopBottom, quarterLeftRight],
-  },
-  {
-    id: 'corner-loose',
-    label: 'Halves + loose corner',
-    title: 'Fold in half twice, then fold the loose corner where the four sheet corners stack',
-    steps: [halfLeftRight, halfTopBottom, stepOf(vec(0.2, 0), vec(0, 0.2), vec(0, 0))],
-  },
-  {
-    id: 'corner-two-edges',
-    label: 'Halves + centre corner',
-    title: 'Fold in half twice, then fold the corner where both folded edges meet',
-    steps: [halfLeftRight, halfTopBottom, stepOf(vec(0.5, 0.3), vec(0.3, 0.5), vec(0.5, 0.5))],
-  },
-  {
-    id: 'corner-one-edge',
-    label: 'Halves + single-edge corner',
-    title: 'Fold in half twice, then fold a corner that has only one folded edge',
-    steps: [halfLeftRight, halfTopBottom, stepOf(vec(0.3, 0), vec(0.5, 0.2), vec(0.5, 0))],
-  },
-];
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -404,6 +359,9 @@ export function createApp(root: HTMLElement): App {
     }
   };
 
+  /** The state whose statistics are on screen; they are not recomputed per animation frame. */
+  let statsFor: PaperState | null = null;
+
   const render = (): void => {
     const state = history.state;
     let options = {};
@@ -438,9 +396,12 @@ export function createApp(root: HTMLElement): App {
     layersSvg.setAttribute('viewBox', layers.viewBox);
     layersSvg.innerHTML = layers.markup;
     applyHighlight();
-    statFolds.textContent = String(state.foldCount);
-    statLayers.textContent = String(maxLayers(state));
-    statFacets.textContent = String(facetCount(state));
+    if (statsFor !== state) {
+      statsFor = state;
+      statFolds.textContent = String(state.foldCount);
+      statLayers.textContent = String(maxLayers(state));
+      statFacets.textContent = String(facetCount(state));
+    }
     undoButton.disabled = !history.canUndo || phase.kind === 'animating';
     resetButton.disabled = phase.kind === 'animating';
     for (const button of presetButtons) button.disabled = phase.kind === 'animating';
@@ -473,8 +434,12 @@ export function createApp(root: HTMLElement): App {
       requestAnimationFrame(tick);
     });
 
-  const foldAnimated = (l: Line, side: Side, layers: LayerSelection): Promise<void> => {
-    const result = history.fold(l, side, layers);
+  const foldAnimated = (
+    l: Line,
+    side: Side,
+    options: LayerSelection | FoldOptions,
+  ): Promise<void> => {
+    const result = history.fold(l, side, options);
     if (!result) {
       phase = { kind: 'idle' };
       render();
@@ -495,9 +460,8 @@ export function createApp(root: HTMLElement): App {
       // Presets start from the flat sheet, so show all of it like Reset does.
       camera = defaultCamera(history.state.size);
       render();
-      for (const step of preset.steps) {
-        const side = sideOf(step.line, step.movingPoint);
-        await foldAnimated(step.line, side, step.layers ?? ALL_LAYERS);
+      for (const { line: l, movingPoint, ...options } of preset.steps) {
+        await foldAnimated(l, sideOf(l, movingPoint), options);
       }
     });
 
