@@ -125,6 +125,8 @@ const IMPORT_ICON = '<path d="M10 3v10" /><path d="m6 9 4 4 4-4" /><path d="M4 1
 const EXPORT_ICON = '<path d="M10 13V3" /><path d="m6 7 4-4 4 4" /><path d="M4 16h12" />';
 const NEW_ICON = '<path d="M10 4v12" /><path d="M4 10h12" />';
 const COLLAPSE_ICON = '<path d="m5 8 5 5 5-5" />';
+const GITHUB_ICON =
+  '<path d="M10 2.5a7.5 7.5 0 0 0-2.37 14.62c.37.07.51-.16.51-.36v-1.3c-2.09.45-2.53-1-2.53-1-.34-.87-.83-1.1-.83-1.1-.68-.46.05-.45.05-.45.75.05 1.15.77 1.15.77.67 1.14 1.75.81 2.18.62.07-.48.26-.81.47-1-1.67-.19-3.42-.83-3.42-3.7 0-.82.29-1.49.77-2.01-.08-.19-.33-.95.07-1.98 0 0 .63-.2 2.06.77a7.2 7.2 0 0 1 3.76 0c1.43-.97 2.06-.77 2.06-.77.4 1.03.15 1.79.07 1.98.48.52.77 1.19.77 2.01 0 2.88-1.75 3.51-3.43 3.7.27.23.51.69.51 1.39v2.06c0 .2.14.44.52.36A7.5 7.5 0 0 0 10 2.5Z" fill="currentColor" stroke="none" />';
 const MORE_ICON =
   '<circle cx="5" cy="10" r="1.4" /><circle cx="10" cy="10" r="1.4" /><circle cx="15" cy="10" r="1.4" />';
 
@@ -578,19 +580,7 @@ export function createApp(root: HTMLElement): App {
       el('tr', {}, [el('th', {}, [el('kbd', {}, [key])]), el('td', {}, [what])]),
     ),
   );
-  const keysPanel = el('div', { class: 'panel-section' }, [
-    keysTable,
-    el('p', { class: 'about' }, [
-      el('span', {}, ['© 2026 Hannes Gao']),
-      el('span', {}, ['MIT License']),
-      el('span', {}, [`v${__APP_VERSION__}`]),
-      el(
-        'a',
-        { href: 'https://github.com/hannesgao/Origamio', target: '_blank', rel: 'noopener' },
-        ['GitHub'],
-      ),
-    ]),
-  ]);
+  const keysPanel = el('div', { class: 'panel-section' }, [keysTable]);
 
   // --- Status bar --------------------------------------------------------------
   const statusSheet = el('span', { class: 'status-item' }, [
@@ -824,17 +814,32 @@ export function createApp(root: HTMLElement): App {
       statusSheet,
       statusSteps,
       statusMessage,
-      el(
-        'a',
-        {
-          class: 'status-version',
-          href: 'https://github.com/hannesgao/Origamio',
-          target: '_blank',
-          rel: 'noopener',
-          title: 'Origamio on GitHub',
-        },
-        [`v${__APP_VERSION__}`],
-      ),
+      el('span', { class: 'credits' }, [
+        el('span', { class: 'credit' }, ['© 2026 Hannes Gao']),
+        el(
+          'a',
+          {
+            class: 'credit',
+            href: 'https://github.com/hannesgao/Origamio/blob/main/LICENSE',
+            target: '_blank',
+            rel: 'noopener',
+            title: 'Read the licence',
+          },
+          ['MIT License'],
+        ),
+        el('span', { class: 'credit credit-version' }, [`v${__APP_VERSION__}`]),
+        el(
+          'a',
+          {
+            class: 'credit',
+            href: 'https://github.com/hannesgao/Origamio',
+            target: '_blank',
+            rel: 'noopener',
+            title: 'Origamio on GitHub',
+          },
+          [icon(GITHUB_ICON), 'GitHub'],
+        ),
+      ]),
     ]),
     importInput,
   );

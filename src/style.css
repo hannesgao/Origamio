@@ -1170,34 +1170,46 @@ kbd {
   color: var(--danger);
 }
 
-.status-version {
+/* Credits on the right, separated by hairlines. */
+.credits {
+  display: inline-flex;
+  align-items: center;
   flex: none;
   margin-left: auto;
+  font-size: 0.74rem;
+  letter-spacing: 0.01em;
   color: var(--muted);
+}
+
+.credit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 11px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.credit:last-child {
+  padding-right: 0;
+}
+
+.credit + .credit {
+  border-left: 1px solid var(--border-strong);
+}
+
+.credit-version {
   font-family: var(--font-mono);
-  text-decoration: none;
+  font-size: 0.72rem;
 }
 
-.status-version:hover {
+.credit svg {
+  width: 13px;
+  height: 13px;
+}
+
+a.credit:hover {
   color: var(--accent);
-}
-
-.about {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.about a {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.about a:hover {
-  text-decoration: underline;
 }
 
 /* Library panel groups. */

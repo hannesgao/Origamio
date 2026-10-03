@@ -95,7 +95,7 @@ import, export, new) and Shortcuts panels, the workspace with the three view
 cards and the timeline card under them, and a status bar along the bottom
 that shows the sheet with its two colours, the position on the timeline and
 the latest message (what was loaded, what a fold did, why a file was
-rejected). Every view card has
+rejected), with the credits and version on its right. Every view card has
 the same anatomy: a head with the title and one row of tools, the canvas, and
 two lines underneath (status and statistics for the folded sheet; legend and
 crease count for the crease pattern; a note and the gap slider for the layer
