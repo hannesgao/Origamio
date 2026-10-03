@@ -123,9 +123,10 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    presets; clicking one loads its steps onto the timeline from a flat sheet,
    where you step through or play them. Esc or the × closes the panel.
 7. **Replay and share.** The Timeline card under the views holds the transport buttons
-   (start, one step back, play or pause, one step forward, end), the speed
-   menu (a quarter speed up to four times), the position and a status line.
-   Its body shows the steps as clips on a track: filled clips are applied,
+   (start, one step back, play or pause, one step forward, end) and the speed
+   menu (a quarter speed up to four times); the position and the latest
+   message are in the status bar at the bottom of the window. Its body shows
+   the steps as clips on a numbered track: filled clips are applied,
    dashed ones are still to come, the red playhead sits after the last
    applied step (it slides along while a step animates), and red hatching
    marks a step that moves nothing where it now sits. Playing stops at the end
