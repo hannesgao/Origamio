@@ -43,11 +43,14 @@ reflections and convex polygon clipping.
 - **Light and dark themes.** The interface follows the operating system's
   colour scheme.
 - **Timeline, replay, import and export.** Every fold, whether made by hand
-  or by a preset, lands on a timeline under the views. Step back and forward
-  (also with the arrow keys), play and pause, click a step to jump to it, or
-  jump to the start or the end. Undone steps stay on the timeline until a new
-  fold by hand replaces them. The whole timeline can be saved as a JSON file
-  and loaded again later; the presets ship in the same format.
+  or by a preset, lands on an editing-style timeline under the views: a ruler,
+  one clip per step and a playhead you can drag. Step back and forward (also
+  with the arrow keys), play and pause at any step, choose the playback
+  speed, click a clip or scrub to jump. Presets only load their steps; you
+  decide whether to step through them or play them. Undone steps stay on the
+  timeline until a new fold by hand replaces them. The whole timeline can be
+  saved as a JSON file and loaded again later; the presets ship in the same
+  format.
 - **Three layouts.** The header switches between _Side by side_ (all three
   views in a row), _Folded large_ (a big folded view with the other two
   stacked beside it) and _Focus_ (only the folded view), and the _Controls_
@@ -80,14 +83,19 @@ unfolded crease pattern.
 5. **Try a preset.** Each preset starts from a flat sheet and plays its folds
    one after another with the animation. Buttons are disabled while a fold is
    animating.
-6. **Replay and share.** The Timeline card lists the steps so far and the
-   steps still to come. The transport buttons go to the start, one step back,
-   play or pause, one step forward, and to the end; clicking a step jumps
-   there without animation. _Export_ saves the timeline as JSON, _Import_
-   loads such a file onto a fresh sheet (press play to watch it), _New_
-   clears everything. The name field becomes the file name. The arrow button
-   at the right collapses the timeline to its header; the choice is
-   remembered.
+6. **Replay and share.** The Timeline card shows the steps as clips on a
+   track: filled clips are applied, dashed ones are still to come, and the red
+   playhead sits after the last applied step (it slides along while a step
+   animates). The transport buttons go to the start, one step back, play or
+   pause, one step forward, and to the end; the speed menu runs playback at a
+   quarter speed up to four times. Playing stops at the end of the current
+   step when you press pause, P or Esc. Clicking a clip jumps to the end of
+   that step and dragging on the ruler scrubs from step to step, both without
+   animation. Presets and imported files only load their steps. _Export_
+   saves the timeline as JSON, _Import_ loads such a file onto a fresh sheet,
+   _New_ clears everything. The name field becomes the file name. The arrow
+   button at the right collapses the timeline to its header; the choice and
+   the speed are remembered.
 7. **Read the stack.** The Layers card draws the folded sheet from the front
    with each layer lifted by the _Gap_ slider; set it to zero for a plain side
    view. Move the pointer over a facet in the Unfolded or Layers view to see
@@ -110,6 +118,8 @@ Keyboard shortcuts:
 | 0                       | Show the whole sheet                            |
 | Space (held)            | Drag to pan instead of drawing a fold line      |
 | → / ←                   | One step forward or back on the timeline        |
+| P                       | Play or pause the remaining steps               |
+| Home / End              | Jump to the flat sheet or to the last step      |
 
 ## Getting started
 
