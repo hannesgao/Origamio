@@ -48,6 +48,14 @@ reflections and convex polygon clipping.
   at the folded sheet outlines every facet under the cursor.
 - **Light and dark themes.** The interface follows the operating system's
   colour scheme.
+- **An editable timeline.** Every clip can be renamed (double-click or F2),
+  dragged to another position, duplicated, deleted (Delete) or cut off with
+  everything after it, from a right-click menu. A fold made by hand is
+  inserted at the playhead and the later steps stay. Edits are undone and
+  redone with Ctrl+Z and Ctrl+Shift+Z, independently of the playhead. Because
+  each step's line is written in the coordinates of the sheet as it is at
+  that moment, a step that no longer moves anything after an edit is marked
+  with red hatching so it can be fixed.
 - **Timeline, replay, import and export.** Every fold, whether made by hand
   or by a preset, lands on an editing-style timeline under the views: a ruler,
   one clip per step and a playhead you can drag. Step back and forward (also
@@ -86,7 +94,7 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
 
 1. **Draw a fold line.** Press on the folded sheet, drag, and release. A dashed
    blue line shows where the fold will go; drags shorter than 2 % of the sheet
-   are ignored.
+   are ignored. The fold goes onto the timeline at the playhead.
 2. **Choose the side.** Move the pointer over either side of the line; the side
    that would flip is shaded. Click to fold it over. Press Esc to discard the
    line instead.
@@ -107,14 +115,16 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    (start, one step back, play or pause, one step forward, end), the speed
    menu (a quarter speed up to four times), the position and a status line.
    Its body shows the steps as clips on a track: filled clips are applied,
-   dashed ones are still to come, and the red playhead sits after the last
-   applied step (it slides along while a step animates). Playing stops at the
-   end of the current step when you press pause, P or Esc. Clicking a clip
-   jumps to the end of that step and dragging on the ruler scrubs from step to
-   step, both without animation. The _Track_ button hides the track; the
-   choice and the speed are remembered. The File panel on the rail names the
-   sequence, exports the timeline as JSON, imports such a file onto a fresh
-   sheet and clears everything with _New_.
+   dashed ones are still to come, the red playhead sits after the last
+   applied step (it slides along while a step animates), and red hatching
+   marks a step that moves nothing where it now sits. Playing stops at the end
+   of the current step when you press pause, P or Esc. Clicking a clip selects
+   it and jumps to the end of that step; dragging on the ruler scrubs from
+   step to step; dragging a clip moves it; double-clicking renames it; the
+   right-click menu renames, duplicates, moves and deletes. The _Track_
+   button hides the track; the choice and the speed are remembered. The File
+   panel on the rail names the sequence, exports the timeline as JSON,
+   imports such a file onto a fresh sheet and clears everything with _New_.
 8. **Read the stack.** The Layers card draws the folded sheet from the front
    with each layer lifted by the _Gap_ slider; set it to zero for a plain side
    view. Move the pointer over a facet in the Unfolded or Layers view to see
@@ -131,7 +141,10 @@ Keyboard shortcuts:
 
 | Key                     | Action                                          |
 | ----------------------- | ----------------------------------------------- |
-| Ctrl+Z (Cmd+Z on macOS) | Undo the last fold (same as one step back)      |
+| Ctrl+Z (Cmd+Z on macOS) | Undo the last edit of the timeline              |
+| Ctrl+Shift+Z / Ctrl+Y   | Redo an edit                                    |
+| Delete                  | Delete the selected step                        |
+| F2                      | Rename the selected step                        |
 | Esc                     | Cancel the fold line you are drawing or placing |
 | F                       | Fit the folded sheet into view                  |
 | 0                       | Show the whole sheet                            |
