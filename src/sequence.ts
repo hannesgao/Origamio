@@ -21,13 +21,29 @@ export interface FoldStep {
   readonly label?: string;
 }
 
-/** The sheet a sequence is folded from. Sides are in sheet units; the longer side is usually 1. */
+/**
+ * The sheet a sequence is folded from. Sides are in sheet units (the longer
+ * side is usually 1); the colours are CSS hex colours of the two faces.
+ */
 export interface Paper {
   readonly width: number;
   readonly height: number;
+  readonly front: string;
+  readonly back: string;
 }
 
-export const DEFAULT_PAPER: Paper = { width: 1, height: 1 };
+export const DEFAULT_FRONT = '#e8923a';
+export const DEFAULT_BACK = '#7a3f12';
+export const DEFAULT_PAPER: Paper = {
+  width: 1,
+  height: 1,
+  front: DEFAULT_FRONT,
+  back: DEFAULT_BACK,
+};
+
+const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
+export const isHexColour = (value: unknown): value is string =>
+  typeof value === 'string' && HEX_COLOUR.test(value);
 
 export interface Sequence {
   readonly name: string;
@@ -60,7 +76,12 @@ export interface SequenceJson {
   readonly version: typeof SEQUENCE_VERSION;
   readonly name: string;
   readonly description?: string;
-  readonly paper?: { readonly width: number; readonly height: number };
+  readonly paper?: {
+    readonly width: number;
+    readonly height: number;
+    readonly front?: string;
+    readonly back?: string;
+  };
   readonly steps: readonly StepJson[];
 }
 
@@ -98,7 +119,14 @@ export function sequenceToJson(sequence: Sequence): SequenceJson {
     name: sequence.name,
     ...(sequence.description ? { description: sequence.description } : {}),
     ...(sequence.paper
-      ? { paper: { width: round(sequence.paper.width), height: round(sequence.paper.height) } }
+      ? {
+          paper: {
+            width: round(sequence.paper.width),
+            height: round(sequence.paper.height),
+            front: sequence.paper.front.toLowerCase(),
+            back: sequence.paper.back.toLowerCase(),
+          },
+        }
       : {}),
     steps: sequence.steps.map(stepToJson),
   };
@@ -237,7 +265,12 @@ export function parseSequence(input: unknown): Sequence {
     if (!side(width) || !side(height)) {
       return fail('sequence.paper', `expected sides between 0 and ${MAX_PAPER_SIDE}`);
     }
-    paper = { width, height };
+    const front = paperValue['front'] ?? DEFAULT_FRONT;
+    const back = paperValue['back'] ?? DEFAULT_BACK;
+    if (!isHexColour(front) || !isHexColour(back)) {
+      return fail('sequence.paper', 'expected front and back as hex colours like #e8923a');
+    }
+    paper = { width, height, front: front.toLowerCase(), back: back.toLowerCase() };
   }
   return {
     name: name.trim(),

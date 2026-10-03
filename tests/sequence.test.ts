@@ -74,11 +74,27 @@ describe('sequence JSON', () => {
   });
 
   it('carries the paper and defaults to the unit square', () => {
-    const sequence = { name: 'Rect', paper: { width: 1, height: 0.75 }, steps: [half] };
+    const sequence = {
+      name: 'Rect',
+      paper: { width: 1, height: 0.75, front: '#D7263D', back: '#f6f1e7' },
+      steps: [half],
+    };
     const text = serializeSequence(sequence);
     expect(text).toContain('"paper": {');
     const parsed = parseSequence(text);
-    expect(parsed.paper).toEqual({ width: 1, height: 0.75 });
+    expect(parsed.paper).toEqual({ width: 1, height: 0.75, front: '#d7263d', back: '#f6f1e7' });
+    // Colours default when a file only names the size.
+    const sizeOnly = parseSequence({
+      format: 'origamio-sequence',
+      version: 1,
+      name: 's',
+      paper: { width: 1, height: 1 },
+      steps: [],
+    });
+    expect(sizeOnly.paper).toEqual({ width: 1, height: 1, front: '#e8923a', back: '#7a3f12' });
+    expect(() =>
+      parseSequence({ ...sequenceToJson(sequence), paper: { width: 1, height: 1, front: 'red' } }),
+    ).toThrow('hex colours');
     expect(
       parseSequence(serializeSequence({ name: 'Square', steps: [half] })).paper,
     ).toBeUndefined();

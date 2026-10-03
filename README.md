@@ -29,10 +29,12 @@ reflections and convex polygon clipping.
   and then fold one of three kinds of corner: the loose corner where the four
   sheet corners stack, the corner where both folded edges meet, and a corner
   with a single folded edge.
-- **Any sheet shape.** The Paper panel offers square, A series, 4:3, 3:2 and
-  16:9 sheets, a custom width and height, and a rotate button. Changing the
-  paper rewinds to the flat sheet and keeps every step on the timeline; the
-  size is part of every exported file and is restored on import.
+- **Any sheet shape and colour.** The Paper panel offers square, A series,
+  4:3, 3:2 and 16:9 sheets, a custom width and height, a rotate button, six
+  face-colour pairs and two colour pickers. Changing the size rewinds to the
+  flat sheet and keeps every step on the timeline; changing colours is
+  instant. Size and colours are part of every exported file and are restored
+  on import.
 - **A crane.** The _Crane_ preset plays the classic sequence in 21 folds:
   pre-crease the diagonals, fold the preliminary base, petal fold both sides
   into the bird base, narrow the points, close the model along its centre
@@ -237,9 +239,11 @@ mutated, so a fold that moves nothing is rejected without changing history.
 Presets live in `presets/*.json` and anything you fold can be exported to the
 same format: a project file that holds the sheet and every step. A file is an
 object with `format` `"origamio-sequence"`, `version` `1`, a `name`, an
-optional `description`, an optional `paper` (`{ "width": 1, "height": 0.75 }`
-in sheet units, sides between 0 and 10; omitted means the unit square) and a
-list of `steps`.
+optional `description`, an optional `paper` and a list of `steps`. `paper`
+holds `width` and `height` in sheet units (sides between 0 and 10) and the
+face colours `front` and `back` as hex colours; a missing `paper` means the
+unit square in the default orange and brown, and missing colours default the
+same way.
 Every step is one call of `fold` on the sheet as it is at that moment:
 
 ```json

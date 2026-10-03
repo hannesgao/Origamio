@@ -28,6 +28,7 @@ export const VIEW_SIZE = 400;
 /** Padding around the sheet, in sheet units. */
 export const VIEW_PADDING = 0.1;
 
+/** Default face colours; the live ones are the --paper-front and --paper-back CSS variables. */
 export const FRONT_COLOR = '#e8923a';
 export const BACK_COLOR = '#7a3f12';
 export const CREASE_COLOR = '#c0392b';
@@ -111,7 +112,8 @@ export const viewBox = (width: number, height = width): string =>
 export const pointsAttr = (poly: Polygon, size: number): string =>
   poly.map((p) => `${fmt(p.x)},${fmt(size - p.y)}`).join(' ');
 
-const facetFill = (flipped: boolean): string => (flipped ? BACK_COLOR : FRONT_COLOR);
+const facetFill = (flipped: boolean): string =>
+  flipped ? 'var(--paper-back)' : 'var(--paper-front)';
 
 function facetMarkup(
   id: number,
@@ -124,7 +126,7 @@ function facetMarkup(
   return `<polygon class="facet ${flipped ? 'facet-back' : 'facet-front'} ${extraClass}" data-id="${id}" points="${pointsAttr(
     poly,
     size,
-  )}" fill="${facetFill(flipped)}" />`;
+  )}" style="fill:${facetFill(flipped)}" />`;
 }
 
 /** A segment of `line` long enough to cross the whole view. */
@@ -319,7 +321,7 @@ export function renderLayers(state: PaperState, options: LayerViewOptions): Laye
     parts.push(
       `<polygon class="${classes.join(' ')}" data-id="${d.facet.id}" points="${screen
         .map((p) => `${fmt(p.x)},${fmt(p.y)}`)
-        .join(' ')}" fill="${facetFill(d.flipped)}" />`,
+        .join(' ')}" style="fill:${facetFill(d.flipped)}" />`,
     );
   }
   const box =
