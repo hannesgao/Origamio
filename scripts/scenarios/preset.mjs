@@ -4,7 +4,9 @@
  *
  *   SHOT_PRESET=crane node scripts/screenshot.mjs --out shots --scenario scripts/scenarios/preset.mjs
  */
-export default async function (page, { shot }) {
+import { join } from 'node:path';
+
+export default async function (page, { shot, out }) {
   const preset = process.env.SHOT_PRESET ?? 'crane';
   await page.click(`[data-preset="${preset}"]`);
   await page.keyboard.press('End');
@@ -12,7 +14,5 @@ export default async function (page, { shot }) {
   await page.keyboard.press('f');
   await page.waitForTimeout(200);
   await shot(`${preset}-page`);
-  await page
-    .locator('.folded-view')
-    .screenshot({ path: `${process.cwd()}/shots/${preset}-folded.png` });
+  await page.locator('.folded-view').screenshot({ path: join(out, `${preset}-folded.png`) });
 }
