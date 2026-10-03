@@ -54,24 +54,26 @@ reflections and convex polygon clipping.
 - **Three layouts.** The header switches between _Folded large_ (the
   default: a big folded view with the other two stacked beside it), _Side by
   side_ (all three views in a row) and _Focus_ (one view at a time, chosen
-  with a tab strip), and the _Library_ button hides the preset panel. The Unfolded and Layers cards each
+  with a tab strip). The Unfolded and Layers cards each
   have a chevron that collapses them to their header; in the folded-large
   layout the remaining card then takes the whole column. All of these choices
   are remembered in the browser.
-- **Made for wide screens.** From 1340 px up the three sheets share one row
-  and their size follows the window height, so a 16:9 display shows everything
-  without scrolling; on screens under 1000 px tall the sidebar turns compact
-  (preset descriptions become tooltips). Narrower windows show one view at a
-  time behind Folded / Unfolded / Layers tabs, and on phones the playback
-  controls stay fixed at the bottom of the screen.
+- **Made for wide screens.** Header, rail and dock are fixed and the views
+  are sized to the remaining space, so nothing scrolls on a 16:9 display.
+  Windows narrower than 1340 px show one view at a time behind Folded /
+  Unfolded / Layers tabs and float the panels over the workspace; on phones
+  the playback controls sit at the bottom edge.
 
 ## Using the simulator
 
-The page is a workbench: a slim header with the layout switch and the library
-toggle, a library of presets on the left, the folded sheet as the main view
-with the crease pattern and the layer view beside it, and the timeline
-underneath. Everything you operate on is in the Folded card: the drag tool,
-the layer selection, zoom, the status line and the statistics.
+The page is a workbench that fills the window and never scrolls as a whole: a
+fixed header with the layout switch, an icon rail on the left whose buttons
+open the Library (presets), File (name, import, export, new) and Shortcuts
+panels, the workspace with the folded sheet as the main view and the crease
+pattern and layer view beside it, and a dock at the bottom with the playback
+controls and the step track, which can be hidden. The views size themselves
+to the space that is left. Everything you operate on is in the Folded card:
+the drag tool, the layer selection, zoom, the status line and the statistics.
 
 1. **Draw a fold line.** Press on the folded sheet, drag, and release. A dashed
    blue line shows where the fold will go; drags shorter than 2 % of the sheet
@@ -85,22 +87,21 @@ the layer selection, zoom, the status line and the statistics.
 4. **Watch the result.** The status line under the folded sheet tells you
    which step you are in, and the statistics beneath it (folds, maximum
    layers, facets, layers under the cursor) update after every fold.
-5. **Try a preset.** The Library lists the presets; clicking one loads its
-   steps onto the timeline from a flat sheet, where you step through or play
-   them. The _Library_ button in the header hides the panel.
-6. **Replay and share.** The Timeline card shows the steps as clips on a
-   track: filled clips are applied, dashed ones are still to come, and the red
-   playhead sits after the last applied step (it slides along while a step
-   animates). The transport buttons go to the start, one step back, play or
-   pause, one step forward, and to the end; the speed menu runs playback at a
-   quarter speed up to four times. Playing stops at the end of the current
-   step when you press pause, P or Esc. Clicking a clip jumps to the end of
-   that step and dragging on the ruler scrubs from step to step, both without
-   animation. Presets and imported files only load their steps. _Export_
-   saves the timeline as JSON, _Import_ loads such a file onto a fresh sheet,
-   _New_ clears everything. The name field becomes the file name. The arrow
-   button at the right collapses the timeline to its header; the choice and
-   the speed are remembered.
+5. **Try a preset.** The Library panel (first button on the rail) lists the
+   presets; clicking one loads its steps onto the timeline from a flat sheet,
+   where you step through or play them. Esc or the × closes the panel.
+6. **Replay and share.** The dock at the bottom holds the transport buttons
+   (start, one step back, play or pause, one step forward, end), the speed
+   menu (a quarter speed up to four times), the position and a status line.
+   Below it the track shows the steps as clips: filled clips are applied,
+   dashed ones are still to come, and the red playhead sits after the last
+   applied step (it slides along while a step animates). Playing stops at the
+   end of the current step when you press pause, P or Esc. Clicking a clip
+   jumps to the end of that step and dragging on the ruler scrubs from step to
+   step, both without animation. The _Track_ button hides the track; the
+   choice and the speed are remembered. The File panel on the rail names the
+   sequence, exports the timeline as JSON, imports such a file onto a fresh
+   sheet and clears everything with _New_.
 7. **Read the stack.** The Layers card draws the folded sheet from the front
    with each layer lifted by the _Gap_ slider; set it to zero for a plain side
    view. Move the pointer over a facet in the Unfolded or Layers view to see
