@@ -99,7 +99,14 @@ function reexecOnWindows() {
   if (args.dark) forwarded.push('--dark');
   if (args['full-page']) forwarded.push('--full-page');
   log('running under Windows node.exe with the Chrome installed on Windows');
-  const child = spawn(nodeExe, forwarded, { stdio: 'inherit' });
+  // WSL only hands environment variables to Windows programs when WSLENV lists
+  // them; forward every SHOT_* variable so scenarios can read their options.
+  const shotVars = Object.keys(process.env).filter((key) => key.startsWith('SHOT_'));
+  const wslenv = [process.env['WSLENV'], ...shotVars].filter(Boolean).join(':');
+  const child = spawn(nodeExe, forwarded, {
+    stdio: 'inherit',
+    env: { ...process.env, WSLENV: wslenv },
+  });
   child.on('exit', (code) => process.exit(code ?? 1));
 }
 
