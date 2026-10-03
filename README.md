@@ -29,6 +29,12 @@ reflections and convex polygon clipping.
   and then fold one of three kinds of corner: the loose corner where the four
   sheet corners stack, the corner where both folded edges meet, and a corner
   with a single folded edge.
+- **A crane.** The _Crane_ preset plays the classic sequence in 21 folds:
+  pre-crease the diagonals, fold the preliminary base, petal fold both sides
+  into the bird base, narrow the points, close the model along its centre
+  line, reverse fold the neck, the tail and the head, and fold the wings
+  down. The result is the flat crane of the diagrams, lying on its side,
+  before the wings are spread.
 - **Layer view.** A third card shows the folded stack obliquely with every
   layer lifted a little, so the stacking order is visible at a glance; a slider
   sets the gap. While a flap is folding it rises out of the plane. Pointing at
@@ -128,25 +134,31 @@ It is represented as a set of _facets_ (`src/paper.ts`):
 A fold `fold(state, line, side, layers)` works as follows:
 
 1. `line` is given in the **folded** coordinate system, `side` says which
-   half-plane flips over, and `layers` is either `all` or "the top _k_ layers".
-   A facet belongs to the top _k_ layers when fewer than _k_ distinct layers
-   lie above it at its current position.
+   half-plane flips over, and `layers` is `all`, "the top _k_ layers" or "the
+   bottom _k_ layers". A facet belongs to the top _k_ layers when fewer than
+   _k_ distinct layers lie above it at its current position. The selection can
+   be narrowed further to facets inside a convex `region` of the unfolded
+   sheet or a convex `window` of the folded sheet; scripted sequences use
+   this to fold one named part of the paper.
 2. Each selected facet is cut by the line. The line is pulled back into the
    facet's own coordinates through the inverse transform, and the polygon is
    clipped into the part that stays and the part that moves.
 3. The moving part gets the reflection across the fold line composed onto its
    `transform` (`reflection ∘ transform`). The staying part keeps its transform.
    Both keep their polygons in unfolded coordinates.
-4. All moved facets are placed on top of the stack with their layer order
-   reversed, exactly as a real flap would land.
+4. The moved facets are placed according to `placement`: on `top` of the
+   stack with their layer order reversed, exactly as a real flap would land;
+   at the `bottom`, the mirror image of that, for a fold made on the back of
+   the model; or `inside`, between the layers they were cut from, which is
+   what an inside reverse fold does to a point.
 5. Every facet that was actually cut records a crease: the chord of the fold
    line inside the facet, stored in unfolded coordinates.
 
 Because every facet keeps its unfolded polygon, the unfolded view is simply
 every `poly` plus every crease segment. The number of faces is the number of
-facets, and the maximum number of layers is the largest number of facets whose
-folded polygons share a common region (computed exactly with convex polygon
-intersection).
+facets, and the maximum number of layers is the depth of the deepest cell in
+the arrangement of all facet edges, found by probing just inside every
+arrangement vertex.
 
 Facet transforms are compositions of reflections, so their determinant is
 −1 whenever the facet currently shows its back side; the renderer uses that to
@@ -164,7 +176,8 @@ mutated, so a fold that moves nothing is rejected without changing history.
 | `src/geometry.ts` | Vectors, lines, affine transforms, reflections, convex clipping and intersection |
 | `src/paper.ts`    | Facet model, `fold`, layer selection, statistics, undo history                   |
 | `src/render.ts`   | SVG markup for the three views, the fold animation and the folded-view camera    |
-| `src/ui.ts`       | Page layout, toolbar, pointer interaction, animation loop, presets, shortcuts    |
+| `src/presets.ts`  | Scripted fold sequences, including the crane                                     |
+| `src/ui.ts`       | Page layout, toolbar, pointer interaction, animation loop, shortcuts             |
 | `src/style.css`   | Theme tokens (light and dark), layout, controls and SVG styling                  |
 | `tests/`          | Vitest specs for geometry, paper model, camera and layer view, plus fold presets |
 
