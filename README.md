@@ -364,6 +364,26 @@ Conventions that the checks enforce:
   attribution footers and trailers. The repository also carries no
   configuration files for editor assistants or AI tools.
 
+### Releasing
+
+Every merge to `main` deploys; a release marks a version worth naming. The
+`release` workflow enforces the only rule that matters (the tag must equal
+`v` + the version in `package.json`) and attaches the built site to the
+release as `origamio-<version>.zip`, for anyone who wants to host it
+themselves.
+
+1. Open a pull request that bumps `version` in `package.json` (the status bar
+   shows it) and merge it.
+2. On GitHub, draft a new release: create the tag `v<version>` on `main`, write
+   the notes (what changed, known limitations, anything about the sequence
+   file format) and publish.
+3. Publishing runs the `release` workflow, which builds from the tag and
+   uploads the zip. It can also be run by hand from the Actions tab for an
+   existing tag.
+
+Sequence files are versioned separately from the application: format
+version 1 is stable, and any later version will read it.
+
 ## License
 
 MIT. Copyright (c) 2026 Hannes Gao. See [LICENSE](LICENSE).
