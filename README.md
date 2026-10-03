@@ -193,6 +193,22 @@ npm run build
 `npm run format` rewrites files in place. The `ci` workflow runs exactly these
 commands on every pull request and on every push to `main`.
 
+### Deployment
+
+The site is served from Cloudflare Workers as static assets; `wrangler.jsonc`
+names the Worker (`origamio`) and points it at `dist/`. The `deploy` workflow
+builds and deploys every push to `main` through the Wrangler CLI, using two
+repository secrets: `CLOUDFLARE_API_TOKEN` (an API token with the _Edit
+Cloudflare Workers_ template) and `CLOUDFLARE_ACCOUNT_ID`. To deploy from a
+machine instead:
+
+```sh
+npx wrangler login   # once; opens the browser
+npm run deploy       # build, then upload dist/ as the Worker's assets
+```
+
+`npx wrangler deploy --dry-run` checks the configuration without uploading.
+
 ### Screenshots
 
 Browser screenshots for pull requests and visual checks go through one helper,
