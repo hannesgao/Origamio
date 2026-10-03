@@ -51,10 +51,11 @@ reflections and convex polygon clipping.
   timeline until a new fold by hand replaces them. The whole timeline can be
   saved as a JSON file and loaded again later; the presets ship in the same
   format.
-- **Three layouts.** The header switches between _Side by side_ (all three
-  views in a row), _Folded large_ (a big folded view with the other two
-  stacked beside it) and _Focus_ (only the folded view), and the _Controls_
-  button hides the sidebar. Both choices are remembered in the browser.
+- **Three layouts.** The header switches between _Folded large_ (the
+  default: a big folded view with the other two stacked beside it), _Side by
+  side_ (all three views in a row) and _Focus_ (only the folded view), and the
+  _Library_ button hides the preset panel. Both choices are remembered in the
+  browser.
 - **Made for wide screens.** From 1340 px up the three sheets share one row
   and their size follows the window height, so a 16:9 display shows everything
   without scrolling; on screens under 1000 px tall the sidebar turns compact
@@ -64,9 +65,11 @@ reflections and convex polygon clipping.
 
 ## Using the simulator
 
-The page has a header with the Undo and Reset actions, a sidebar with the
-controls and statistics, and two cards showing the folded sheet and the
-unfolded crease pattern.
+The page is a workbench: a slim header with the layout switch and the library
+toggle, a library of presets on the left, the folded sheet as the main view
+with the crease pattern and the layer view beside it, and the timeline
+underneath. Everything you operate on is in the Folded card: the drag tool,
+the layer selection, zoom, the status line and the statistics.
 
 1. **Draw a fold line.** Press on the folded sheet, drag, and release. A dashed
    blue line shows where the fold will go; drags shorter than 2 % of the sheet
@@ -74,15 +77,15 @@ unfolded crease pattern.
 2. **Choose the side.** Move the pointer over either side of the line; the side
    that would flip is shaded. Click to fold it over. Press Esc to discard the
    line instead.
-3. **Pick how many layers move.** The _Layers to fold_ control applies to the
-   next fold: _All layers_ folds the whole stack, _Top n_ folds only the facets
-   that have fewer than _n_ distinct layers above them.
-4. **Watch the result.** The status bar under the folded sheet tells you which
-   step you are in, and the statistic tiles update after every fold. Hovering
-   over the folded sheet shows how many layers lie under the cursor.
-5. **Try a preset.** Each preset starts from a flat sheet and plays its folds
-   one after another with the animation. Buttons are disabled while a fold is
-   animating.
+3. **Pick how many layers move.** The _All / Top n_ control in the Folded
+   toolbar applies to the next fold: _All_ folds the whole stack, _Top n_
+   folds only the facets that have fewer than _n_ distinct layers above them.
+4. **Watch the result.** The status line under the folded sheet tells you
+   which step you are in, and the statistics beneath it (folds, maximum
+   layers, facets, layers under the cursor) update after every fold.
+5. **Try a preset.** The Library lists the presets; clicking one loads its
+   steps onto the timeline from a flat sheet, where you step through or play
+   them. The _Library_ button in the header hides the panel.
 6. **Replay and share.** The Timeline card shows the steps as clips on a
    track: filled clips are applied, dashed ones are still to come, and the red
    playhead sits after the last applied step (it slides along while a step
@@ -112,7 +115,7 @@ Keyboard shortcuts:
 
 | Key                     | Action                                          |
 | ----------------------- | ----------------------------------------------- |
-| Ctrl+Z (Cmd+Z on macOS) | Undo the last fold                              |
+| Ctrl+Z (Cmd+Z on macOS) | Undo the last fold (same as one step back)      |
 | Esc                     | Cancel the fold line you are drawing or placing |
 | F                       | Fit the folded sheet into view                  |
 | 0                       | Show the whole sheet                            |

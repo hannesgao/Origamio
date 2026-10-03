@@ -83,7 +83,6 @@ function svgElement(size: number, className: string): SVGSVGElement {
   return svg;
 }
 
-const UNDO_ICON = '<path d="M7.5 5.5 4 9l3.5 3.5" /><path d="M4 9h7.5a4 4 0 0 1 0 8H9" />';
 const FIT_ICON =
   '<path d="M3 7V4a1 1 0 0 1 1-1h3M13 3h3a1 1 0 0 1 1 1v3M17 13v3a1 1 0 0 1-1 1h-3M7 17H4a1 1 0 0 1-1-1v-3" />' +
   '<rect x="7" y="7" width="6" height="6" rx="1" />';
@@ -108,7 +107,6 @@ const IMPORT_ICON = '<path d="M10 3v10" /><path d="m6 9 4 4 4-4" /><path d="M4 1
 const EXPORT_ICON = '<path d="M10 13V3" /><path d="m6 7 4-4 4 4" /><path d="M4 16h12" />';
 const NEW_ICON = '<path d="M10 4v12" /><path d="M4 10h12" />';
 const COLLAPSE_ICON = '<path d="m5 8 5 5 5-5" />';
-const RESET_ICON = '<path d="M4.5 10a5.5 5.5 0 1 0 1.6-3.9" /><path d="M4.5 3.5V7H8" />';
 
 /** A small inline icon drawn with strokes in the current text colour. */
 function icon(paths: string): SVGSVGElement {
@@ -206,7 +204,7 @@ export function createApp(root: HTMLElement): App {
   const rememberedLayout = remembered(LAYOUT_KEY);
   let layout: Layout = LAYOUTS.some((l) => l.id === rememberedLayout)
     ? (rememberedLayout as Layout)
-    : 'side-by-side';
+    : 'folded-large';
   let sidebarHidden = remembered(SIDEBAR_KEY) === 'hidden';
   let timelineCollapsed = remembered(TIMELINE_KEY) === 'collapsed';
   const rememberedSpeed = Number(remembered(SPEED_KEY));
@@ -244,8 +242,8 @@ export function createApp(root: HTMLElement): App {
   );
   const sidebarButton = el(
     'button',
-    { type: 'button', class: 'btn', 'aria-pressed': 'true', title: 'Show or hide the controls' },
-    [icon(SIDEBAR_ICON), el('span', { class: 'btn-label' }, ['Controls'])],
+    { type: 'button', class: 'btn', 'aria-pressed': 'true', title: 'Show or hide the library' },
+    [icon(SIDEBAR_ICON), el('span', { class: 'btn-label' }, ['Library'])],
   );
   const layoutSwitch = el(
     'div',
@@ -253,16 +251,6 @@ export function createApp(root: HTMLElement): App {
     layoutButtons,
   );
 
-  const undoButton = el('button', { type: 'button', class: 'btn', title: 'Undo the last fold' }, [
-    icon(UNDO_ICON),
-    'Undo',
-    el('kbd', {}, ['Ctrl Z']),
-  ]);
-  const resetButton = el(
-    'button',
-    { type: 'button', class: 'btn', title: 'Back to the flat sheet' },
-    [icon(RESET_ICON), 'Reset'],
-  );
   const presetButtons = LIBRARY.map(({ id, sequence }) =>
     el(
       'button',
@@ -366,9 +354,11 @@ export function createApp(root: HTMLElement): App {
   const statFacets = el('span', { class: 'stat-value' }, ['1']);
   const statCursor = el('span', { class: 'stat-value' }, ['–']);
   const hint = el('span', { class: 'status-text' });
+  const statsRow = el('div', { class: 'stats-row' });
   const statusBar = el('div', { class: 'status-bar', role: 'status', 'aria-live': 'polite' }, [
     el('span', { class: 'status-dot' }),
     hint,
+    statsRow,
   ]);
 
   const toolFold = el(
@@ -394,11 +384,24 @@ export function createApp(root: HTMLElement): App {
   const zoomReadout = el('span', { class: 'zoom', title: 'Zoom; scroll on the sheet to change' }, [
     '100%',
   ]);
+  const layerControl = el(
+    'fieldset',
+    {
+      class: 'segmented segmented-compact',
+      title:
+        'Layers moved by the next fold: all of them, or only the top n (a facet is in the top n when fewer than n layers lie above it)',
+    },
+    [
+      el('label', { class: 'seg' }, [layerAll, el('span', {}, ['All'])]),
+      el('label', { class: 'seg' }, [layerTop, el('span', {}, ['Top']), layerCount]),
+    ],
+  );
   const viewTools = el('div', { class: 'card-tools' }, [
     el('div', { class: 'tool-toggle', role: 'group', 'aria-label': 'Drag tool' }, [
       toolFold,
       toolMove,
     ]),
+    layerControl,
     fitButton,
     fullButton,
     zoomReadout,
@@ -418,6 +421,13 @@ export function createApp(root: HTMLElement): App {
 
   const stat = (value: HTMLElement, label: string): HTMLElement =>
     el('div', { class: 'stat' }, [value, el('span', { class: 'stat-label' }, [label])]);
+
+  statsRow.append(
+    stat(statFolds, 'folds'),
+    stat(statLayers, 'max layers'),
+    stat(statFacets, 'facets'),
+    stat(statCursor, 'under cursor'),
+  );
 
   const card = (
     title: string,
@@ -448,35 +458,11 @@ export function createApp(root: HTMLElement): App {
           el('p', {}, ['Fold a square sheet along any line and watch the creases appear.']),
         ]),
       ]),
-      el('div', { class: 'actions' }, [layoutSwitch, sidebarButton, undoButton, resetButton]),
+      el('div', { class: 'actions' }, [layoutSwitch, sidebarButton]),
     ]),
     el('div', { class: 'workspace' }, [
       el('aside', { class: 'sidebar' }, [
-        card(
-          'Layers to fold',
-          '',
-          el('div', {}, [
-            el('fieldset', { class: 'segmented' }, [
-              el('label', { class: 'seg' }, [layerAll, el('span', {}, ['All layers'])]),
-              el('label', { class: 'seg' }, [layerTop, el('span', {}, ['Top']), layerCount]),
-            ]),
-            el('p', { class: 'help' }, [
-              'Applies to the next fold you draw. A facet counts as a top layer when fewer than ',
-              'that many layers lie above it.',
-            ]),
-          ]),
-        ),
-        card('Presets', '', el('div', { class: 'preset-list' }, presetButtons)),
-        card(
-          'Statistics',
-          '',
-          el('div', { class: 'stats' }, [
-            stat(statFolds, 'Folds'),
-            stat(statLayers, 'Max layers'),
-            stat(statFacets, 'Facets unfolded'),
-            stat(statCursor, 'Layers under cursor'),
-          ]),
-        ),
+        card('Library', '', el('div', { class: 'preset-list' }, presetButtons)),
       ]),
       el('main', { class: 'views' }, [
         card(
@@ -634,8 +620,6 @@ export function createApp(root: HTMLElement): App {
       statLayers.textContent = String(maxLayers(state));
       statFacets.textContent = String(facetCount(state));
     }
-    undoButton.disabled = !history.canUndo || phase.kind === 'animating';
-    resetButton.disabled = phase.kind === 'animating';
     for (const button of presetButtons) button.disabled = phase.kind === 'animating';
     foldedSvg.dataset['phase'] = phase.kind;
     statusBar.dataset['phase'] = phase.kind;
@@ -1113,8 +1097,6 @@ export function createApp(root: HTMLElement): App {
     camera = defaultCamera(history.state.size);
     render();
   };
-  undoButton.addEventListener('click', undo);
-  resetButton.addEventListener('click', reset);
   presetButtons.forEach((button, i) => {
     button.addEventListener('click', () => {
       const entry = LIBRARY[i];

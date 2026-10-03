@@ -193,7 +193,7 @@ input {
 }
 
 #app[data-layout='focus'] .folded-card {
-  max-width: calc(var(--view-max) + 26px);
+  max-width: max(calc(var(--view-max) + 26px), 760px);
   margin: 0 auto;
   width: 100%;
 }
@@ -205,7 +205,7 @@ input {
 
 /* Folded large: the folded sheet takes two thirds, the other two stack beside it. */
 #app[data-layout='folded-large'] .views {
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
 }
 
 #app[data-layout='folded-large'] .folded-card {
@@ -227,7 +227,7 @@ input {
 
 /* The two small views stack beside it within the same height. */
 #app[data-layout='folded-large'] .view-card:not(.folded-card) .view-frame {
-  width: min(100%, calc(var(--view-max) / 2 - 64px));
+  width: min(100%, max(96px, calc(var(--view-max) / 2 - 64px)));
 }
 
 /* --- Buttons --------------------------------------------------------------- */
@@ -302,7 +302,7 @@ kbd {
 
 .workspace {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
@@ -512,32 +512,6 @@ kbd {
 }
 
 /* --- Statistics ------------------------------------------------------------ */
-
-.stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.stat {
-  display: grid;
-  gap: 2px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
-}
-
-.stat-value {
-  font-family: var(--font-display);
-  font-size: 1.6rem;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-label {
-  font-size: 0.78rem;
-  color: var(--muted);
-}
 
 /* --- Views ----------------------------------------------------------------- */
 
@@ -997,6 +971,78 @@ kbd {
   overflow: hidden;
 }
 
+/* --- Compact layer control in the folded toolbar --------------------------- */
+
+.segmented-compact {
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+}
+
+.segmented-compact .seg {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 0.82rem;
+  gap: 4px;
+}
+
+.segmented-compact .seg input[type='number'] {
+  width: 2.6em;
+  padding: 1px 4px;
+  font-size: 0.8rem;
+}
+
+/* --- Statistics under the folded sheet ------------------------------------- */
+
+.stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-left: auto;
+  padding-top: 2px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.stats-row .stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.stats-row .stat-value {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.status-bar .status-text {
+  flex: 1 1 14em;
+}
+
+/* A narrow folded card (side by side on a laptop) has no room for the statistics. */
+.folded-card {
+  container-type: inline-size;
+}
+
+@container (max-width: 430px) {
+  .stats-row {
+    display: none;
+  }
+}
+
+/* Side by side gives the folded card a narrow head: icons only, no zoom readout. */
+#app[data-layout='side-by-side'] .folded-card .btn-label,
+#app[data-layout='side-by-side'] .folded-card .zoom {
+  display: none;
+}
+
+#app[data-layout='side-by-side'] .folded-card .btn-sm {
+  gap: 0;
+}
+
 /* --- SVG content ----------------------------------------------------------- */
 
 /* Each facet is translucent so the colour darkens with every layer stacked on top. */
@@ -1077,7 +1123,7 @@ kbd {
 /* Wide screens: the three sheets share one row and the layer view turns square. */
 @media (min-width: 1340px) {
   .workspace {
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: 240px minmax(0, 1fr);
   }
 
   .views {
@@ -1120,7 +1166,7 @@ kbd {
   }
 
   #app[data-timeline='shown'] {
-    --view-max: calc(100vh - 355px);
+    --view-max: calc(100vh - 392px);
   }
 
   /* The layer view's explanation is in the README; the row needs the height. */
@@ -1182,25 +1228,6 @@ kbd {
   /* The descriptions move into the buttons' tooltips. */
   .preset-desc {
     display: none;
-  }
-
-  .stats {
-    gap: 6px;
-  }
-
-  .stat {
-    padding: 6px 10px;
-    grid-template-columns: auto 1fr;
-    align-items: baseline;
-    column-gap: 8px;
-  }
-
-  .stat-value {
-    font-size: 1.25rem;
-  }
-
-  .stat-label {
-    font-size: 0.7rem;
   }
 }
 
