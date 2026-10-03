@@ -21,6 +21,9 @@
   --unfolded-front: #f3d8b8;
   --unfolded-back: #e0ba8e;
 
+  /* Tallest a sheet view may grow: the viewport minus header, card chrome and gaps. */
+  --view-max: calc(100vh - 230px);
+
   --radius: 14px;
   --radius-sm: 9px;
   --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
@@ -85,7 +88,7 @@ input {
 }
 
 #app {
-  max-width: 1280px;
+  max-width: 1800px;
   margin: 0 auto;
   padding: 20px 20px 40px;
   display: grid;
@@ -504,17 +507,19 @@ kbd {
   grid-column: 1 / -1;
 }
 
-/* Wider than the square views; the selector outranks `.view` on purpose. */
-.view.layers-view {
-  aspect-ratio: 2 / 1;
-}
-
 .view-help {
   margin: 10px 4px 0;
 }
 
+/*
+ * A frame is as wide as its column but never taller than the viewport allows,
+ * so on short, wide screens the height is what sets the size.
+ */
 .view-frame {
   position: relative;
+  width: min(100%, var(--view-max));
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background-color: var(--panel-2);
@@ -523,9 +528,14 @@ kbd {
   overflow: hidden;
 }
 
+.view-frame-wide {
+  width: min(100%, calc(2 * var(--view-max)));
+  aspect-ratio: 2 / 1;
+}
+
 .view {
   width: 100%;
-  aspect-ratio: 1 / 1;
+  height: 100%;
   display: block;
   touch-action: none;
 }
@@ -701,6 +711,100 @@ kbd {
 }
 
 /* --- Responsive ------------------------------------------------------------ */
+
+/* Wide screens: the three sheets share one row and the layer view turns square. */
+@media (min-width: 1340px) {
+  .workspace {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .views {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .view-card-wide {
+    grid-column: auto;
+  }
+
+  .view-frame-wide {
+    width: min(100%, var(--view-max));
+    aspect-ratio: 1 / 1;
+  }
+}
+
+/* Three sheets in a row on a modest width: the view buttons keep only their icons. */
+@media (min-width: 1340px) and (max-width: 1600px) {
+  .view-card .btn-label {
+    display: none;
+  }
+
+  .view-card .btn-sm {
+    gap: 0;
+  }
+}
+
+/* Short screens (16:9 monitors and laptops): tighter spacing and a compact sidebar. */
+@media (max-height: 1000px) and (min-width: 901px) {
+  :root {
+    --view-max: calc(100vh - 200px);
+  }
+
+  #app {
+    padding: 14px 16px;
+    gap: 14px;
+  }
+
+  /* The explanation under the layer control moves into the README. */
+  .sidebar .help {
+    display: none;
+  }
+
+  .workspace,
+  .views {
+    gap: 14px;
+  }
+
+  .sidebar {
+    gap: 12px;
+    top: 14px;
+  }
+
+  .card-head {
+    padding-top: 10px;
+  }
+
+  .card-body {
+    padding-bottom: 14px;
+  }
+
+  .preset {
+    padding: 7px 12px;
+  }
+
+  /* The descriptions move into the buttons' tooltips. */
+  .preset-desc {
+    display: none;
+  }
+
+  .stats {
+    gap: 6px;
+  }
+
+  .stat {
+    padding: 6px 10px;
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    column-gap: 8px;
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
+  }
+
+  .stat-label {
+    font-size: 0.7rem;
+  }
+}
 
 @media (max-width: 900px) {
   .workspace {

@@ -35,8 +35,13 @@ reflections and convex polygon clipping.
   a facet in any view outlines the same facet in the other two, and pointing
   at the folded sheet outlines every facet under the cursor.
 - **Light and dark themes.** The interface follows the operating system's
-  colour scheme and works down to phone widths, where the two sheets stack
-  above the controls.
+  colour scheme.
+- **Made for wide screens.** From 1340 px up the three sheets share one row
+  and their size follows the window height, so a 16:9 display shows everything
+  without scrolling; on screens under 1000 px tall the sidebar turns compact
+  (preset descriptions become tooltips). Narrower windows fall back to two
+  sheets with the layer view below, and phone widths stack the sheets above
+  the controls.
 
 ## Using the simulator
 
