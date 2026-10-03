@@ -31,6 +31,17 @@ describe('camera', () => {
     expect(y).toBeCloseTo(0.75 - 0.6);
   });
 
+  it('widens the view box for a wide frame without cropping the sheet', () => {
+    const [x, y, w, h] = parse(cameraViewBox(1, defaultCamera(1), 2));
+    expect(w).toBeCloseTo(2.4);
+    expect(h).toBeCloseTo(1.2);
+    expect(x).toBeCloseTo(0.5 - 1.2);
+    expect(y).toBeCloseTo(-0.1);
+    const [, , tw, th] = parse(cameraViewBox(1, defaultCamera(1), 0.5));
+    expect(tw).toBeCloseTo(1.2);
+    expect(th).toBeCloseTo(2.4);
+  });
+
   it('halves the visible extent when zooming in twice', () => {
     const camera = { centre: vec(0.25, 0.25), zoom: 2 };
     expect(visibleExtent(1, camera)).toBeCloseTo(0.6);

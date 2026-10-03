@@ -926,11 +926,35 @@ kbd {
 /* --- Layouts ---------------------------------------------------------------- */
 
 #app[data-layout='folded-large'] .views {
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 30%, 560px);
 }
 
-#app[data-layout='folded-large'] .folded-card {
-  grid-row: 1 / span 2;
+/* One secondary view at a time, chosen with the tab strip in its head. */
+#app[data-layout='folded-large'][data-secondary='unfolded'] .layers-card,
+#app[data-layout='folded-large'][data-secondary='layers'] .unfolded-card {
+  display: none;
+}
+
+.secondary-tabs {
+  display: none;
+  margin-right: auto;
+}
+
+#app[data-layout='folded-large'] .secondary-tabs {
+  display: inline-flex;
+}
+
+#app[data-layout='folded-large'] .card-tools .caption {
+  display: none;
+}
+
+/* The main canvas fills its card; JS sets its height from the space available. */
+.folded-card .view-frame {
+  aspect-ratio: auto;
+}
+
+#app[data-layout='side-by-side'] .folded-card .view-frame {
+  aspect-ratio: 1 / 1;
 }
 
 #app[data-layout='folded-large'] .layers-card .view-frame-wide,
@@ -960,31 +984,12 @@ kbd {
 #app[data-layout='focus'] .view-card {
   display: none;
   width: 100%;
-  max-width: 980px;
-  margin: 0 auto;
 }
 
 #app[data-layout='focus'][data-tab='folded'] .folded-card,
 #app[data-layout='focus'][data-tab='unfolded'] .unfolded-card,
 #app[data-layout='focus'][data-tab='layers'] .layers-card {
   display: block;
-}
-
-#app[data-layout='focus'] .card-toggle {
-  display: none;
-}
-
-/* Collapsed secondary cards show only their header. */
-#app[data-card-unfolded='collapsed'] .unfolded-card .card-body,
-#app[data-card-unfolded='collapsed'] .unfolded-card .card-foot,
-#app[data-card-layers='collapsed'] .layers-card .card-body,
-#app[data-card-layers='collapsed'] .layers-card .card-foot {
-  display: none;
-}
-
-#app[data-card-unfolded='collapsed'] .unfolded-card .collapse svg,
-#app[data-card-layers='collapsed'] .layers-card .collapse svg {
-  transform: rotate(180deg);
 }
 
 /* --- Timeline card and footer ---------------------------------------------- */
@@ -1455,24 +1460,12 @@ kbd {
     display: none;
     grid-row: auto;
     width: 100%;
-    max-width: 980px;
-    margin: 0 auto;
   }
 
   #app[data-tab='folded'] .folded-card,
   #app[data-tab='unfolded'] .unfolded-card,
   #app[data-tab='layers'] .layers-card {
     display: block;
-  }
-
-  /* A collapsed card is still the whole tab here. */
-  #app[data-card-unfolded='collapsed'] .unfolded-card .card-body,
-  #app[data-card-layers='collapsed'] .layers-card .card-body {
-    display: block;
-  }
-
-  .card-toggle {
-    display: none;
   }
 
   #app[data-layout] .layers-card .view-frame-wide {

@@ -60,7 +60,6 @@ import {
   renderLayers,
   renderUnfolded,
   viewBox,
-  visibleExtent,
 } from './render';
 
 export const ANIMATION_MS = 800;
@@ -225,13 +224,9 @@ const VIEW_TABS: readonly { readonly id: ViewTab; readonly label: string }[] = [
   { id: 'layers', label: 'Layers' },
 ];
 const TAB_KEY = 'origamio.tab';
-
-/** Secondary view cards that can be collapsed to their header. */
-type CollapsibleCard = 'unfolded' | 'layers';
-const CARD_KEYS: Record<CollapsibleCard, string> = {
-  unfolded: 'origamio.card.unfolded',
-  layers: 'origamio.card.layers',
-};
+/** Which secondary view the tabbed card of the folded-large layout shows. */
+type SecondaryTab = 'unfolded' | 'layers';
+const SECONDARY_KEY = 'origamio.secondary';
 
 /** Read a remembered preference; storage may be unavailable or blocked. */
 function remembered(key: string): string | null {
@@ -314,14 +309,11 @@ export function createApp(root: HTMLElement): App {
     ? (rememberedPanel as Panel)
     : null;
   let drawerOpen = remembered(DRAWER_KEY) !== 'closed';
+  let secondaryTab: SecondaryTab = remembered(SECONDARY_KEY) === 'layers' ? 'layers' : 'unfolded';
   const rememberedTab = remembered(TAB_KEY);
   let activeTab: ViewTab = VIEW_TABS.some((t) => t.id === rememberedTab)
     ? (rememberedTab as ViewTab)
     : 'folded';
-  const cardCollapsed: Record<CollapsibleCard, boolean> = {
-    unfolded: remembered(CARD_KEYS.unfolded) === 'collapsed',
-    layers: remembered(CARD_KEYS.layers) === 'collapsed',
-  };
   const rememberedSpeed = Number(remembered(SPEED_KEY));
   let speed = SPEEDS.includes(rememberedSpeed) ? rememberedSpeed : 1;
   let playing = false;
@@ -648,27 +640,29 @@ export function createApp(root: HTMLElement): App {
     tabButtons,
   );
 
-  const cardToggle = (id: CollapsibleCard, name: string): HTMLButtonElement =>
+  // The folded-large layout shows one secondary view at a time; each card
+  // carries a copy of the tab strip so the visible one can switch.
+  const secondaryStrip = (): HTMLElement =>
     el(
-      'button',
-      {
-        type: 'button',
-        class: 'btn collapse card-toggle',
-        'aria-expanded': 'true',
-        'data-card': id,
-        title: `Collapse the ${name} view`,
-      },
-      [icon(COLLAPSE_ICON)],
+      'div',
+      { class: 'tool-toggle secondary-tabs', role: 'tablist', 'aria-label': 'Secondary view' },
+      (['unfolded', 'layers'] as const).map((id) =>
+        el(
+          'button',
+          { type: 'button', role: 'tab', 'aria-selected': 'false', 'data-secondary': id },
+          [id === 'unfolded' ? 'Unfolded' : 'Layers'],
+        ),
+      ),
     );
-  const unfoldedToggle = cardToggle('unfolded', 'crease pattern');
-  const layersToggle = cardToggle('layers', 'layer');
+  const unfoldedStrip = secondaryStrip();
+  const layersStrip = secondaryStrip();
   const unfoldedTools = el('div', { class: 'card-tools' }, [
+    unfoldedStrip,
     el('span', { class: 'caption' }, ['Crease pattern, live']),
-    unfoldedToggle,
   ]);
   const layerTools = el('div', { class: 'card-tools' }, [
+    layersStrip,
     el('span', { class: 'caption' }, ['Stack, lifted']),
-    layersToggle,
   ]);
 
   const stat = (value: HTMLElement, label: string): HTMLElement =>
@@ -805,9 +799,12 @@ export function createApp(root: HTMLElement): App {
    */
   const fitViews = (): void => {
     const gap = parseFloat(getComputedStyle(viewsGrid).rowGap) || 0;
-    const padding = parseFloat(getComputedStyle(workspace).paddingTop) || 0;
+    const workspaceStyle = getComputedStyle(workspace);
+    const padding =
+      (parseFloat(workspaceStyle.paddingTop) || 0) +
+      (parseFloat(workspaceStyle.paddingBottom) || 0);
     const timelineHeight = timelineCard.offsetParent === null ? 0 : timelineCard.offsetHeight + gap;
-    const height = workspace.clientHeight - 2 * padding - timelineHeight;
+    const height = workspace.clientHeight - padding - timelineHeight;
     const chrome = (cardEl: HTMLElement, frame: HTMLElement): number =>
       cardEl.offsetHeight - frame.offsetHeight;
     /** Content width of the frame's container (its padding excluded). */
@@ -821,12 +818,22 @@ export function createApp(root: HTMLElement): App {
         (parseFloat(style.paddingRight) || 0)
       );
     };
+    /** The main canvas fills its card: as wide as the card, as tall as the budget allows. */
+    const fill = (frame: HTMLElement, budget: number): number => {
+      const width = Math.floor(widthOf(frame));
+      const height = Math.floor(Math.max(160, budget));
+      frame.style.width = `${width}px`;
+      frame.style.height = `${height}px`;
+      frame.closest('.view-card')?.setAttribute('style', `--canvas: ${width}px`);
+      return height;
+    };
     const place = (frame: HTMLElement, side: number, wide: boolean): number => {
       const bounded = Math.max(96, side);
       const width = wide
         ? Math.min(widthOf(frame), 2 * bounded)
         : Math.min(widthOf(frame), bounded);
       frame.style.width = `${Math.floor(width)}px`;
+      frame.style.removeProperty('height');
       // Head and foot of the card line up with the canvas edges.
       frame.closest('.view-card')?.setAttribute('style', `--canvas: ${Math.floor(width)}px`);
       return wide ? Math.floor(width) / 2 : Math.floor(width);
@@ -834,8 +841,10 @@ export function createApp(root: HTMLElement): App {
     const tabsHeight = viewTabs.isConnected ? viewTabs.offsetHeight + gap : 0;
     const single = narrowQuery.matches || layout === 'focus';
     if (single) {
+      if (foldedCard.offsetParent !== null) {
+        fill(foldedFrame, height - tabsHeight - chrome(foldedCard, foldedFrame));
+      }
       for (const [cardEl, frame, wide] of [
-        [foldedCard, foldedFrame, false],
         [unfoldedCard, unfoldedFrame, false],
         [layersCard, layersFrame, true],
       ] as const) {
@@ -858,19 +867,13 @@ export function createApp(root: HTMLElement): App {
       place(layersFrame, side, false);
       return;
     }
-    // folded-large: the two secondary cards together are exactly as tall as the folded card.
-    const big = place(foldedFrame, height - chromeFolded, false);
+    // folded-large: the main canvas fills its column; the tabbed secondary card
+    // beside it fills its own column and is exactly as tall.
+    const big = fill(foldedFrame, height - chromeFolded);
     const column = big + chromeFolded;
-    const open = (['unfolded', 'layers'] as const).filter((id) => !cardCollapsed[id]);
-    const collapsedHeight = (['unfolded', 'layers'] as const)
-      .filter((id) => cardCollapsed[id])
-      .reduce((sum, id) => sum + (id === 'unfolded' ? unfoldedCard : layersCard).offsetHeight, 0);
-    const chromes =
-      (open.includes('unfolded') ? chrome(unfoldedCard, unfoldedFrame) : 0) +
-      (open.includes('layers') ? chrome(layersCard, layersFrame) : 0);
-    const each = (column - gap - collapsedHeight - chromes) / Math.max(1, open.length);
-    if (open.includes('unfolded')) place(unfoldedFrame, each, false);
-    if (open.includes('layers')) place(layersFrame, each, false);
+    const [cardEl, frame] =
+      secondaryTab === 'layers' ? [layersCard, layersFrame] : [unfoldedCard, unfoldedFrame];
+    fill(frame, column - chrome(cardEl, frame));
   };
 
   let fitFrame = 0;
@@ -885,6 +888,12 @@ export function createApp(root: HTMLElement): App {
   const applyLayout = (): void => {
     root.dataset['layout'] = layout;
     root.dataset['tab'] = activeTab;
+    root.dataset['secondary'] = secondaryTab;
+    for (const strip of [unfoldedStrip, layersStrip]) {
+      for (const button of strip.querySelectorAll('button')) {
+        button.setAttribute('aria-selected', String(button.dataset['secondary'] === secondaryTab));
+      }
+    }
     root.dataset['panel'] = openPanel ?? 'closed';
     root.dataset['drawer'] = drawerOpen ? 'open' : 'closed';
     const wantTabs = layout === 'focus' || narrowQuery.matches;
@@ -896,17 +905,6 @@ export function createApp(root: HTMLElement): App {
     drawerToggle.setAttribute('aria-expanded', String(drawerOpen));
     drawerToggle.title = drawerOpen ? 'Hide the track' : 'Show the track';
     drawer.hidden = !drawerOpen;
-    for (const [id, toggle, name] of [
-      ['unfolded', unfoldedToggle, 'crease pattern'],
-      ['layers', layersToggle, 'layer'],
-    ] as const) {
-      const collapsed = cardCollapsed[id];
-      root.dataset[id === 'unfolded' ? 'cardUnfolded' : 'cardLayers'] = collapsed
-        ? 'collapsed'
-        : 'open';
-      toggle.setAttribute('aria-expanded', String(!collapsed));
-      toggle.title = `${collapsed ? 'Expand' : 'Collapse'} the ${name} view`;
-    }
     layoutButtons.forEach((button, i) => {
       button.setAttribute('aria-pressed', String(LAYOUTS[i]?.id === layout));
     });
@@ -954,9 +952,9 @@ export function createApp(root: HTMLElement): App {
     applyLayout();
   };
 
-  const toggleCard = (id: CollapsibleCard): void => {
-    cardCollapsed[id] = !cardCollapsed[id];
-    remember(CARD_KEYS[id], cardCollapsed[id] ? 'collapsed' : 'open');
+  const setSecondary = (next: SecondaryTab): void => {
+    secondaryTab = next;
+    remember(SECONDARY_KEY, next);
     applyLayout();
   };
 
@@ -1043,7 +1041,10 @@ export function createApp(root: HTMLElement): App {
     } else if (phase.kind === 'animating') {
       options = { animation: phase.animation };
     }
-    foldedSvg.setAttribute('viewBox', cameraViewBox(state.size, camera));
+    const foldedRect = foldedSvg.getBoundingClientRect();
+    const foldedAspect =
+      foldedRect.width > 0 && foldedRect.height > 0 ? foldedRect.width / foldedRect.height : 1;
+    foldedSvg.setAttribute('viewBox', cameraViewBox(state.size, camera, foldedAspect));
     zoomReadout.textContent = `${Math.round(camera.zoom * 100)}%`;
     foldedSvg.dataset['tool'] = tool;
     toolFold.setAttribute('aria-pressed', String(tool === 'fold'));
@@ -1725,8 +1726,10 @@ export function createApp(root: HTMLElement): App {
 
   // --- Pointer interaction ---------------------------------------------------
   /** Sheet units per CSS pixel at the current zoom. */
-  const unitsPerPixel = (): number =>
-    visibleExtent(timeline.state.size, camera) / foldedSvg.getBoundingClientRect().width;
+  const unitsPerPixel = (): number => {
+    const [, , vw] = (foldedSvg.getAttribute('viewBox') ?? '0 0 1 1').split(' ').map(Number);
+    return (vw ?? 1) / foldedSvg.getBoundingClientRect().width;
+  };
 
   const toModel = (client: Vec): Vec => {
     const rect = foldedSvg.getBoundingClientRect();
@@ -1975,11 +1978,17 @@ export function createApp(root: HTMLElement): App {
   );
   narrowQuery.addEventListener('change', applyLayout);
   new ResizeObserver(scheduleFit).observe(workspace);
-  unfoldedToggle.addEventListener('click', () => toggleCard('unfolded'));
+  for (const strip of [unfoldedStrip, layersStrip]) {
+    for (const button of strip.querySelectorAll('button')) {
+      button.addEventListener('click', () => {
+        const next = button.dataset['secondary'];
+        if (next === 'unfolded' || next === 'layers') setSecondary(next);
+      });
+    }
+  }
   tabButtons.forEach((button, i) => {
     button.addEventListener('click', () => setTab(VIEW_TABS[i]?.id ?? 'folded'));
   });
-  layersToggle.addEventListener('click', () => toggleCard('layers'));
 
   toolFold.addEventListener('click', () => setTool('fold'));
   toolMove.addEventListener('click', () => setTool('move'));

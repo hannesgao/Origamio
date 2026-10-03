@@ -82,11 +82,15 @@ export const visibleExtent = (size: number, camera: Camera): number =>
   (size * (1 + 2 * VIEW_PADDING)) / camera.zoom;
 
 /** The viewBox for `camera`: a square in SVG user space (y down). */
-export function cameraViewBox(size: number, camera: Camera): string {
+export function cameraViewBox(size: number, camera: Camera, aspect = 1): string {
+  // The shorter side of the frame shows the padded sheet at zoom 1; the
+  // longer side shows more, so a wide frame never crops the sheet.
   const extent = visibleExtent(size, camera);
-  const x = camera.centre.x - extent / 2;
-  const y = size - camera.centre.y - extent / 2;
-  return `${fmt(x)} ${fmt(y)} ${fmt(extent)} ${fmt(extent)}`;
+  const width = aspect >= 1 ? extent * aspect : extent;
+  const height = aspect >= 1 ? extent : extent / aspect;
+  const x = camera.centre.x - width / 2;
+  const y = size - camera.centre.y - height / 2;
+  return `${fmt(x)} ${fmt(y)} ${fmt(width)} ${fmt(height)}`;
 }
 
 /**
@@ -132,14 +136,15 @@ function facetMarkup(
 /** A segment of `line` long enough to cross the whole view. */
 function longSegment(line: Line, size: number): readonly [Vec, Vec] {
   const d = lineDirection(line);
-  const reach = size * 4;
+  const reach = size * 16;
   return [add(line.a, scale(d, -reach)), add(line.a, scale(d, reach))];
 }
 
 /** The view rectangle, slightly larger than the sheet. */
 function viewRect(size: number): Polygon {
-  const lo = -VIEW_PADDING * size;
-  const hi = size * (1 + VIEW_PADDING);
+  // Generous: frames can be wide and zoomed out, so shade well past the sheet.
+  const lo = -4 * size;
+  const hi = 5 * size;
   return [
     { x: lo, y: lo },
     { x: hi, y: lo },
