@@ -125,6 +125,8 @@ const IMPORT_ICON = '<path d="M10 3v10" /><path d="m6 9 4 4 4-4" /><path d="M4 1
 const EXPORT_ICON = '<path d="M10 13V3" /><path d="m6 7 4-4 4 4" /><path d="M4 16h12" />';
 const NEW_ICON = '<path d="M10 4v12" /><path d="M4 10h12" />';
 const COLLAPSE_ICON = '<path d="m5 8 5 5 5-5" />';
+const MORE_ICON =
+  '<circle cx="5" cy="10" r="1.4" /><circle cx="10" cy="10" r="1.4" /><circle cx="15" cy="10" r="1.4" />';
 
 /** A small inline icon drawn with strokes in the current text colour. */
 function icon(paths: string): SVGSVGElement {
@@ -626,17 +628,23 @@ export function createApp(root: HTMLElement): App {
   );
   const fitButton = el(
     'button',
-    { type: 'button', class: 'btn', title: 'Fit the folded sheet into view (F)' },
+    { type: 'button', class: 'btn fit', title: 'Fit the folded sheet into view (F)' },
     [icon(FIT_ICON), el('span', { class: 'btn-label' }, ['Fit'])],
   );
   const fullButton = el(
     'button',
-    { type: 'button', class: 'btn', title: 'Show the whole sheet (0)' },
+    { type: 'button', class: 'btn full', title: 'Show the whole sheet (0)' },
     [icon(FULL_ICON), el('span', { class: 'btn-label' }, ['Full'])],
   );
   const zoomReadout = el('span', { class: 'zoom', title: 'Zoom; scroll on the sheet to change' }, [
     '100%',
   ]);
+  // On a narrow card the view buttons fold into this menu.
+  const moreButton = el(
+    'button',
+    { type: 'button', class: 'btn more-toggle', title: 'More view tools', 'aria-haspopup': 'menu' },
+    [icon(MORE_ICON)],
+  );
   const layerControl = el(
     'fieldset',
     {
@@ -658,6 +666,7 @@ export function createApp(root: HTMLElement): App {
     fitButton,
     fullButton,
     zoomReadout,
+    moreButton,
   ]);
 
   const liftInput = el('input', {
@@ -756,7 +765,10 @@ export function createApp(root: HTMLElement): App {
     layerTools,
     layersFrame,
     [
-      el('span', {}, ['Seen from the front, each layer lifted. Point at a facet to find it.']),
+      el('span', {}, [
+        'Front view, each layer lifted. ',
+        el('span', { class: 'help-more' }, ['Point at a facet to find it.']),
+      ]),
       el('label', { class: 'range-label' }, ['Gap', liftInput]),
     ],
     'layers-card',
@@ -1067,8 +1079,10 @@ export function createApp(root: HTMLElement): App {
     const state = timeline.state;
     let options = {};
     const next = timeline.next;
+    // The step that would be applied next shows as its line only; shading is
+    // for choosing a side by hand.
     if (phase.kind === 'idle' && next && !playing) {
-      options = { preview: { line: next.line, side: next.side } };
+      options = { preview: { line: next.line } };
     }
     if (phase.kind === 'dragging') {
       if (distance(phase.from, phase.to) >= MIN_DRAG) {
@@ -1196,7 +1210,7 @@ export function createApp(root: HTMLElement): App {
             : `${describeStep(step)} — click to go there, double-click to rename, drag to move`,
           style: `left: ${i * CLIP_WIDTH}px; width: ${CLIP_WIDTH - 4}px`,
         },
-        [el('b', {}, [two(number)]), el('span', { class: 'tl-label' }, [describeStep(step)])],
+        [el('span', { class: 'tl-label' }, [describeStep(step)])],
       );
     });
     track.replaceChildren(...clips);
@@ -1304,7 +1318,7 @@ export function createApp(root: HTMLElement): App {
     const placement = el('select', { class: 'ctl', 'aria-label': 'Where the moved paper lands' });
     for (const [value, text] of [
       ['top', 'On top (valley fold)'],
-      ['bottom', 'Underneath (fold made on the back)'],
+      ['bottom', 'Underneath (on the back)'],
       ['inside', 'Inside (reverse fold)'],
     ] as const) {
       const option = el('option', { value }, [text]);
@@ -1727,8 +1741,26 @@ export function createApp(root: HTMLElement): App {
   const closeMenu = (): void => {
     menu.hidden = true;
   };
+  type MenuItem = [string, () => void, boolean?];
+  const showMenu = (items: MenuItem[], x: number, y: number): void => {
+    menu.replaceChildren(
+      ...items.map(([label, action, disabled]) => {
+        const item = el('button', { type: 'button', role: 'menuitem' }, [label]);
+        if (disabled) item.disabled = true;
+        item.addEventListener('click', () => {
+          closeMenu();
+          action();
+        });
+        return item;
+      }),
+    );
+    menu.hidden = false;
+    const width = 180;
+    menu.style.left = `${Math.min(x, window.innerWidth - width - 8)}px`;
+    menu.style.top = `${Math.min(y, window.innerHeight - items.length * 34 - 8)}px`;
+  };
   const openMenu = (index: number, x: number, y: number): void => {
-    const items: [string, () => void, boolean?][] = [
+    const items: MenuItem[] = [
       ['Rename', () => startRename(index)],
       [
         'Edit…',
@@ -1744,25 +1776,30 @@ export function createApp(root: HTMLElement): App {
       ['Delete', () => deleteStep(index)],
       ['Delete steps after', () => truncateAfter(index), index >= timeline.length - 1],
     ];
-    menu.replaceChildren(
-      ...items.map(([label, action, disabled]) => {
-        const item = el('button', { type: 'button', role: 'menuitem' }, [label]);
-        if (disabled) item.disabled = true;
-        item.addEventListener('click', () => {
-          closeMenu();
-          action();
-        });
-        return item;
-      }),
-    );
-    menu.hidden = false;
-    const width = 180;
-    menu.style.left = `${Math.min(x, window.innerWidth - width - 8)}px`;
-    menu.style.top = `${Math.min(y, window.innerHeight - 8 * 34)}px`;
+    showMenu(items, x, y);
   };
+  moreButton.addEventListener('click', () => {
+    if (!menu.hidden) {
+      closeMenu();
+      return;
+    }
+    const rect = moreButton.getBoundingClientRect();
+    showMenu(
+      [
+        ['Fit the sheet (F)', fitView],
+        ['Show the whole sheet (0)', fullView],
+        [`Zoom ${zoomReadout.textContent ?? ''}`, () => undefined, true],
+      ],
+      rect.right - 180,
+      rect.bottom + 4,
+    );
+  });
   root.append(menu);
   document.addEventListener('pointerdown', (event) => {
-    if (!menu.hidden && !(event.target instanceof Node && menu.contains(event.target))) closeMenu();
+    const inside =
+      event.target instanceof Node &&
+      (menu.contains(event.target) || moreButton.contains(event.target));
+    if (!menu.hidden && !inside) closeMenu();
   });
 
   // --- Pointer interaction ---------------------------------------------------

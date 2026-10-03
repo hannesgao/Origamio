@@ -407,6 +407,7 @@ kbd {
 }
 
 .rail-button {
+  position: relative;
   width: 36px;
   height: 36px;
   display: inline-flex;
@@ -427,6 +428,18 @@ kbd {
 .rail-button[aria-pressed='true'] {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+/* The open panel is marked by a bar on the rail's edge as well. */
+.rail-button[aria-pressed='true']::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
 }
 
 .panel {
@@ -564,8 +577,11 @@ kbd {
 
 .layers-row select,
 .step-panel select {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   padding: 0 8px;
+  text-overflow: ellipsis;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
@@ -765,6 +781,10 @@ kbd {
   container-type: inline-size;
 }
 
+.more-toggle {
+  display: none;
+}
+
 @container (max-width: 640px) {
   .card-tools .btn-label,
   .card-tools .zoom {
@@ -772,8 +792,29 @@ kbd {
   }
 }
 
+/* Narrower still: Fit, Full and the zoom readout fold into the "more" menu,
+   and the statistics line drops its least useful entries first. */
+@container (max-width: 560px) {
+  .card-tools .fit,
+  .card-tools .full {
+    display: none;
+  }
+
+  .more-toggle {
+    display: inline-flex;
+  }
+}
+
+@container (max-width: 460px) {
+  .stats-row .stat:nth-child(4),
+  .help-more {
+    display: none;
+  }
+}
+
 @container (max-width: 360px) {
-  .card-tools .caption {
+  .card-tools .caption,
+  .stats-row .stat:nth-child(3) {
     display: none;
   }
 }
@@ -1280,13 +1321,6 @@ kbd {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-}
-
-.tl-clip b {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  opacity: 0.8;
 }
 
 .tl-clip.done {
