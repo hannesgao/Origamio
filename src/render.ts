@@ -50,9 +50,22 @@ export interface FoldPreview {
   readonly side?: Side;
 }
 
+/** Snap markers drawn over the folded sheet while a fold line is drawn. */
+export interface SnapMarkers {
+  /** Every point the endpoints can snap to; drawn faintly. */
+  readonly targets: readonly Vec[];
+  /** The point the pointer is snapped to right now. */
+  readonly active?: Vec;
+  /** The first endpoint, once it is set. */
+  readonly anchor?: Vec;
+  /** Marker radius in model units (so that it is constant on screen). */
+  readonly radius: number;
+}
+
 export interface FoldedViewOptions {
   readonly animation?: FoldAnimation;
   readonly preview?: FoldPreview;
+  readonly snap?: SnapMarkers;
 }
 
 const fmt = (n: number): string => (Math.abs(n) < 1e-12 ? '0' : n.toFixed(5));
@@ -171,6 +184,15 @@ function previewMarkup(preview: FoldPreview, size: number): string {
   );
 }
 
+function snapMarkup(snap: SnapMarkers, size: number): string {
+  const circle = (p: Vec, radius: number, cls: string): string =>
+    `<circle class="${cls}" cx="${fmt(p.x)}" cy="${fmt(size - p.y)}" r="${fmt(radius)}" />`;
+  const parts = snap.targets.map((p) => circle(p, snap.radius, 'snap-target'));
+  if (snap.anchor) parts.push(circle(snap.anchor, snap.radius * 1.6, 'snap-anchor'));
+  if (snap.active) parts.push(circle(snap.active, snap.radius * 2.2, 'snap-active'));
+  return parts.join('');
+}
+
 interface DrawnFacet {
   readonly facet: Facet;
   readonly poly: Polygon;
@@ -222,6 +244,7 @@ export function renderFolded(state: PaperState, options: FoldedViewOptions = {})
     parts.push(facetMarkup(d.facet.id, d.poly, d.flipped, size, d.moving ? 'facet-moving' : ''));
   }
   if (options.preview) parts.push(previewMarkup(options.preview, size));
+  if (options.snap) parts.push(snapMarkup(options.snap, size));
   return parts.join('');
 }
 

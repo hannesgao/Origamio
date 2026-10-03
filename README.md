@@ -14,7 +14,9 @@ reflections and convex polygon clipping.
 ## Features
 
 - **Fold along any line.** Drag on the folded sheet to draw a fold line, then
-  click the side that should flip over.
+  click the side that should flip over. The endpoints snap to the corners,
+  edge midpoints and edges of the folded sheet, so a fold "corner to corner"
+  or "edge to the middle" is exact; hold Alt to draw freely.
 - **Fold all layers or only the top _k_.** Choose between folding the whole
   stack or just the top few layers before you click.
 - **Live unfolded view.** The right panel always shows the sheet flattened out
@@ -107,7 +109,11 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
 
 1. **Draw a fold line.** Press on the folded sheet, drag, and release. A dashed
    blue line shows where the fold will go; drags shorter than 2 % of the sheet
-   are ignored. The fold goes onto the timeline at the playhead.
+   are ignored. While you draw, the corners and edge midpoints of the folded
+   sheet show as dots and the endpoint snaps to the nearest one (or onto an
+   edge) within a few pixels; a ring marks the snap and the status line names
+   it. The _Snap_ button turns this off, and Alt bypasses it for one drag. The
+   fold goes onto the timeline at the playhead.
 2. **Choose the side.** Move the pointer over either side of the line; the side
    that would flip is shaded. Click to fold it over. Press Esc to discard the
    line instead.
