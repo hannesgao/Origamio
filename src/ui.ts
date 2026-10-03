@@ -15,6 +15,7 @@ import {
   vec,
 } from './geometry';
 import { LIBRARY } from './library';
+import { type Snap, type SnapTargets, snapTargets, snapTo } from './snap';
 import { Timeline } from './timeline';
 import {
   type FoldStep,
@@ -49,6 +50,7 @@ import {
 import {
   type Camera,
   type FoldAnimation,
+  type SnapMarkers,
   BACK_COLOR,
   FRONT_COLOR,
   cameraViewBox,
@@ -125,6 +127,11 @@ const IMPORT_ICON = '<path d="M10 3v10" /><path d="m6 9 4 4 4-4" /><path d="M4 1
 const EXPORT_ICON = '<path d="M10 13V3" /><path d="m6 7 4-4 4 4" /><path d="M4 16h12" />';
 const NEW_ICON = '<path d="M10 4v12" /><path d="M4 10h12" />';
 const COLLAPSE_ICON = '<path d="m5 8 5 5 5-5" />';
+const SNAP_ICON =
+  '<path d="M6 3v7a4 4 0 0 0 8 0V3" /><path d="M4 3h4M12 3h4" /><path d="M4 8h4M12 8h4" />';
+const SNAP_KEY = 'origamio.snap';
+/** How close the pointer must be to a corner, midpoint or edge, in CSS pixels. */
+const SNAP_PIXELS = 10;
 const GITHUB_ICON =
   '<path d="M10 2.5a7.5 7.5 0 0 0-2.37 14.62c.37.07.51-.16.51-.36v-1.3c-2.09.45-2.53-1-2.53-1-.34-.87-.83-1.1-.83-1.1-.68-.46.05-.45.05-.45.75.05 1.15.77 1.15.77.67 1.14 1.75.81 2.18.62.07-.48.26-.81.47-1-1.67-.19-3.42-.83-3.42-3.7 0-.82.29-1.49.77-2.01-.08-.19-.33-.95.07-1.98 0 0 .63-.2 2.06.77a7.2 7.2 0 0 1 3.76 0c1.43-.97 2.06-.77 2.06-.77.4 1.03.15 1.79.07 1.98.48.52.77 1.19.77 2.01 0 2.88-1.75 3.51-3.43 3.7.27.23.51.69.51 1.39v2.06c0 .2.14.44.52.36A7.5 7.5 0 0 0 10 2.5Z" fill="currentColor" stroke="none" />';
 const MORE_ICON =
@@ -257,7 +264,7 @@ type Navigation = { readonly kind: 'pan'; readonly pointerId: number } | { reado
 
 type Phase =
   | { readonly kind: 'idle' }
-  | { readonly kind: 'dragging'; readonly from: Vec; readonly to: Vec }
+  | { readonly kind: 'dragging'; readonly from: Vec; readonly to: Vec; readonly snap?: Snap }
   | { readonly kind: 'choose-side'; readonly line: Line; readonly hover?: Side }
   | { readonly kind: 'animating'; readonly animation: FoldAnimation; readonly start: number };
 
@@ -303,6 +310,10 @@ export function createApp(root: HTMLElement): App {
   let queue: Promise<void> = Promise.resolve();
   let camera: Camera = defaultCamera(paper.width, paper.height);
   let tool: Tool = 'fold';
+  /** Fold line endpoints snap to corners, midpoints and edges unless Alt is held. */
+  let snapEnabled = remembered(SNAP_KEY) !== 'off';
+  /** The snap under the pointer while nothing is being drawn; shown as a ring. */
+  let hoverSnap: Snap | null = null;
   let spaceHeld = false;
   const rememberedLayout = remembered(LAYOUT_KEY);
   let layout: Layout = LAYOUTS.some((l) => l.id === rememberedLayout)
@@ -574,6 +585,7 @@ export function createApp(root: HTMLElement): App {
         ['Ctrl+Z', 'Undo (one step back)'],
         ['Scroll', 'Zoom around the pointer'],
         ['Space + drag', 'Pan the folded view'],
+        ['Alt + drag', 'Draw a fold line without snapping'],
         ['F / 0', 'Fit the sheet or show it whole'],
       ] as const
     ).map(([key, what]) =>
@@ -629,6 +641,16 @@ export function createApp(root: HTMLElement): App {
   const zoomReadout = el('span', { class: 'zoom', title: 'Zoom; scroll on the sheet to change' }, [
     '100%',
   ]);
+  const snapButton = el(
+    'button',
+    {
+      type: 'button',
+      class: 'btn snap',
+      'aria-pressed': String(snapEnabled),
+      title: 'Snap fold lines to corners, midpoints and edges (hold Alt to draw freely)',
+    },
+    [icon(SNAP_ICON), el('span', { class: 'btn-label' }, ['Snap'])],
+  );
   // On a narrow card the view buttons fold into this menu.
   const moreButton = el(
     'button',
@@ -653,6 +675,7 @@ export function createApp(root: HTMLElement): App {
       toolMove,
     ]),
     layerControl,
+    snapButton,
     fitButton,
     fullButton,
     zoomReadout,
@@ -1067,7 +1090,16 @@ export function createApp(root: HTMLElement): App {
           : 'Drag to draw a fold line. Scroll to zoom, hold Space to pan.';
       }
       case 'dragging':
-        return 'Release to set the fold line.';
+        switch (p.snap?.kind) {
+          case 'vertex':
+            return 'Snapped to a corner. Release to set the fold line.';
+          case 'midpoint':
+            return 'Snapped to the middle of an edge. Release to set the fold line.';
+          case 'edge':
+            return 'Snapped onto an edge. Release to set the fold line.';
+          default:
+            return 'Release to set the fold line.';
+        }
       case 'choose-side':
         return redrawing !== null
           ? `Click the side that flips for step ${redrawing + 1} (Esc to cancel).`
@@ -1106,6 +1138,21 @@ export function createApp(root: HTMLElement): App {
       foldedRect.width > 0 && foldedRect.height > 0 ? foldedRect.width / foldedRect.height : 1;
     foldedSvg.setAttribute('viewBox', cameraViewBox(state.size, camera, foldedAspect));
     zoomReadout.textContent = `${Math.round(camera.zoom * 100)}%`;
+    snapButton.setAttribute('aria-pressed', String(snapEnabled));
+    // Snap markers: every target while a line is drawn, just the ring on hover.
+    if (snapEnabled && tool === 'fold' && (phase.kind === 'dragging' || hoverSnap)) {
+      const radius = 2.5 * unitsPerPixel();
+      const markers: SnapMarkers =
+        phase.kind === 'dragging'
+          ? {
+              targets: snapCache().points.map((t) => t.point),
+              anchor: phase.from,
+              radius,
+              ...(phase.snap ? { active: phase.snap.point } : {}),
+            }
+          : { targets: [], radius, ...(hoverSnap ? { active: hoverSnap.point } : {}) };
+      options = { ...options, snap: markers };
+    }
     foldedSvg.dataset['tool'] = tool;
     toolFold.setAttribute('aria-pressed', String(tool === 'fold'));
     toolMove.setAttribute('aria-pressed', String(tool === 'move'));
@@ -1791,6 +1838,10 @@ export function createApp(root: HTMLElement): App {
     const rect = moreButton.getBoundingClientRect();
     showMenu(
       [
+        [
+          snapEnabled ? 'Snap to points: on' : 'Snap to points: off',
+          () => setSnapEnabled(!snapEnabled),
+        ],
         ['Fit the sheet (F)', fitView],
         ['Show the whole sheet (0)', fullView],
         [`Zoom ${zoomReadout.textContent ?? ''}`, () => undefined, true],
@@ -1827,6 +1878,26 @@ export function createApp(root: HTMLElement): App {
   };
 
   const clientPoint = (event: PointerEvent | WheelEvent): Vec => vec(event.clientX, event.clientY);
+
+  // Snap targets are derived from the folded state; cached until it changes.
+  let snapCacheFor: PaperState | null = null;
+  let snapCached: SnapTargets = { points: [], edges: [] };
+  const snapCache = (): SnapTargets => {
+    if (snapCacheFor !== timeline.state) {
+      snapCacheFor = timeline.state;
+      snapCached = snapTargets(timeline.state);
+    }
+    return snapCached;
+  };
+  /** The snap for a model point, or null when snapping is off or nothing is near. */
+  const snapFor = (p: Vec, event: { readonly altKey: boolean }): Snap | null =>
+    snapEnabled !== event.altKey ? snapTo(snapCache(), p, SNAP_PIXELS * unitsPerPixel()) : null;
+  const setSnapEnabled = (on: boolean): void => {
+    snapEnabled = on;
+    remember(SNAP_KEY, on ? 'on' : 'off');
+    hoverSnap = null;
+    render();
+  };
 
   const setCamera = (next: Camera): void => {
     camera = { centre: next.centre, zoom: clampZoom(next.zoom) };
@@ -1906,7 +1977,9 @@ export function createApp(root: HTMLElement): App {
     }
     if (phase.kind !== 'idle') return;
     foldedSvg.setPointerCapture(event.pointerId);
-    phase = { kind: 'dragging', from: p, to: p };
+    const start = snapFor(p, event)?.point ?? p;
+    hoverSnap = null;
+    phase = { kind: 'dragging', from: start, to: start };
     render();
   });
 
@@ -1936,8 +2009,23 @@ export function createApp(root: HTMLElement): App {
     statCursor.textContent = String(under.length);
     setHighlight(under);
     if (phase.kind === 'dragging') {
-      phase = { ...phase, to: p };
+      const snap = snapFor(p, event);
+      phase = {
+        kind: 'dragging',
+        from: phase.from,
+        to: snap?.point ?? p,
+        ...(snap ? { snap } : {}),
+      };
       render();
+    } else if (phase.kind === 'idle' && tool === 'fold' && !spaceHeld) {
+      const snap = snapFor(p, event);
+      const same =
+        snap === hoverSnap ||
+        (snap !== null && hoverSnap !== null && distance(snap.point, hoverSnap.point) < 1e-9);
+      if (!same) {
+        hoverSnap = snap;
+        render();
+      }
     } else if (phase.kind === 'choose-side') {
       const hover = sideOf(phase.line, p);
       if (hover !== phase.hover) {
@@ -1959,7 +2047,8 @@ export function createApp(root: HTMLElement): App {
       return;
     }
     if (phase.kind !== 'dragging') return;
-    const to = toModel(clientPoint(event));
+    const raw = toModel(clientPoint(event));
+    const to = snapFor(raw, event)?.point ?? raw;
     if (distance(phase.from, to) < MIN_DRAG) {
       phase = { kind: 'idle' };
     } else {
@@ -1980,6 +2069,10 @@ export function createApp(root: HTMLElement): App {
   foldedSvg.addEventListener('pointerleave', () => {
     statCursor.textContent = '–';
     setHighlight([]);
+    if (hoverSnap) {
+      hoverSnap = null;
+      render();
+    }
     if (phase.kind === 'choose-side' && phase.hover !== undefined) {
       phase = { kind: 'choose-side', line: phase.line };
       render();
@@ -2075,6 +2168,7 @@ export function createApp(root: HTMLElement): App {
 
   toolFold.addEventListener('click', () => setTool('fold'));
   toolMove.addEventListener('click', () => setTool('move'));
+  snapButton.addEventListener('click', () => setSnapEnabled(!snapEnabled));
   fitButton.addEventListener('click', fitView);
   fullButton.addEventListener('click', fullView);
 
