@@ -4,6 +4,8 @@ Yet another origami simulator: fold a square sheet of paper along arbitrary
 lines in the browser, watch the layers stack up, and unfold it at any time to
 inspect the crease pattern and count the resulting faces.
 
+**Try it:** <https://origamio.hannesgao.workers.dev/>
+
 Origamio is a pure front-end application (Vite + TypeScript, no framework, no
 runtime dependencies). Both views are rendered as SVG from a small, immutable
 geometric model, so every fold is exact: no meshes, no physics, just
@@ -196,7 +198,8 @@ commands on every pull request and on every push to `main`.
 ### Deployment
 
 The site is served from Cloudflare Workers as static assets; `wrangler.jsonc`
-names the Worker (`origamio`) and points it at `dist/`. The `deploy` workflow
+names the Worker (`origamio`) and points it at `dist/`; the site is live at
+<https://origamio.hannesgao.workers.dev/>. The `deploy` workflow
 builds and deploys every push to `main` through the Wrangler CLI, using two
 repository secrets: `CLOUDFLARE_API_TOKEN` (an API token with the _Edit
 Cloudflare Workers_ template) and `CLOUDFLARE_ACCOUNT_ID`. To deploy from a
