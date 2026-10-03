@@ -533,6 +533,42 @@ kbd {
   border-color: var(--accent);
 }
 
+.step-title {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.layers-row {
+  grid-template-columns: 1fr 5em;
+}
+
+.layers-row select,
+.step-panel select {
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.line-row {
+  grid-template-columns: 3.2em 1fr 1fr;
+}
+
+.limit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.limit-row .btn {
+  flex: none;
+}
+
 .paper-preset[aria-pressed='true'] {
   border-color: var(--accent);
   background: var(--accent-soft);

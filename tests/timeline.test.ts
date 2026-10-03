@@ -83,6 +83,22 @@ describe('timeline editing', () => {
     expect(t.position).toBe(1);
   });
 
+  it('updates a step and recomputes what follows', () => {
+    const t = timeline();
+    t.seek(3);
+    t.update(0, { side: 1 });
+    expect(t.steps[0]?.side).toBe(1);
+    expect(t.steps[0]?.label).toBe('Half');
+    expect(t.position).toBe(3);
+    t.update(0, {
+      line: line(vec(0.9, 0), vec(0.9, 1)),
+      options: { layers: { kind: 'top', count: 1 } },
+    });
+    expect(t.effect(0)).toBe(true);
+    expect(t.undoEdit()).toBe(true);
+    expect(t.steps[0]?.line.a.x).toBe(0.5);
+  });
+
   it('renames without touching the geometry', () => {
     const t = timeline();
     t.seek(3);

@@ -178,6 +178,15 @@ export class Timeline {
     });
   }
 
+  /** Replace parts of a step (line, side, options); the states after it are recomputed. */
+  update(index: number, patch: Partial<Pick<FoldStep, 'line' | 'side' | 'options'>>): void {
+    const step = this.list[index];
+    if (!step) return;
+    this.edit(index, () => {
+      this.list[index] = { ...step, ...patch };
+    });
+  }
+
   rename(index: number, label: string): void {
     const step = this.list[index];
     if (!step) return;
