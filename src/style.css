@@ -117,7 +117,8 @@ select {
   --panel-w: 300px;
   --space: 12px;
   --head-h: 44px;
-  --foot-h: 44px;
+  --toolbar-h: 40px;
+  --foot-h: 28px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
@@ -257,6 +258,7 @@ select {
 }
 
 .btn svg,
+.tool-toggle svg,
 .rail-button svg,
 .layout-switch svg {
   width: 16px;
@@ -342,6 +344,24 @@ kbd {
   transition:
     background-color 120ms ease,
     color 120ms ease;
+}
+
+/* The icon that opens a segmented control, before its first option. */
+.seg-icon {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 2px 0 6px;
+  color: var(--muted);
+}
+
+.seg-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .seg input[type='radio'] {
@@ -709,7 +729,7 @@ kbd {
   min-width: 0;
 }
 
-/* One anatomy for every view card: head, canvas, two foot lines. */
+/* One anatomy for every view card: head with statistics, a row of tools, the canvas, one foot line. */
 .card-head {
   display: flex;
   align-items: center;
@@ -719,13 +739,52 @@ kbd {
   padding: 0 14px;
 }
 
-/* In view cards the head and the foot are exactly as wide as the canvas. */
+/* In view cards the head, the tools and the foot are exactly as wide as the canvas. */
 .view-card .card-head,
+.view-card .card-toolbar,
 .view-card .card-foot {
   width: min(100%, var(--canvas, 100%));
   margin: 0 auto;
   padding-left: 0;
   padding-right: 0;
+}
+
+.card-toolbar {
+  display: flex;
+  align-items: center;
+  height: var(--toolbar-h);
+  min-width: 0;
+}
+
+.card-toolbar .card-tools {
+  margin-left: 0;
+}
+
+/* Statistics sit at the right of the head, every number in the same style. */
+.card-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.card-stats .stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.card-stats .stat-value {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.card-stats .stat-label {
+  font-size: 0.72rem;
+  color: var(--muted);
 }
 
 .card-head h2 {
@@ -758,16 +817,16 @@ kbd {
 }
 
 .card-foot {
-  display: grid;
-  grid-template-rows: 20px 20px;
+  display: flex;
+  align-items: center;
   height: var(--foot-h);
-  padding: 2px 0 0;
 }
 
 .foot-line {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -777,9 +836,16 @@ kbd {
 
 .foot-line > * {
   min-width: 0;
+  flex: none;
 }
 
-.foot-line > span {
+.foot-line > .status-bar {
+  flex: 1 1 auto;
+}
+
+/* Readouts and hints at the end of the line. */
+.foot-end {
+  margin-left: auto;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -794,8 +860,7 @@ kbd {
 }
 
 @container (max-width: 640px) {
-  .card-tools .btn-label,
-  .card-tools .zoom {
+  .card-tools .btn-label {
     display: none;
   }
 }
@@ -815,30 +880,22 @@ kbd {
 }
 
 @container (max-width: 460px) {
-  .stats-row .stat:nth-child(4),
+  .card-stats .stat:nth-child(4),
   .help-more {
     display: none;
   }
 }
 
-/* The 3D card's head holds the four views and two buttons: tighter, and the hint goes first. */
-.solid-card .card-tools {
-  gap: 4px;
-}
-
-.solid-card .card-tools .tool-toggle button {
-  padding: 0 8px;
-}
-
-@container (max-width: 540px) {
-  .solid-card .card-tools .caption {
+/* Hints in the foot line give way before parameters do, then the names of the chip groups. */
+@container (max-width: 560px) {
+  .foot-line .caption,
+  .foot-line .range-name {
     display: none;
   }
 }
 
 @container (max-width: 360px) {
-  .card-tools .caption,
-  .stats-row .stat:nth-child(3) {
+  .card-stats .stat:nth-child(3) {
     display: none;
   }
 }
@@ -948,25 +1005,6 @@ kbd {
   white-space: nowrap;
 }
 
-.stats-row {
-  display: flex;
-  gap: 14px;
-  white-space: nowrap;
-}
-
-.stats-row .stat {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-}
-
-.stats-row .stat-value {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-
 .legend {
   display: flex;
   gap: 14px;
@@ -1045,7 +1083,8 @@ kbd {
 }
 
 .chip-input {
-  width: 3.4em;
+  flex: none;
+  width: 3.6em;
   height: 18px;
   margin-left: 4px;
   padding: 0 4px;

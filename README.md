@@ -63,8 +63,8 @@ note and the other views work as before.
   pulled apart.
 - **3D view with real creases.** A third card shows the sheet as rigid panels
   joined at their creases, solved as paper: every crease is pulled towards
-  its angle (flat creases opened a few degrees, the _Open_ chips offer 0° to
-  30° and the box beside them takes any value up to 90°, less where many
+  its angle (flat creases opened a few degrees, the _Open_ chips offer 0°,
+  6°, 15° and 30° and the box beside them takes any value up to 90°, less where many
   layers are stacked; creases folded to a chosen angle keep it) while each
   panel keeps its size and panels joined at a crease stay joined. Where the
   angles contradict each other, as the wings and body of a crane do, the
@@ -75,8 +75,8 @@ note and the other views work as before.
   thickness above the one beneath it, so a stack of twelve layers is twelve
   papers thick and no layer passes through another (to within what the loop
   of wings and body allows). It is drawn with WebGL (three.js): the paper has
-  a thickness (_Paper_ chips from 0 to 0.2 mm for a 15 cm sheet, or any value
-  typed), a soft key light, a ground shadow under the model (hidden in the
+  a thickness (_Paper_ chips of 0, 0.07 and 0.2 mm for a 15 cm sheet, or any
+  value typed), a soft key light, a ground shadow under the model (hidden in the
   top view), crease lines only where the sheet bends or ends, and the paper
   darkens where another layer lies close over it, so the slits inside a body
   read as pockets while open wings stay bright (worked out from the solved
@@ -146,11 +146,14 @@ that shows the sheet with its two colours, the position on the timeline and
 the latest message (what was loaded, what a fold did, why a file was
 rejected), with the credits, the version and the build time (German time, to
 the minute, so a deployment can be told apart) on its right. Every view card has
-the same anatomy: a head with the title and one row of tools, the canvas, and
-two lines underneath (status and statistics for the folded sheet; legend and
-crease count for the crease pattern; a note and the gap slider for the layer
-view), so the cards and their canvases are the same height. The views size
-themselves to the space that is left. Everything you operate on is in the
+the same anatomy: a head with the title and the card's statistics at its
+right (folds, layers, facets and layers under the cursor for the folded sheet;
+creases for the crease pattern), a row of tools, each an icon with a keyword
+(the keyword gives way on a narrow card), the canvas, and one line underneath
+for parameters and hints (the status line and the zoom for the folded sheet;
+the legend for the crease pattern; the _Open_ and _Paper_ chips for the 3D
+view), so the three cards line up row by row and their canvases are the same
+height. The views size themselves to the space that is left. Everything you operate on is in the
 Folded card: the drag tool, the layer selection, zoom and the status line.
 
 1. **Draw a fold line.** With the _Line_ tool, press on the folded sheet, drag,
@@ -177,8 +180,8 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    toolbar applies to the next fold: _All_ folds the whole stack, _Top n_
    folds only the facets that have fewer than _n_ distinct layers above them.
 4. **Watch the result.** The status line under the folded sheet tells you
-   which step you are in, and the statistics beneath it (folds, maximum
-   layers, facets, layers under the cursor) update after every fold.
+   which step you are in, and the statistics in the card's head (folds,
+   maximum layers, facets, layers under the cursor) update after every fold.
 5. **Choose the paper.** The Paper panel (second button on the rail) shows
    the current sheet and lets you pick a shape or type a width and height;
    the longer side is 1 by convention. Presets are folded from a square, so

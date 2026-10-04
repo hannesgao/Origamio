@@ -119,6 +119,28 @@ const FIT_ICON =
 const FULL_ICON = '<rect x="3" y="3" width="14" height="14" rx="2" />';
 /** A slab seen in perspective: the far edge shorter than the near one. */
 const PERSPECTIVE_ICON = '<path d="M7.5 4.5h5l3.5 11h-12Z" /><path d="M8.3 8.5h3.4" />';
+/** A sheet with a fold line across it. */
+const LINE_ICON =
+  '<rect x="3.5" y="3.5" width="13" height="13" rx="1.5" /><path d="M3.5 16.5 16.5 3.5" />';
+/** One point brought onto another. */
+const POINT_ICON =
+  '<circle cx="5.5" cy="14.5" r="1.7" /><circle cx="14.5" cy="5.5" r="1.7" /><path d="M7 13c1.5-3.5 3.5-5.5 6-6.5" /><path d="m10.5 6.8 2.5-.3-.3 2.5" />';
+/** Four-way arrows. */
+const MOVE_ICON =
+  '<path d="M10 3v14M3 10h14" /><path d="m7.5 5.5 2.5-2.5 2.5 2.5M7.5 14.5l2.5 2.5 2.5-2.5M5.5 7.5 3 10l2.5 2.5M14.5 7.5 17 10l-2.5 2.5" />';
+/** Layers of a stack. */
+const LAYERS_ICON =
+  '<path d="m3 7 7-3.5L17 7l-7 3.5z" /><path d="m3 10.5 7 3.5 7-3.5M3 14l7 3.5 7-3.5" />';
+/** A box seen from the front, the side, the top, and at an angle. */
+const VIEW_ICONS: Record<NamedView['id'], string> = {
+  front: '<rect x="3.5" y="6.5" width="10" height="10" rx="1" /><path d="M6.5 6.5v-3h10v10h-3" />',
+  side: '<path d="M3.5 3.5h7v13h-7z" /><path d="m10.5 3.5 6 3v13l-6-3" />',
+  top: '<path d="m3.5 7.5 6.5-4 6.5 4-6.5 4z" /><path d="M3.5 7.5v6l6.5 4v-6m6.5-4v6l-6.5 4" />',
+  isometric:
+    '<path d="m10 3 6.5 3.75v6.5L10 17l-6.5-3.75v-6.5z" /><path d="M10 10.25 16.5 6.75M10 10.25V17M10 10.25 3.5 6.75" />',
+};
+/** A turn back to the start. */
+const RESET_ICON = '<path d="M4.5 10a5.5 5.5 0 1 0 1.8-4.1" /><path d="M4.5 3.5v3h3" />';
 const LAYOUT_ICONS: Record<Layout, string> = {
   'side-by-side':
     '<rect x="2.5" y="4" width="4.5" height="12" rx="1" /><rect x="8.5" y="4" width="4.5" height="12" rx="1" /><rect x="14.5" y="4" width="3" height="12" rx="1" />',
@@ -727,33 +749,42 @@ export function createApp(root: HTMLElement): App {
   const statLayers = el('span', { class: 'stat-value' }, ['1']);
   const statFacets = el('span', { class: 'stat-value' }, ['1']);
   const statCursor = el('span', { class: 'stat-value' }, ['–']);
+  const statCreases = el('span', { class: 'stat-value' }, ['0']);
   const hint = el('span', { class: 'status-text' });
-  const statsRow = el('div', { class: 'stats-row' });
+  const statsRow = el('div', { class: 'card-stats' });
   const statusBar = el('div', { class: 'status-bar', role: 'status', 'aria-live': 'polite' }, [
     el('span', { class: 'status-dot' }),
     hint,
   ]);
-  const creaseCount = el('span', {}, ['0 creases']);
 
-  const toolFold = el(
-    'button',
-    { type: 'button', 'aria-pressed': 'true', title: 'Drag to draw the fold line' },
-    ['Line'],
+  /** A tool button: an icon and a keyword (the keyword gives way on a narrow card). */
+  const toolButton = (
+    attributes: Record<string, string>,
+    iconPaths: string,
+    label: string,
+  ): HTMLButtonElement =>
+    el('button', { type: 'button', ...attributes }, [
+      icon(iconPaths),
+      el('span', { class: 'btn-label' }, [label]),
+    ]);
+  const toolFold = toolButton(
+    { 'aria-pressed': 'true', title: 'Drag to draw the fold line' },
+    LINE_ICON,
+    'Line',
   );
-  const toolPoint = el(
-    'button',
+  const toolPoint = toolButton(
     {
-      type: 'button',
       'aria-pressed': 'false',
       title:
         'Drag a point onto another point: the sheet folds along the line halfway between them, so the first point lands on the second',
     },
-    ['Point'],
+    POINT_ICON,
+    'Point',
   );
-  const toolMove = el(
-    'button',
-    { type: 'button', 'aria-pressed': 'false', title: 'Drag to pan (or hold Space)' },
-    ['Move'],
+  const toolMove = toolButton(
+    { 'aria-pressed': 'false', title: 'Drag to pan (or hold Space)' },
+    MOVE_ICON,
+    'Move',
   );
   const fitButton = el(
     'button',
@@ -792,6 +823,7 @@ export function createApp(root: HTMLElement): App {
         'Layers moved by the next fold: all of them, or only the top n (a facet is in the top n when fewer than n layers lie above it)',
     },
     [
+      el('span', { class: 'seg-icon' }, [icon(LAYERS_ICON)]),
       el('label', { class: 'seg' }, [layerAll, el('span', {}, ['All'])]),
       el('label', { class: 'seg' }, [layerTop, el('span', {}, ['Top']), layerCount]),
     ],
@@ -806,7 +838,6 @@ export function createApp(root: HTMLElement): App {
     snapButton,
     fitButton,
     fullButton,
-    zoomReadout,
     moreButton,
   ]);
 
@@ -837,14 +868,11 @@ export function createApp(root: HTMLElement): App {
     );
   const unfoldedStrip = secondaryStrip();
   const solidStrip = secondaryStrip();
-  const unfoldedTools = el('div', { class: 'card-tools' }, [
-    unfoldedStrip,
-    el('span', { class: 'caption' }, ['Crease pattern, live']),
-  ]);
+  const unfoldedTools = el('div', { class: 'card-tools' }, [unfoldedStrip]);
   const orbitReset = el(
     'button',
     { type: 'button', class: 'btn', title: 'Turn the model back to the default view' },
-    [icon(FULL_ICON), el('span', { class: 'btn-label' }, ['Reset'])],
+    [icon(RESET_ICON), el('span', { class: 'btn-label' }, ['Reset'])],
   );
   // The fixed views, from how the loaded sequence says its model stands.
   let fixedViews: NamedView[] = namedViews(viewFrame);
@@ -865,7 +893,7 @@ export function createApp(root: HTMLElement): App {
                 : 'the side view turned 45°'
         }`,
       },
-      [view.short],
+      [icon(VIEW_ICONS[view.id]), el('span', { class: 'btn-label' }, [view.short])],
     ),
   );
   // Perspective shows depth; off, the fixed views become true drawings.
@@ -882,7 +910,6 @@ export function createApp(root: HTMLElement): App {
   );
   const solidTools = el('div', { class: 'card-tools' }, [
     solidStrip,
-    el('span', { class: 'caption' }, ['Drag to turn']),
     el('div', { class: 'tool-toggle', role: 'group', 'aria-label': 'Named views' }, viewButtons),
     perspectiveButton,
     orbitReset,
@@ -959,30 +986,30 @@ export function createApp(root: HTMLElement): App {
     el('div', { class: 'stat' }, [value, el('span', { class: 'stat-label' }, [label])]);
   statsRow.append(
     stat(statFolds, 'folds'),
-    stat(statLayers, 'max layers'),
+    stat(statLayers, 'layers'),
     stat(statFacets, 'facets'),
     stat(statCursor, 'under cursor'),
   );
+  const creaseStats = el('div', { class: 'card-stats' }, [stat(statCreases, 'creases')]);
 
   /**
-   * Every view card has the same anatomy: a 44px head with the title and one
-   * row of tools, the canvas, and a foot of exactly two lines, so that equal
-   * canvases give equal cards.
+   * Every view card has the same anatomy: a head with the title and its
+   * statistics, one row of tools, the canvas, and a foot of one line for
+   * parameters and hints, so that equal canvases give equal cards.
    */
   const card = (
     title: string,
+    stats: HTMLElement,
     tools: HTMLElement,
     frame: HTMLElement,
-    foot: readonly [HTMLElement, HTMLElement],
+    foot: readonly HTMLElement[],
     extraClass = '',
   ): HTMLElement =>
     el('section', { class: `card view-card ${extraClass}`.trim() }, [
-      el('div', { class: 'card-head' }, [el('h2', {}, [title]), tools]),
+      el('div', { class: 'card-head' }, [el('h2', {}, [title]), stats]),
+      el('div', { class: 'card-toolbar' }, [tools]),
       el('div', { class: 'card-body' }, [frame]),
-      el('div', { class: 'card-foot' }, [
-        el('div', { class: 'foot-line' }, [foot[0]]),
-        el('div', { class: 'foot-line' }, [foot[1]]),
-      ]),
+      el('div', { class: 'card-foot' }, [el('div', { class: 'foot-line' }, [...foot])]),
     ]);
 
   const legend = el('div', { class: 'legend' }, [
@@ -997,21 +1024,37 @@ export function createApp(root: HTMLElement): App {
   // The 3D card draws with WebGL into a canvas inside its frame.
   const scene = createScene(solidFrame);
   const solidCanvas = scene.canvas;
-  const foldedCard = card('Folded', viewTools, foldedFrame, [statusBar, statsRow], 'folded-card');
+  const foldedCard = card(
+    'Folded',
+    statsRow,
+    viewTools,
+    foldedFrame,
+    [statusBar, el('span', { class: 'foot-end' }, [zoomReadout])],
+    'folded-card',
+  );
   const unfoldedCard = card(
     'Unfolded',
+    creaseStats,
     unfoldedTools,
     unfoldedFrame,
-    [legend, creaseCount],
+    [legend, el('span', { class: 'foot-end caption' }, ['Crease pattern, live'])],
     'unfolded-card',
   );
   const solidCard = card(
     '3D',
+    el('div', { class: 'card-stats' }),
     solidTools,
     solidFrame,
     [
-      el('span', { class: 'range-label' }, ['Open', openingControl]),
-      el('span', { class: 'range-label' }, ['Paper', thicknessControl]),
+      el('span', { class: 'range-label' }, [
+        el('span', { class: 'range-name' }, ['Open']),
+        openingControl,
+      ]),
+      el('span', { class: 'range-label' }, [
+        el('span', { class: 'range-name' }, ['Paper']),
+        thicknessControl,
+      ]),
+      el('span', { class: 'foot-end caption' }, ['Drag to turn']),
     ],
     'solid-card',
   );
@@ -1414,7 +1457,7 @@ export function createApp(root: HTMLElement): App {
     unfoldedSvg.innerHTML = renderUnfolded(state);
     renderTimeline();
     renderStepPanel();
-    creaseCount.textContent = `${state.creases.length} crease${state.creases.length === 1 ? '' : 's'}`;
+    statCreases.textContent = String(state.creases.length);
     // The 3D view: the sheet solved as paper, the step in progress swinging its creases.
     requestSolve({
       stateId: idOf(state),
