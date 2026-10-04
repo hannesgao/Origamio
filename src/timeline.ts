@@ -66,6 +66,11 @@ export class Timeline {
     return this.states[0] as PaperState;
   }
 
+  /** The sheet one step before the playhead, if there is one. */
+  get previous(): PaperState | null {
+    return this.pos > 0 ? (this.states[this.pos - 1] as PaperState) : null;
+  }
+
   /** Did step `index` move any paper when it was replayed? Unknown before replay. */
   effect(index: number): boolean | undefined {
     return this.moved[index];

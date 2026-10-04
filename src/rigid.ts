@@ -47,6 +47,11 @@ export interface Hinge {
    * (a crease that was folded and unfolded again).
    */
   readonly angle: number;
+  /**
+   * The angle to show: the flat angle, unless the crease was folded with a
+   * display angle below 180°, in which case that angle with the same sign.
+   */
+  readonly shown: number;
 }
 
 /** A rigid transform in space: `rotate` is a row-major 3×3 rotation, then `move`. */
@@ -190,10 +195,33 @@ export function hinges(state: PaperState): Hinge[] {
         if (!sameTransform(folded, q.transform, tolerance)) continue;
         angle = q.z > p.z === !isFlipped(p) ? Math.PI : -Math.PI;
       }
-      result.push({ a: shared[0], b: shared[1], p: p.id, q: q.id, angle });
+      const degrees = creaseAngle(state, shared, tolerance);
+      const shown =
+        angle === 0 || degrees === undefined ? angle : Math.sign(angle) * degrees * (Math.PI / 180);
+      result.push({ a: shared[0], b: shared[1], p: p.id, q: q.id, angle, shown });
     }
   }
   return result;
+}
+
+/** The display angle of the latest recorded crease that covers the segment, if any. */
+function creaseAngle(
+  state: PaperState,
+  segment: [Vec, Vec],
+  tolerance: number,
+): number | undefined {
+  const mid = { x: (segment[0].x + segment[1].x) / 2, y: (segment[0].y + segment[1].y) / 2 };
+  for (let i = state.creases.length - 1; i >= 0; i--) {
+    const c = state.creases[i];
+    if (!c || sharedSegment(c.a, c.b, segment[0], segment[1], tolerance) === null) continue;
+    // The crease must cover the hinge, not just touch it.
+    const d = sub(c.b, c.a);
+    const len = Math.hypot(d.x, d.y);
+    const t = dot({ x: d.x / len, y: d.y / len }, sub(mid, c.a));
+    if (t < -tolerance || t > len + tolerance) continue;
+    return c.angle;
+  }
+  return undefined;
 }
 
 function sharedEdge(p: Polygon, q: Polygon, tolerance: number): [Vec, Vec] | null {
@@ -253,7 +281,9 @@ export function placePanels(
       // a positive angle then lifts it toward the front of this facet.
       const c = centroid(neighbour.poly);
       const [a, b] = cross(sub(h.b, h.a), sub(c, h.a)) >= 0 ? [h.a, h.b] : [h.b, h.a];
-      const angle = h.p === id ? angleOf(h) : -angleOf(h);
+      // The dihedral angle is the same from either side; the axis orientation
+      // above is what makes it lift the neighbour toward this facet's front.
+      const angle = angleOf(h);
       poses.set(other, composePose(pose, rotationAbout(a, b, angle)));
       queue.push(other);
     }

@@ -36,6 +36,12 @@ export type Side = 1 | -1;
 export const EPS = 1e-9;
 /** Polygon pieces with an area below this are treated as empty. */
 export const AREA_EPS = 1e-10;
+/**
+ * How close to a fold line a vertex may lie and still count as on it. Wider
+ * than EPS because fold lines read from files carry nine decimals, and a
+ * vertex meant to sit on the line would otherwise split off a sliver facet.
+ */
+export const ON_LINE_EPS = 1e-7;
 
 export const vec = (x: number, y: number): Vec => ({ x, y });
 export const add = (p: Vec, q: Vec): Vec => ({ x: p.x + q.x, y: p.y + q.y });
@@ -68,9 +74,11 @@ export const line = (a: Vec, b: Vec): Line => {
  */
 export function perpendicularBisector(a: Vec, b: Vec): Line {
   const mid = scale(add(a, b), 0.5);
-  const d = sub(b, a);
-  const perp = { x: -d.y, y: d.x };
-  return line(mid, add(mid, perp));
+  const d = normalize(sub(b, a));
+  // Two points a unit apart either side of the midpoint, so that rounding
+  // the line's points (as a file does) moves the line as little as possible.
+  const perp = { x: -d.y / 2, y: d.x / 2 };
+  return line(sub(mid, perp), add(mid, perp));
 }
 
 /** Unit direction vector of a line. */
@@ -233,8 +241,8 @@ export function clipPolygon(poly: Polygon, l: Line): Split {
     const q = poly[(i + 1) % poly.length] as Vec;
     const dp = distances[i] as number;
     const dq = distances[(i + 1) % poly.length] as number;
-    const sp = Math.abs(dp) <= EPS ? 0 : Math.sign(dp);
-    const sq = Math.abs(dq) <= EPS ? 0 : Math.sign(dq);
+    const sp = Math.abs(dp) <= ON_LINE_EPS ? 0 : Math.sign(dp);
+    const sq = Math.abs(dq) <= ON_LINE_EPS ? 0 : Math.sign(dq);
     if (sp >= 0) positive.push(p);
     if (sp <= 0) negative.push(p);
     if (sp * sq < 0) {

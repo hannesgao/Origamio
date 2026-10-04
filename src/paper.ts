@@ -45,6 +45,12 @@ export interface Facet {
 export interface Crease {
   readonly a: Vec;
   readonly b: Vec;
+  /**
+   * Fold angle for display, in degrees (0, 180]; absent means 180, folded
+   * flat. The flat model always folds flat; a smaller angle only tells the
+   * 3D view how far to open this crease.
+   */
+  readonly angle?: number;
 }
 
 export type LayerSelection =
@@ -74,6 +80,8 @@ export interface FoldOptions {
   /** Only facets whose folded polygon lies (by centroid) inside this convex window take part. */
   readonly window?: Polygon;
   readonly placement?: Placement;
+  /** Fold angle for display, in degrees (0, 180]; see `Crease.angle`. */
+  readonly angle?: number;
 }
 
 export interface PaperState {
@@ -240,7 +248,13 @@ export function fold(
         z: facet.z,
       });
       const segment = chord(facet.poly, localLine);
-      if (segment) creases.push({ a: segment[0], b: segment[1] });
+      if (segment) {
+        creases.push({
+          a: segment[0],
+          b: segment[1],
+          ...(opts.angle !== undefined && opts.angle < 180 ? { angle: opts.angle } : {}),
+        });
+      }
     }
   }
 

@@ -68,6 +68,8 @@ export interface StepJson {
   readonly region?: readonly PointJson[];
   readonly window?: readonly PointJson[];
   readonly placement?: Placement;
+  /** Fold angle for display in degrees, (0, 180]; omitted means folded flat. */
+  readonly angle?: number;
   readonly label?: string;
 }
 
@@ -90,7 +92,7 @@ export const MAX_PAPER_SIDE = 10;
 
 const PLACEMENTS: readonly Placement[] = ['top', 'bottom', 'inside'];
 
-const round = (n: number): number => Math.round(n * 1e6) / 1e6;
+const round = (n: number): number => Math.round(n * 1e9) / 1e9;
 const pointJson = (p: Vec): PointJson => [round(p.x), round(p.y)];
 
 function layersJson(layers: LayerSelection | undefined): StepJson['layers'] | undefined {
@@ -108,6 +110,7 @@ export function stepToJson(step: FoldStep): StepJson {
     ...(options.region ? { region: options.region.map(pointJson) } : {}),
     ...(options.window ? { window: options.window.map(pointJson) } : {}),
     ...(options.placement && options.placement !== 'top' ? { placement: options.placement } : {}),
+    ...(options.angle !== undefined && options.angle < 180 ? { angle: options.angle } : {}),
     ...(step.label ? { label: step.label } : {}),
   };
 }
@@ -201,6 +204,7 @@ export function parseStep(value: unknown, where = 'step'): FoldStep {
     region?: Polygon;
     window?: Polygon;
     placement?: Placement;
+    angle?: number;
   } = {};
   const layers = parseLayers(value['layers'], `${where}.layers`);
   if (layers.kind !== 'all') options.layers = layers;
@@ -216,6 +220,13 @@ export function parseStep(value: unknown, where = 'step'): FoldStep {
       return fail(`${where}.placement`, `expected one of ${PLACEMENTS.join(', ')}`);
     }
     if (placement !== 'top') options.placement = placement as Placement;
+  }
+  const angle = value['angle'];
+  if (angle !== undefined) {
+    if (typeof angle !== 'number' || !(angle > 0 && angle <= 180)) {
+      return fail(`${where}.angle`, 'expected a number in (0, 180]');
+    }
+    if (angle < 180) options.angle = angle;
   }
   const label = value['label'];
   if (label !== undefined && typeof label !== 'string') {

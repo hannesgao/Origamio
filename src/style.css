@@ -688,7 +688,7 @@ kbd {
 
 .views {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space);
   align-items: start;
 }
@@ -833,10 +833,6 @@ kbd {
   background-image: radial-gradient(var(--grid-dot) 1px, transparent 1.2px);
   background-size: 18px 18px;
   overflow: hidden;
-}
-
-.view-frame-wide {
-  aspect-ratio: 2 / 1;
 }
 
 .view {
@@ -991,12 +987,8 @@ kbd {
 }
 
 /* One secondary view at a time, chosen with the tab strip in its head. */
-#app[data-layout='folded-large'][data-secondary='unfolded'] .layers-card,
 #app[data-layout='folded-large'][data-secondary='unfolded'] .solid-card,
-#app[data-layout='folded-large'][data-secondary='layers'] .unfolded-card,
-#app[data-layout='folded-large'][data-secondary='layers'] .solid-card,
-#app[data-layout='folded-large'][data-secondary='solid'] .unfolded-card,
-#app[data-layout='folded-large'][data-secondary='solid'] .layers-card {
+#app[data-layout='folded-large'][data-secondary='solid'] .unfolded-card {
   display: none;
 }
 
@@ -1019,11 +1011,6 @@ kbd {
 }
 
 #app[data-layout='side-by-side'] .folded-card .view-frame {
-  aspect-ratio: 1 / 1;
-}
-
-#app[data-layout='folded-large'] .layers-card .view-frame-wide,
-#app[data-layout='side-by-side'] .layers-card .view-frame-wide {
   aspect-ratio: 1 / 1;
 }
 
@@ -1053,7 +1040,6 @@ kbd {
 
 #app[data-layout='focus'][data-tab='folded'] .folded-card,
 #app[data-layout='focus'][data-tab='unfolded'] .unfolded-card,
-#app[data-layout='focus'][data-tab='layers'] .layers-card,
 #app[data-layout='focus'][data-tab='solid'] .solid-card {
   display: block;
 }
@@ -1491,15 +1477,6 @@ a.credit:hover {
   stroke-width: 1.5px;
 }
 
-.layer-facet {
-  fill-opacity: 0.92;
-  stroke: var(--facet-stroke);
-  stroke-opacity: 0.6;
-  stroke-width: 1px;
-  vector-effect: non-scaling-stroke;
-  stroke-linejoin: round;
-}
-
 /* The facet(s) under the pointer, echoed in every view. */
 .facet-hit {
   stroke: var(--accent);
@@ -1507,8 +1484,7 @@ a.credit:hover {
   stroke-width: 2.5px;
 }
 
-.unfolded-facet.facet-hit,
-.layer-facet.facet-hit {
+.unfolded-facet.facet-hit {
   filter: brightness(1.08);
 }
 
@@ -1611,13 +1587,8 @@ a.credit:hover {
   /* Stronger than the folded-large rules that hide the other secondary cards. */
   #app[data-layout][data-tab='folded'] .folded-card,
   #app[data-layout][data-tab='unfolded'] .unfolded-card,
-  #app[data-layout][data-tab='layers'] .layers-card,
   #app[data-layout][data-tab='solid'] .solid-card {
     display: block;
-  }
-
-  #app[data-layout] .layers-card .view-frame-wide {
-    aspect-ratio: 2 / 1;
   }
 
   /* One view at a time already; the in-card tab strip would only repeat the tabs above. */

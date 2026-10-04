@@ -19,7 +19,6 @@ import {
   partialFlip,
   reflection,
   scale,
-  signedDistance,
 } from './geometry';
 import { type Facet, type PaperState, currentPolygon, isFlipped } from './paper';
 
@@ -276,104 +275,6 @@ export function renderUnfolded(state: PaperState): string {
   return parts.join('');
 }
 
-// --- Layer view --------------------------------------------------------------
-
-/** Oblique projection of the layer view: model +y recedes up and to the right. */
-export const LAYER_SHEAR = 0.5;
-export const LAYER_SQUASH = 0.5;
-/** Screen units per sheet unit of height, for a flap standing up mid-fold. */
-export const LAYER_HEIGHT = 0.6;
-/** Default width to height ratio of the layer view; the viewBox is padded to match. */
-export const LAYER_VIEW_ASPECT = 2;
-
-/**
- * Project a folded point onto the layer view. `rank` is the position of the
- * facet's layer in the stack (0 at the bottom) and `lift` the vertical gap
- * between layers, in sheet units. Returns SVG user space (y down).
- */
-export function projectLayer(p: Vec, rank: number, lift: number, size: number): Vec {
-  return { x: p.x + LAYER_SHEAR * p.y, y: (size - p.y) * LAYER_SQUASH - rank * lift };
-}
-
-export interface LayerViewOptions {
-  readonly lift: number;
-  /** Width to height ratio of the frame; defaults to LAYER_VIEW_ASPECT. */
-  readonly aspect?: number;
-  readonly animation?: FoldAnimation;
-}
-
-export interface LayerView {
-  readonly markup: string;
-  /** Frames every drawn facet with the usual padding, at the frame's aspect ratio. */
-  readonly viewBox: string;
-}
-
-/** Positions of the distinct layers in the stack, bottom first. */
-function layerRanks(state: PaperState): Map<number, number> {
-  const ranks = new Map<number, number>();
-  for (const z of [...new Set(state.facets.map((f) => f.z))].sort((a, b) => a - b)) {
-    ranks.set(z, ranks.size);
-  }
-  return ranks;
-}
-
-/** The folded stack seen obliquely, with every layer lifted by `lift`. */
-export function renderLayers(state: PaperState, options: LayerViewOptions): LayerView {
-  const size = state.size;
-  const ranks = layerRanks(state);
-  const rankOf = (facet: Facet): number => ranks.get(facet.z) ?? 0;
-  const drawn = drawnFacets(state, options.animation)
-    .filter((d) => area(d.poly) > 0)
-    .sort((a, b) => rankOf(a.facet) - rankOf(b.facet));
-  const parts: string[] = [];
-  const screenPoints: Vec[] = [];
-  const animation = options.animation;
-  for (const d of drawn) {
-    const rank = rankOf(d.facet);
-    let screen = d.poly.map((p) => projectLayer(p, rank, options.lift, size));
-    if (d.moving && animation && animation.progress < 1) {
-      // The flap really rotates out of the plane: raise each vertex by its
-      // height above the sheet, d·sin(angle) with d its distance from the
-      // fold line before the fold. The vertices of `d.poly` are the partially
-      // flipped images of `currentPolygon(d.facet)` in the same order.
-      const angle = animation.progress * Math.PI;
-      const original = currentPolygon(d.facet);
-      screen = screen.map((p, i) => {
-        const source = original[i];
-        const height = source
-          ? Math.abs(signedDistance(animation.line, source)) * Math.sin(angle)
-          : 0;
-        return { x: p.x, y: p.y - height * LAYER_HEIGHT };
-      });
-    }
-    screenPoints.push(...screen);
-    const classes = ['layer-facet', d.flipped ? 'facet-back' : 'facet-front'];
-    if (d.moving) classes.push('facet-moving');
-    parts.push(
-      `<polygon class="${classes.join(' ')}" data-id="${d.facet.id}" points="${screen
-        .map((p) => `${fmt(p.x)},${fmt(p.y)}`)
-        .join(' ')}" style="fill:${facetFill(d.flipped)}" />`,
-    );
-  }
-  const box =
-    screenPoints.length > 0
-      ? bounds(screenPoints)
-      : { minX: 0, minY: 0, maxX: size * (1 + LAYER_SHEAR), maxY: size * LAYER_SQUASH };
-  const pad = VIEW_PADDING * size;
-  let w = box.maxX - box.minX + 2 * pad;
-  let h = box.maxY - box.minY + 2 * pad;
-  const aspect = options.aspect ?? LAYER_VIEW_ASPECT;
-  if (w < aspect * h) w = aspect * h;
-  else h = w / aspect;
-  const cx = (box.minX + box.maxX) / 2;
-  const cy = (box.minY + box.maxY) / 2;
-  return {
-    markup: parts.join(''),
-    viewBox: `${fmt(cx - w / 2)} ${fmt(cy - h / 2)} ${fmt(w)} ${fmt(h)}`,
-  };
-}
-
-/** Convert a point from the SVG user space (y down) back to model space (y up). */
 export const fromSvgPoint = (p: Vec, size: number): Vec => ({ x: p.x, y: size - p.y });
 
 /** Convert a model point to SVG user space. */

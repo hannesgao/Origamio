@@ -69,7 +69,6 @@ import {
   fitCamera,
   fromSvgPoint,
   renderFolded,
-  renderLayers,
   renderUnfolded,
   viewBox,
 } from './render';
@@ -238,19 +237,17 @@ const DRAWER_KEY = 'origamio.drawer';
 /** Below this width the views sit behind tabs and the panel floats over the workspace. */
 const NARROW_QUERY = '(max-width: 1339px)';
 /** The view shown on its own: on narrow screens, and in the Focus layout. */
-type ViewTab = 'folded' | 'unfolded' | 'layers' | 'solid';
+type ViewTab = 'folded' | 'unfolded' | 'solid';
 const VIEW_TABS: readonly { readonly id: ViewTab; readonly label: string }[] = [
   { id: 'folded', label: 'Folded' },
   { id: 'unfolded', label: 'Unfolded' },
-  { id: 'layers', label: 'Layers' },
   { id: 'solid', label: '3D' },
 ];
 const TAB_KEY = 'origamio.tab';
 /** Which secondary view the tabbed card of the folded-large layout shows. */
-type SecondaryTab = 'unfolded' | 'layers' | 'solid';
+type SecondaryTab = 'unfolded' | 'solid';
 const SECONDARY_TABS: readonly { readonly id: SecondaryTab; readonly label: string }[] = [
   { id: 'unfolded', label: 'Unfolded' },
-  { id: 'layers', label: 'Layers' },
   { id: 'solid', label: '3D' },
 ];
 const SECONDARY_KEY = 'origamio.secondary';
@@ -365,9 +362,8 @@ export function createApp(root: HTMLElement): App {
   // --- DOM -----------------------------------------------------------------
   const foldedSvg = svgElement(paper.width, paper.height, 'view folded-view');
   const unfoldedSvg = svgElement(paper.width, paper.height, 'view unfolded-view');
-  const layersSvg = svgElement(paper.width, paper.height, 'view layers-view');
   const solidSvg = svgElement(paper.width, paper.height, 'view solid-view');
-  const views = [foldedSvg, unfoldedSvg, layersSvg, solidSvg];
+  const views = [foldedSvg, unfoldedSvg, solidSvg];
 
   const layerAll = el('input', { type: 'radio', name: 'layers', value: 'all', checked: '' });
   const layerTop = el('input', { type: 'radio', name: 'layers', value: 'top' });
@@ -717,14 +713,6 @@ export function createApp(root: HTMLElement): App {
     moreButton,
   ]);
 
-  const liftInput = el('input', {
-    type: 'range',
-    min: '0',
-    max: '0.2',
-    step: '0.005',
-    value: '0.06',
-    'aria-label': 'Gap between layers',
-  });
   const tabButtons = VIEW_TABS.map((tab) =>
     el('button', { type: 'button', role: 'tab', 'aria-selected': 'false', 'data-tab': tab.id }, [
       tab.label,
@@ -751,15 +739,10 @@ export function createApp(root: HTMLElement): App {
       ),
     );
   const unfoldedStrip = secondaryStrip();
-  const layersStrip = secondaryStrip();
   const solidStrip = secondaryStrip();
   const unfoldedTools = el('div', { class: 'card-tools' }, [
     unfoldedStrip,
     el('span', { class: 'caption' }, ['Crease pattern, live']),
-  ]);
-  const layerTools = el('div', { class: 'card-tools' }, [
-    layersStrip,
-    el('span', { class: 'caption' }, ['Stack, lifted']),
   ]);
   const orbitReset = el(
     'button',
@@ -771,13 +754,14 @@ export function createApp(root: HTMLElement): App {
     el('span', { class: 'caption' }, ['Drag to turn']),
     orbitReset,
   ]);
-  const thicknessInput = el('input', {
+  // How far every crease is opened from flat, in degrees.
+  const openingInput = el('input', {
     type: 'range',
     min: '0',
-    max: '0.03',
-    step: '0.001',
-    value: '0.01',
-    'aria-label': 'Thickness of one layer',
+    max: '30',
+    step: '1',
+    value: '6',
+    'aria-label': 'Crease opening in degrees',
   });
 
   const stat = (value: HTMLElement, label: string): HTMLElement =>
@@ -818,7 +802,6 @@ export function createApp(root: HTMLElement): App {
 
   const foldedFrame = el('div', { class: 'view-frame' }, [foldedSvg]);
   const unfoldedFrame = el('div', { class: 'view-frame' }, [unfoldedSvg]);
-  const layersFrame = el('div', { class: 'view-frame view-frame-wide' }, [layersSvg]);
   const solidFrame = el('div', { class: 'view-frame' }, [solidSvg]);
   const foldedCard = card('Folded', viewTools, foldedFrame, [statusBar, statsRow], 'folded-card');
   const unfoldedCard = card(
@@ -828,38 +811,20 @@ export function createApp(root: HTMLElement): App {
     [legend, creaseCount],
     'unfolded-card',
   );
-  const layersCard = card(
-    'Layers',
-    layerTools,
-    layersFrame,
-    [
-      el('span', {}, [
-        'Front view, each layer lifted. ',
-        el('span', { class: 'help-more' }, ['Point at a facet to find it.']),
-      ]),
-      el('label', { class: 'range-label' }, ['Gap', liftInput]),
-    ],
-    'layers-card',
-  );
   const solidCard = card(
     '3D',
     solidTools,
     solidFrame,
     [
       el('span', {}, [
-        'The stack in space. ',
-        el('span', { class: 'help-more' }, ['Drag to turn it, scroll to zoom.']),
+        'Creases opened a little. ',
+        el('span', { class: 'help-more' }, ['Drag to turn, scroll to zoom.']),
       ]),
-      el('label', { class: 'range-label' }, ['Thickness', thicknessInput]),
+      el('label', { class: 'range-label' }, ['Open', openingInput]),
     ],
     'solid-card',
   );
-  const viewsGrid = el('main', { class: 'views' }, [
-    foldedCard,
-    unfoldedCard,
-    layersCard,
-    solidCard,
-  ]);
+  const viewsGrid = el('main', { class: 'views' }, [foldedCard, unfoldedCard, solidCard]);
   const workspace = el('div', { class: 'workspace' }, [viewsGrid, timelineCard]);
 
   // --- Rail and panel ------------------------------------------------------------
@@ -998,7 +963,6 @@ export function createApp(root: HTMLElement): App {
       }
       for (const [cardEl, frame, wide] of [
         [unfoldedCard, unfoldedFrame, false],
-        [layersCard, layersFrame, true],
         [solidCard, solidFrame, false],
       ] as const) {
         if (cardEl.offsetParent === null) continue;
@@ -1008,17 +972,15 @@ export function createApp(root: HTMLElement): App {
     }
     const chromeFolded = chrome(foldedCard, foldedFrame);
     if (layout === 'side-by-side') {
-      // Equal canvases: the smallest of the four budgets wins for all.
+      // Equal canvases: the smallest of the three budgets wins for all.
       const side = Math.min(
         height - chromeFolded,
         widthOf(foldedFrame),
         widthOf(unfoldedFrame),
-        widthOf(layersFrame),
         widthOf(solidFrame),
       );
       place(foldedFrame, side, false);
       place(unfoldedFrame, side, false);
-      place(layersFrame, side, false);
       place(solidFrame, side, false);
       return;
     }
@@ -1027,11 +989,7 @@ export function createApp(root: HTMLElement): App {
     const big = fill(foldedFrame, height - chromeFolded);
     const column = big + chromeFolded;
     const [cardEl, frame] =
-      secondaryTab === 'layers'
-        ? [layersCard, layersFrame]
-        : secondaryTab === 'solid'
-          ? [solidCard, solidFrame]
-          : [unfoldedCard, unfoldedFrame];
+      secondaryTab === 'solid' ? [solidCard, solidFrame] : [unfoldedCard, unfoldedFrame];
     fill(frame, column - chrome(cardEl, frame));
   };
 
@@ -1048,7 +1006,7 @@ export function createApp(root: HTMLElement): App {
     root.dataset['layout'] = layout;
     root.dataset['tab'] = activeTab;
     root.dataset['secondary'] = secondaryTab;
-    for (const strip of [unfoldedStrip, layersStrip, solidStrip]) {
+    for (const strip of [unfoldedStrip, solidStrip]) {
       for (const button of strip.querySelectorAll('button')) {
         button.setAttribute('aria-selected', String(button.dataset['secondary'] === secondaryTab));
       }
@@ -1132,7 +1090,6 @@ export function createApp(root: HTMLElement): App {
   };
 
   // --- Rendering -------------------------------------------------------------
-  const layerLift = (): number => Number(liftInput.value) || 0;
 
   /** Facets picked out by the pointer, shown with an accent outline in every view. */
   let highlighted: ReadonlySet<number> = new Set();
@@ -1255,26 +1212,25 @@ export function createApp(root: HTMLElement): App {
     unfoldedSvg.innerHTML = renderUnfolded(state);
     renderTimeline();
     renderStepPanel();
-    // The layer view is framed at the aspect ratio its frame actually has.
-    const rect = layersSvg.getBoundingClientRect();
-    const aspect = rect.width > 0 && rect.height > 0 ? rect.width / rect.height : undefined;
-    const layerOptions = {
-      lift: layerLift(),
-      ...(aspect === undefined ? {} : { aspect }),
-      ...(phase.kind === 'animating' ? { animation: phase.animation } : {}),
-    };
     creaseCount.textContent = `${state.creases.length} crease${state.creases.length === 1 ? '' : 's'}`;
-    const layers = renderLayers(state, layerOptions);
-    layersSvg.setAttribute('viewBox', layers.viewBox);
-    layersSvg.innerHTML = layers.markup;
+    // The 3D view: the sheet before the step lets a playing step swing its creases.
     const solidRect = solidSvg.getBoundingClientRect();
+    const previous = timeline.previous;
     const solid = render3d(state, {
       orbit,
-      thickness: Number(thicknessInput.value) || 0,
+      opening: ((Number(openingInput.value) || 0) * Math.PI) / 180,
       ...(solidRect.width > 0 && solidRect.height > 0
         ? { aspect: solidRect.width / solidRect.height }
         : {}),
-      ...(phase.kind === 'animating' ? { animation: phase.animation } : {}),
+      ...(phase.kind === 'animating' && previous
+        ? {
+            animation: {
+              previous,
+              movedIds: phase.animation.movedIds,
+              progress: phase.animation.progress,
+            },
+          }
+        : {}),
     });
     solidSvg.setAttribute('viewBox', solid.viewBox);
     solidSvg.innerHTML = solid.markup;
@@ -1754,7 +1710,7 @@ export function createApp(root: HTMLElement): App {
     playing = false;
     paper = { ...next };
     timeline.resetSheet(createPaper(paper.width, paper.height));
-    for (const svg of [unfoldedSvg, layersSvg]) {
+    for (const svg of [unfoldedSvg]) {
       svg.setAttribute('viewBox', viewBox(paper.width, paper.height));
     }
     camera = defaultCamera(paper.width, paper.height);
@@ -2215,15 +2171,14 @@ export function createApp(root: HTMLElement): App {
     }
   });
 
-  for (const svg of [unfoldedSvg, layersSvg, solidSvg]) {
+  for (const svg of [unfoldedSvg, solidSvg]) {
     svg.addEventListener('pointermove', (event) => {
       const hit = event.target instanceof Element ? event.target.closest('[data-id]') : null;
       setHighlight(hit ? [Number(hit.getAttribute('data-id'))] : []);
     });
     svg.addEventListener('pointerleave', () => setHighlight([]));
   }
-  liftInput.addEventListener('input', render);
-  thicknessInput.addEventListener('input', render);
+  openingInput.addEventListener('input', render);
 
   // Turning the 3D view: drag spins and tilts, the wheel zooms, a double click resets.
   let orbitDrag: { readonly pointerId: number; last: Vec } | null = null;
@@ -2315,11 +2270,11 @@ export function createApp(root: HTMLElement): App {
   );
   narrowQuery.addEventListener('change', applyLayout);
   new ResizeObserver(scheduleFit).observe(workspace);
-  for (const strip of [unfoldedStrip, layersStrip, solidStrip]) {
+  for (const strip of [unfoldedStrip, solidStrip]) {
     for (const button of strip.querySelectorAll('button')) {
       button.addEventListener('click', () => {
         const next = button.dataset['secondary'];
-        if (next === 'unfolded' || next === 'layers' || next === 'solid') setSecondary(next);
+        if (next === 'unfolded' || next === 'solid') setSecondary(next);
       });
     }
   }

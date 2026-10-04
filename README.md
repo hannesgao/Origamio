@@ -48,16 +48,16 @@ reflections and convex polygon clipping.
   line, reverse fold the neck, the tail and the head, and fold the wings
   down. The result is the flat crane of the diagrams, lying on its side,
   before the wings are spread.
-- **Layer view.** A third card shows the folded stack obliquely with every
-  layer lifted a little, so the stacking order is visible at a glance; a slider
-  sets the gap. While a flap is folding it rises out of the plane. Pointing at
-  a facet in any view outlines the same facet in the others, and pointing
-  at the folded sheet outlines every facet under the cursor.
-- **3D view.** A fourth card shows the stack in space: each layer is a thin
-  sheet at its own height, lit from one side, with the front and back colours
-  on the right faces. Drag to turn it, scroll to zoom, double-click or _Reset
-  view_ to go back; a slider sets the thickness of a layer. While a step
-  plays, the flap swings up around the fold line in three dimensions.
+- **3D view with real creases.** A third card shows the sheet as rigid panels
+  joined at their creases: every crease is opened a few degrees from flat (the
+  _Open_ slider sets how far), so the paper reads as folded rather than as a
+  stack of layers, lit from one side with the front and back colours on the
+  right faces. Drag to turn it, scroll to zoom, double-click or _Reset view_ to
+  go back. While a step plays, its creases swing from flat to folded in three
+  dimensions, and a step saved with a fold `angle` below 180° stays open at
+  that angle. Pointing at a facet in any view outlines the same facet in the
+  others, and pointing at the folded sheet outlines every facet under the
+  cursor.
 - **Light and dark themes.** The interface follows the operating system's
   colour scheme.
 - **An editable timeline.** Every clip can be renamed (double-click or F2),
@@ -85,8 +85,8 @@ reflections and convex polygon clipping.
   format.
 - **Three layouts.** The header switches between _Folded large_ (the
   default: the folded view fills most of the workspace and a second card
-  beside it shows the crease pattern, the layers or the 3D view, chosen with
-  a tab strip in its head), _Side by side_ (all four views in a row) and
+  beside it shows the crease pattern or the 3D view, chosen with a tab strip
+  in its head), _Side by side_ (all three views in a row) and
   _Focus_ (one view at a time, chosen with a tab strip over the workspace).
   The folded canvas is as big as its card allows, whatever the window's
   aspect; the other canvases stay square. All of these choices are remembered
@@ -94,7 +94,7 @@ reflections and convex polygon clipping.
 - **Made for wide screens.** Header, rail and status bar are fixed and the views
   are sized to the remaining space, so nothing scrolls on a 16:9 display.
   Windows narrower than 1340 px show one view at a time behind Folded /
-  Unfolded / Layers tabs and float the panels over the workspace; on phones
+  Unfolded / 3D tabs and float the panels over the workspace; on phones
   the playback controls sit at the bottom edge.
 
 ## Using the simulator
@@ -103,7 +103,7 @@ The page is a workbench that fills the window and never scrolls as a whole: a
 fixed header with the sequence name (edit it in place) and the layout switch,
 an icon rail on the left whose buttons open the Library (presets, in groups),
 Paper (size and colours), Step (the selected step's parameters), File (name,
-import, export, new) and Shortcuts panels, the workspace with the four view
+import, export, new) and Shortcuts panels, the workspace with the three view
 cards and the timeline card under them, and a status bar along the bottom
 that shows the sheet with its two colours, the position on the timeline and
 the latest message (what was loaded, what a fold did, why a file was
@@ -161,13 +161,11 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    button hides the track; the choice and the speed are remembered. The File
    panel on the rail names the sequence, exports the timeline as JSON,
    imports such a file onto a fresh sheet and clears everything with _New_.
-8. **Read the stack.** The Layers card draws the folded sheet from the front
-   with each layer lifted by the _Gap_ slider; set it to zero for a plain side
-   view. The 3D card shows the same stack in space: drag to turn it, scroll to
-   zoom, and set the _Thickness_ of a layer with its slider. Move the pointer
-   over a facet in the Unfolded, Layers or 3D view to see where it sits in the
-   folded sheet, or over the folded sheet to see all facets stacked under the
-   cursor.
+8. **See it in space.** The 3D card shows the folded sheet with every crease
+   opened by the _Open_ slider (0 shows it flat, as the model really is): drag
+   to turn it and scroll to zoom. Move the pointer over a facet in the
+   Unfolded or 3D view to see where it sits in the folded sheet, or over the
+   folded sheet to see all facets stacked under the cursor.
 9. **Look closer.** The folded sheet gets small quickly, so the Folded card has
    its own navigation: _Fit_ frames the folded sheet, _Full_ shows the whole
    square again, the mouse wheel zooms around the pointer, and the _Move_ tool
@@ -341,6 +339,7 @@ Every step is one call of `fold` on the sheet as it is at that moment:
 | `region`    | Optional convex polygon in **unfolded** coordinates; only facets inside it take part.                     |
 | `window`    | Optional convex polygon in **folded** coordinates; only facets inside it take part.                       |
 | `placement` | `"top"` (default), `"bottom"` or `"inside"`, see above.                                                   |
+| `angle`     | Optional fold angle in degrees, `(0, 180]`; below 180 the 3D view keeps the crease open at that angle.    |
 | `label`     | Optional name shown on the timeline.                                                                      |
 
 `src/sequence.ts` parses and validates files (errors name the offending field)
