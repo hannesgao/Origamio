@@ -194,10 +194,23 @@ export function tornPairs(state: PaperState): readonly { a: Vec; b: Vec; p: numb
   return neighbours(state).torn;
 }
 
-function neighbours(state: PaperState): {
+interface Neighbours {
   hinges: Hinge[];
   torn: { a: Vec; b: Vec; p: number; q: number }[];
-} {
+}
+
+// States are immutable, so what is derived from one can be kept with it.
+const neighbourCache = new WeakMap<PaperState, Neighbours>();
+
+function neighbours(state: PaperState): Neighbours {
+  const cached = neighbourCache.get(state);
+  if (cached) return cached;
+  const found = findNeighbours(state);
+  neighbourCache.set(state, found);
+  return found;
+}
+
+function findNeighbours(state: PaperState): Neighbours {
   const tolerance = EPS * 1e3 * state.size;
   const result: Hinge[] = [];
   const torn: { a: Vec; b: Vec; p: number; q: number }[] = [];
@@ -335,7 +348,11 @@ export function stepPose(
     ? new Set(state.facets.filter((f) => !animation.movedIds.has(f.id)).map((f) => f.id))
     : undefined;
   const anchor = anchorFacet(state, still);
-  return { angleOf, ...(anchor ? { rootId: anchor.id } : {}) };
+  return {
+    angleOf,
+    ...(anchor ? { rootId: anchor.id } : {}),
+    ...(animation && t < 1 ? { moved: animation.movedIds } : {}),
+  };
 }
 
 /**
@@ -365,6 +382,12 @@ export interface PoseOptions {
   readonly angleOf?: (hinge: Hinge) => number;
   /** Facet to place first; defaults to the lowest layer with the largest area. */
   readonly rootId?: number;
+  /**
+   * While a step plays, the facets it moves: their order against the rest
+   * of the sheet is not settled until they land, so the solver keeps layers
+   * apart only within the moving group and within the group that stays.
+   */
+  readonly moved?: ReadonlySet<number>;
 }
 
 /**

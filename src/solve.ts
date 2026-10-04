@@ -6,8 +6,20 @@
  * wings and the body of a crane form a loop) the sheet settles on a
  * compromise, the way paper gives a little, instead of showing a gap.
  */
-import { type Vec, centroid, distance } from './geometry';
-import { type Facet, type PaperState } from './paper';
+import {
+  type Mat,
+  type Polygon,
+  type Vec,
+  apply,
+  centroid,
+  cross,
+  distance,
+  intersectConvex,
+  invert,
+  signedArea,
+  sub,
+} from './geometry';
+import { type Facet, type PaperState, currentPolygon, isFlipped } from './paper';
 import {
   type Hinge,
   type Panel,
@@ -24,6 +36,14 @@ export interface SolveOptions extends PoseOptions {
   readonly tolerance?: number;
   /** How hard creases pull towards their angle, 0 to 1. */
   readonly bendStiffness?: number;
+  /**
+   * Thickness of the paper, in sheet units. Where one facet lies on another
+   * in the flat model it is kept at least this far above it, in that order;
+   * zero still keeps the order.
+   */
+  readonly thickness?: number;
+  /** Sweeps at the end with the creases free, so that facets are rigid and layers in order. */
+  readonly settle?: number;
   /** Vertex positions to start from (a previous solution), by facet id and vertex index. */
   readonly warm?: ReadonlyMap<number, readonly Vec3[]>;
   /**
@@ -36,7 +56,7 @@ export interface SolveOptions extends PoseOptions {
 
 export interface Solved {
   readonly panels: Panel[];
-  /** Largest remaining violation of a shared-edge or length constraint, in sheet units. */
+  /** Largest remaining violation of a length or layer-order constraint, in sheet units. */
   readonly residual: number;
   /** Positions to warm-start the next solve from. */
   readonly positions: ReadonlyMap<number, readonly Vec3[]>;
@@ -51,8 +71,136 @@ interface Mesh {
   readonly lengths: { i: number; j: number; rest: number }[];
   /** Crease constraints: edge (i, j), one off-edge vertex on each side. */
   readonly bends: { i: number; j: number; k: number; l: number; hinge: Hinge }[];
+  /** Layer constraints: where one facet lies directly on another in the flat model. */
+  readonly overlaps: Overlap[];
   readonly count: number;
 }
+
+/**
+ * A point of the sheet where facet `over` lies directly on facet `under`:
+ * the same spot on each, as weights on three of the facet's mesh vertices
+ * (a non-degenerate triangle of it, in the polygon's winding).
+ */
+interface Overlap {
+  readonly underId: number;
+  readonly overId: number;
+  readonly under: readonly [number, number, number];
+  readonly underW: readonly [number, number, number];
+  readonly underFlipped: boolean;
+  readonly over: readonly [number, number, number];
+  readonly overW: readonly [number, number, number];
+  readonly overFlipped: boolean;
+}
+
+/** The point as weights on a non-degenerate fan triangle of the polygon, if it lies inside. */
+function onTriangle(
+  poly: readonly Vec[],
+  ids: readonly number[],
+  p: Vec,
+  tolerance: number,
+): { tri: [number, number, number]; w: [number, number, number] } | null {
+  const o = poly[0] as Vec;
+  for (let k = 1; k + 1 < poly.length; k++) {
+    const a = poly[k] as Vec;
+    const b = poly[k + 1] as Vec;
+    const area = cross(sub(a, o), sub(b, o));
+    if (Math.abs(area) < tolerance * tolerance) continue;
+    const w1 = cross(sub(p, o), sub(b, o)) / area;
+    const w2 = cross(sub(a, o), sub(p, o)) / area;
+    const w0 = 1 - w1 - w2;
+    const slack = -1e-6;
+    if (w0 < slack || w1 < slack || w2 < slack) continue;
+    const clamp = (w: number): number => Math.max(0, w);
+    const sum = clamp(w0) + clamp(w1) + clamp(w2);
+    return {
+      tri: [ids[0] as number, ids[k] as number, ids[k + 1] as number],
+      w: [clamp(w0) / sum, clamp(w1) / sum, clamp(w2) / sum],
+    };
+  }
+  return null;
+}
+
+/** Whether `p` lies inside the polygon by more than `margin` (not on its edge). */
+function wellInside(poly: Polygon, p: Vec, margin: number): boolean {
+  if (poly.length < 3) return false;
+  const sign = signedArea(poly) >= 0 ? 1 : -1;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i] as Vec;
+    const b = poly[(i + 1) % poly.length] as Vec;
+    const len = distance(a, b);
+    if (len < 1e-12) continue;
+    if ((sign * cross(sub(b, a), sub(p, a))) / len <= margin) return false;
+  }
+  return true;
+}
+
+/**
+ * Where facets lie on one another in the flat model: for every pair that
+ * overlaps, the corners and centre of the overlap, each kept only where no
+ * third facet lies between the two there, so that each layer is tied to
+ * the one directly beneath it.
+ */
+function findOverlaps(state: PaperState, mesh: Omit<Mesh, 'overlaps'>): Overlap[] {
+  const tolerance = 1e-6 * state.size;
+  const facets = [...state.facets].sort((a, b) => a.z - b.z);
+  const folded = facets.map((f) => currentPolygon(f));
+  const inverse = facets.map((f) => invert(f.transform));
+  const flipped = facets.map((f) => isFlipped(f));
+  const overlaps: Overlap[] = [];
+  for (let i = 0; i < facets.length; i++) {
+    for (let j = i + 1; j < facets.length; j++) {
+      const region = intersectConvex(folded[i] as Polygon, folded[j] as Polygon);
+      if (Math.abs(signedArea(region)) < tolerance * tolerance * 100) continue;
+      const under = facets[i] as Facet;
+      const over = facets[j] as Facet;
+      const samples = [...region, centroid(region)];
+      for (const s of samples) {
+        // A facet between the two at this spot ties each of them to itself instead.
+        let between = false;
+        for (let k = i + 1; k < j && !between; k++) {
+          between = wellInside(folded[k] as Polygon, s, -tolerance);
+        }
+        if (between) continue;
+        const onUnder = onTriangle(
+          mesh.polys.get(under.id) as Vec[],
+          mesh.index.get(under.id) as number[],
+          apply(inverse[i] as Mat, s),
+          tolerance,
+        );
+        const onOver = onTriangle(
+          mesh.polys.get(over.id) as Vec[],
+          mesh.index.get(over.id) as number[],
+          apply(inverse[j] as Mat, s),
+          tolerance,
+        );
+        if (!onUnder || !onOver) continue;
+        // The same welded vertices on both sides (a shared crease): nothing to keep apart.
+        const used = (t: readonly number[], w: readonly number[]): string =>
+          t
+            .filter((_, n) => (w[n] as number) > 1e-9)
+            .sort((a, b) => a - b)
+            .join(',');
+        if (used(onUnder.tri, onUnder.w) === used(onOver.tri, onOver.w)) continue;
+        overlaps.push({
+          underId: under.id,
+          overId: over.id,
+          under: onUnder.tri,
+          underW: onUnder.w,
+          underFlipped: flipped[i] as boolean,
+          over: onOver.tri,
+          overW: onOver.w,
+          overFlipped: flipped[j] as boolean,
+        });
+      }
+    }
+  }
+  return overlaps;
+}
+
+/** How much softer a crease folded flat pulls than one folded to a given angle. */
+const FLAT_CREASE_GIVE = 0.3;
+/** Sweeps at the end with the creases free, so that facets are rigid and layers in order. */
+const SETTLE_SWEEPS = 12;
 
 const sub3 = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
 const add3 = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
@@ -112,8 +260,19 @@ class Welds {
   }
 }
 
+// States are immutable, so a mesh built for one can be kept with it.
+const meshCache = new WeakMap<PaperState, { hinges: readonly Hinge[]; mesh: Mesh }>();
+
 /** The constraint mesh of a sheet: facets with hinge endpoints as vertices, welded along hinges. */
 function buildMesh(state: PaperState, hinges: readonly Hinge[]): Mesh {
+  const cached = meshCache.get(state);
+  if (cached && cached.hinges === hinges) return cached.mesh;
+  const mesh = buildMeshUncached(state, hinges);
+  meshCache.set(state, { hinges, mesh });
+  return mesh;
+}
+
+function buildMeshUncached(state: PaperState, hinges: readonly Hinge[]): Mesh {
   const tolerance = 1e-6 * state.size;
   const polys = new Map<number, Vec[]>();
   for (const f of state.facets)
@@ -199,7 +358,53 @@ function buildMesh(state: PaperState, hinges: readonly Hinge[]): Mesh {
     if (i < 0 || j < 0 || k < 0 || l < 0 || i === j) continue;
     bends.push({ i, j, k, l, hinge: h });
   }
-  return { polys, index, lengths, bends, count: compact.size };
+  const partial = { polys, index, lengths, bends, count: compact.size };
+  return { ...partial, overlaps: findOverlaps(state, partial) };
+}
+
+/**
+ * Keep the point where `over` lies on `under` at least `thickness` above
+ * it, along the stack's up direction there. Returns the correction applied.
+ */
+function separationConstraint(
+  pos: Vec3[],
+  c: Overlap,
+  thickness: number,
+  pinned: ReadonlySet<number>,
+): number {
+  const at = (tri: readonly [number, number, number], w: readonly [number, number, number]): Vec3 =>
+    add3(
+      add3(mul3(pos[tri[0]] as Vec3, w[0]), mul3(pos[tri[1]] as Vec3, w[1])),
+      mul3(pos[tri[2]] as Vec3, w[2]),
+    );
+  const upOf = (tri: readonly [number, number, number], flipped: boolean): Vec3 => {
+    const o = pos[tri[0]] as Vec3;
+    const n = cross3(sub3(pos[tri[1]] as Vec3, o), sub3(pos[tri[2]] as Vec3, o));
+    return flipped ? mul3(n, -1) : n;
+  };
+  const p = at(c.under, c.underW);
+  const q = at(c.over, c.overW);
+  let up = add3(norm3(upOf(c.under, c.underFlipped)), norm3(upOf(c.over, c.overFlipped)));
+  if (len3(up) < 1e-9) up = upOf(c.under, c.underFlipped);
+  up = norm3(up);
+  const gap = dot3(sub3(q, p), up) - thickness;
+  if (gap >= 0) return 0;
+  let sum = 0;
+  for (let n = 0; n < 3; n++) {
+    const wu = c.underW[n] as number;
+    const wo = c.overW[n] as number;
+    if (!pinned.has(c.under[n] as number)) sum += wu * wu;
+    if (!pinned.has(c.over[n] as number)) sum += wo * wo;
+  }
+  if (sum < 1e-12) return 0;
+  const lambda = -gap / sum;
+  for (let n = 0; n < 3; n++) {
+    const o = c.over[n] as number;
+    const u = c.under[n] as number;
+    if (!pinned.has(o)) pos[o] = add3(pos[o] as Vec3, mul3(up, lambda * (c.overW[n] as number)));
+    if (!pinned.has(u)) pos[u] = sub3(pos[u] as Vec3, mul3(up, lambda * (c.underW[n] as number)));
+  }
+  return -gap;
 }
 
 /**
@@ -216,6 +421,9 @@ export function solveSheet(
   const iterations = options.iterations ?? 60;
   const tolerance = options.tolerance ?? 1e-5 * state.size;
   const bendStiffness = options.bendStiffness ?? 0.5;
+  const thickness = options.thickness ?? 0;
+  const settle = options.settle ?? SETTLE_SWEEPS;
+  const inFlight = options.moved;
 
   // Initial positions: the rigid walk, averaged where welded vertices disagree.
   const start = placePanels(state, hinges, options);
@@ -246,8 +454,7 @@ export function solveSheet(
     if (w > 0) pos[i] = mul3(pos[i] as Vec3, 1 / w);
   }
 
-  let residual = 0;
-  for (let sweep = 0; sweep < iterations; sweep++) {
+  const lengthSweep = (): number => {
     let moved = 0;
     for (const c of mesh.lengths) {
       const a = pos[c.i] as Vec3;
@@ -263,15 +470,38 @@ export function solveSheet(
       pos[c.j] = sub3(b, mul3(corr, wb));
       moved = Math.max(moved, len3(corr));
     }
-    for (const c of mesh.bends) {
-      const target = Math.PI - Math.abs(angleOf(c.hinge));
-      moved = Math.max(
-        moved,
-        bendConstraint(pos, c.i, c.j, c.k, c.l, target, bendStiffness, pinned),
-      );
+    return moved;
+  };
+  const separationSweep = (): number => {
+    let moved = 0;
+    for (const c of mesh.overlaps) {
+      // A flap in flight has no settled order against the rest of the sheet.
+      if (inFlight && inFlight.has(c.underId) !== inFlight.has(c.overId)) continue;
+      moved = Math.max(moved, separationConstraint(pos, c, thickness, pinned));
     }
-    residual = moved;
+    return moved;
+  };
+
+  // Creases pull towards their angles while lengths and layer order are kept;
+  // a crease folded flat is a soft preference (its opening is a guess), a
+  // crease given an angle is firmer.
+  for (let sweep = 0; sweep < iterations; sweep++) {
+    let moved = lengthSweep();
+    for (const c of mesh.bends) {
+      const shown = angleOf(c.hinge);
+      const target = Math.PI - Math.abs(shown);
+      const firm = Math.abs(c.hinge.shown) < Math.PI - 1e-9;
+      const stiffness = firm ? bendStiffness : bendStiffness * FLAT_CREASE_GIVE;
+      moved = Math.max(moved, bendConstraint(pos, c.i, c.j, c.k, c.l, target, stiffness, pinned));
+    }
+    moved = Math.max(moved, separationSweep());
     if (moved < tolerance) break;
+  }
+  // Then let the sheet settle with its creases free: facets rigid, layers in order.
+  let residual = 0;
+  for (let sweep = 0; sweep < settle; sweep++) {
+    residual = Math.max(lengthSweep(), separationSweep());
+    if (residual < tolerance) break;
   }
 
   const positions = new Map<number, Vec3[]>();
