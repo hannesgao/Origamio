@@ -77,7 +77,10 @@ export function render3d(state: PaperState, options: View3dOptions): View3d {
   );
   const animation = options.animation;
 
-  const extent = foldedPoints(state);
+  // While a step plays the sheet may reach further than its end state does.
+  const extent = animation
+    ? [...foldedPoints(state), ...foldedPoints(animation.previous)]
+    : foldedPoints(state);
   const xs = extent.map((p) => p.x);
   const ys = extent.map((p) => p.y);
   const centre: Vec3 = {

@@ -42,12 +42,17 @@ reflections and convex polygon clipping.
   flat sheet and keeps every step on the timeline; changing colours is
   instant. Size and colours are part of every exported file and are restored
   on import.
-- **A crane.** The _Crane_ preset plays the classic sequence in 21 folds:
-  pre-crease the diagonals, fold the preliminary base, petal fold both sides
-  into the bird base, narrow the points, close the model along its centre
-  line, reverse fold the neck, the tail and the head, and fold the wings
-  down. The result is the flat crane of the diagrams, lying on its side,
-  before the wings are spread.
+- **A crane.** The _Crane_ preset plays the classic sequence in 12 steps,
+  several of which make more than one crease at once: pre-crease the
+  diagonals, collapse the square base (both medians, then the squash that
+  puts its four flaps side by side), petal fold the front and the back page
+  into the bird base, narrow both points, close the model along its centre
+  line, reverse fold the neck, the tail and the head, and spread the wings,
+  which the last step keeps open at 150° so the crane stands up in the 3D
+  view. The square base and the bird base are states that real paper can
+  take (no neighbouring facets pulled apart); the narrowing and the reverse
+  folds still use the model's layer selection and are checked for shape
+  rather than for paper continuity.
 - **3D view with real creases.** A third card shows the sheet as rigid panels
   joined at their creases: every crease is opened a few degrees from flat (the
   _Open_ slider sets how far), so the paper reads as folded rather than as a

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { approxEqualVec, sideOf, vec } from '../src/geometry';
+import { approxEqualVec, vec } from '../src/geometry';
 import { FoldHistory, createPaper, currentPolygon } from '../src/paper';
-import { PRESETS } from '../src/presets';
+import { PRESETS, presetToSequence } from '../src/presets';
+import { applyStep } from '../src/sequence';
 import { type Hinge, hinges, placePanels } from '../src/rigid';
 import { foldLeftRight, foldLeftRightAgain, run } from './presets';
 
@@ -10,11 +11,10 @@ const runPreset = (id: string): FoldHistory => {
   const preset = PRESETS.find((p) => p.id === id);
   if (!preset) throw new Error(`no preset ${id}`);
   const history = new FoldHistory(createPaper());
-  for (const { line: l, movingPoint, landsOn, ...options } of preset.steps) {
-    void landsOn;
-    history.fold(l, sideOf(l, movingPoint), options);
-  }
-  return history;
+  let state = history.state;
+  for (const step of presetToSequence(preset).steps) state = applyStep(state, step).state;
+  // A history whose current sheet is the preset's result.
+  return { state } as FoldHistory;
 };
 
 describe('hinges', () => {
@@ -37,18 +37,15 @@ describe('hinges', () => {
   });
 
   it('gives a crease that was folded and unfolded again an angle of zero', () => {
-    const history = runPreset('crane');
-    const pre = new FoldHistory(createPaper());
-    const [first, second] = PRESETS.find((p) => p.id === 'crane')?.steps ?? [];
-    if (!first || !second) throw new Error('crane steps missing');
-    for (const { line: l, movingPoint, landsOn, ...options } of [first, second]) {
-      void landsOn;
-      pre.fold(l, sideOf(l, movingPoint), options);
-    }
-    const all = hinges(pre.state);
+    // The crane's first step pre-creases a diagonal: fold over, fold back.
+    const crane = PRESETS.find((p) => p.id === 'crane');
+    if (!crane) throw new Error('crane preset missing');
+    const [first] = presetToSequence(crane).steps;
+    if (!first) throw new Error('crane steps missing');
+    const pre = applyStep(createPaper(), first).state;
+    const all = hinges(pre);
     expect(all).toHaveLength(1);
     expect(all[0]?.angle).toBe(0);
-    void history;
   });
 });
 
