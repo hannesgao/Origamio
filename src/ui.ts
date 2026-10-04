@@ -32,10 +32,9 @@ import {
   OPENING_STEPS,
   MAX_ORBIT_ZOOM,
   MIN_ORBIT_ZOOM,
-  solvedScene,
   wrapAngle,
 } from './view3d';
-import { type ContactMemory } from './rigid';
+import { type SolveRequest, createSheetSolver } from './solver';
 import { Timeline } from './timeline';
 import {
   type FoldStep,
@@ -353,6 +352,54 @@ export function createApp(root: HTMLElement): App {
   let selected: number | null = null;
   let phase: Phase = { kind: 'idle' };
   let queue: Promise<void> = Promise.resolve();
+  // The 3D view is solved off the main thread when possible; sheets are
+  // named so the solver can reuse what it derived from them.
+  const solver = createSheetSolver();
+  const stateIds = new WeakMap<PaperState, string>();
+  let stateSerial = 0;
+  const idOf = (state: PaperState): string => {
+    let id = stateIds.get(state);
+    if (id === undefined) {
+      id = String(++stateSerial);
+      stateIds.set(state, id);
+    }
+    return id;
+  };
+  let animationSerial = 0;
+  let solveInFlight = false;
+  let solvePending: SolveRequest | null = null;
+  let lastSolved = '';
+  const solveKey = (r: SolveRequest): string =>
+    `${r.stateId}|${r.opening}|${r.thickness}|${r.animation ? `${r.animation.id}:${r.animation.progress}` : ''}`;
+  /** Solve the latest request only: while one runs, newer ones replace each other. */
+  const requestSolve = (request: SolveRequest): void => {
+    if (solveInFlight) {
+      solvePending = request;
+      return;
+    }
+    const key = solveKey(request);
+    if (key === lastSolved) return;
+    solveInFlight = true;
+    solver
+      .solve(request)
+      .then(
+        (solid) => {
+          lastSolved = key;
+          scene.update(solid, sceneStyle(), orbit, viewFrame, highlighted);
+        },
+        (error: unknown) => {
+          console.error('3D solve failed', error);
+        },
+      )
+      .finally(() => {
+        solveInFlight = false;
+        if (solvePending) {
+          const next = solvePending;
+          solvePending = null;
+          requestSolve(next);
+        }
+      });
+  };
   let camera: Camera = defaultCamera(paper.width, paper.height);
   let tool: Tool = 'fold';
   /** Fold line endpoints snap to corners, midpoints and edges unless Alt is held. */
@@ -1351,13 +1398,23 @@ export function createApp(root: HTMLElement): App {
     renderStepPanel();
     creaseCount.textContent = `${state.creases.length} crease${state.creases.length === 1 ? '' : 's'}`;
     // The 3D view: the sheet solved as paper, the step in progress swinging its creases.
-    const style = sceneStyle();
-    const solid = solvedScene(state, {
+    requestSolve({
+      stateId: idOf(state),
+      state,
       opening: (opening * Math.PI) / 180,
-      thickness: style.thickness,
-      ...(phase.kind === 'animating' ? { animation: phase.animation } : {}),
+      thickness: sceneStyle().thickness,
+      ...(phase.kind === 'animating'
+        ? {
+            animation: {
+              id: animationSerial,
+              previousId: idOf(phase.animation.previous),
+              previous: phase.animation.previous,
+              movedIds: [...phase.animation.movedIds],
+              progress: phase.animation.progress,
+            },
+          }
+        : {}),
     });
-    scene.update(solid, style, orbit, viewFrame, highlighted);
     applyHighlight();
     if (statsFor !== state) {
       statsFor = state;
@@ -1694,14 +1751,13 @@ export function createApp(root: HTMLElement): App {
       // tells the views where its creases swing from.
       const previous = timeline.previous ?? timeline.state;
       const start = performance.now();
-      // The 3D view keeps moving paper from passing through still paper; the
-      // sides it has seen are carried through the step.
-      const contact: ContactMemory = { before: previous, sides: new Map(), seeded: false };
+      // One id per step: the solver keeps what it learns about contacts for that long.
+      animationSerial++;
       const tick = (now: number): void => {
         const progress = Math.min(1, ((now - start) * speed) / ANIMATION_MS);
         phase = {
           kind: 'animating',
-          animation: { previous, movedIds, progress, contact },
+          animation: { previous, movedIds, progress },
           start,
         };
         render();
