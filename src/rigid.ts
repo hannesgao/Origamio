@@ -294,6 +294,21 @@ export interface StepAnimation {
   readonly movedIds: ReadonlySet<number>;
   /** 0 at the start of the step, 1 at its end. */
   readonly progress: number;
+  /** Which side of each facet the moving paper is on, carried from frame to frame. */
+  readonly contact?: ContactMemory;
+}
+
+/**
+ * What the solver remembers between the frames of one step: for every
+ * vertex that came close to a facet, the side of that facet it was on. The
+ * paper then cannot pass through: it is held, and pushes the facet aside.
+ */
+export interface ContactMemory {
+  /** The sheet before the step: where the moving paper lay in the stack when it set off. */
+  readonly before: PaperState;
+  readonly sides: Map<string, 1 | -1>;
+  /** Whether `sides` has been seeded from `before`; the solver does that on first use. */
+  seeded: boolean;
 }
 
 /** A folded crease opened by `opening`, keeping its direction; a flat crease stays flat. */
@@ -351,7 +366,9 @@ export function stepPose(
   return {
     angleOf,
     ...(anchor ? { rootId: anchor.id } : {}),
-    ...(animation && t < 1 ? { moved: animation.movedIds } : {}),
+    ...(animation && t < 1
+      ? { moved: animation.movedIds, ...(animation.contact ? { contact: animation.contact } : {}) }
+      : {}),
   };
 }
 
@@ -388,6 +405,8 @@ export interface PoseOptions {
    * apart only within the moving group and within the group that stays.
    */
   readonly moved?: ReadonlySet<number>;
+  /** With `moved`: the sides remembered so far, kept up to date by the solver. */
+  readonly contact?: ContactMemory;
 }
 
 /**
