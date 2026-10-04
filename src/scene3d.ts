@@ -67,9 +67,14 @@ const BURIED_DARKENING = 0.38;
  * and the half-height of the picture at the centre. Both cameras use the
  * same values, so switching projection keeps the model the same size.
  */
-export function cameraFrame(reach: number, zoom: number): { distance: number; half: number } {
+export function cameraFrame(
+  reach: number,
+  zoom: number,
+  aspect = 1,
+): { distance: number; half: number } {
   const z = Math.max(MIN_ORBIT_ZOOM, Math.min(MAX_ORBIT_ZOOM, zoom));
-  const half = (reach * 1.15) / z;
+  // On a canvas taller than wide, the width is what has to hold the model.
+  const half = (reach * 1.15) / z / Math.min(1, aspect);
   return { distance: half / Math.tan((FOV * Math.PI) / 360), half };
 }
 
@@ -473,7 +478,7 @@ export class Scene3d implements SheetScene {
 
   private placeCamera(solved: SolvedScene, orbit: Orbit): void {
     const [right, up, toward] = viewRotation(orbit);
-    const { distance, half } = cameraFrame(solved.reach, orbit.zoom);
+    const { distance, half } = cameraFrame(solved.reach, orbit.zoom, this.aspect);
     const c = solved.centre;
     const camera = this.camera;
     camera.position.set(

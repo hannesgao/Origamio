@@ -399,7 +399,10 @@ export function anchorFacet(state: PaperState, among?: ReadonlySet<number>): Fac
   for (const f of state.facets) {
     if (among && !among.has(f.id)) continue;
     const c = apply(f.transform, centroid(f.poly));
-    const key = layersAt(state, c) * 10 + polygonArea(f.poly);
+    // Deep first, but a facet of some size beats a sliver a few layers
+    // deeper: pinning a tiny piece inside a head would let the whole body
+    // swing about an extremity.
+    const key = layersAt(state, c) + ANCHOR_AREA_WEIGHT * polygonArea(f.poly);
     if (key > bestKey) {
       bestKey = key;
       best = f;
@@ -407,6 +410,9 @@ export function anchorFacet(state: PaperState, among?: ReadonlySet<number>): Fac
   }
   return best;
 }
+
+/** How many layers of depth one unit of facet area is worth when choosing the anchor. */
+const ANCHOR_AREA_WEIGHT = 50;
 
 export interface PoseOptions {
   /**

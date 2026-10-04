@@ -45,6 +45,15 @@ note and the other views work as before.
   flat sheet and keeps every step on the timeline; changing colours is
   instant. Size and colours are part of every exported file and are restored
   on import.
+- **Three animals on rectangles.** A _Dog_ and a _Rabbit_ on a 3:2 sheet
+  (corners to the middles of the ends, folded in half along the length so
+  the body stands on its belly; a reverse fold swings the front point down
+  as a head with a muzzle and ears, or the back point up as a tail or as
+  ears leaning back) and a _Jumping frog_ on a 1:2 sheet (the top square
+  collapsed into a waterbomb with the side halves tucked between the two
+  faces, the front corners up and out as legs, the sides in, and the bottom
+  pleated into the spring). Each is a sequence of flat folds that real paper
+  can take at every step, and each step is tested for that.
 - **A crane.** The _Crane_ preset plays the classic sequence in 12 steps,
   several of which make more than one crease at once: pre-crease the
   diagonals, collapse the square base (both medians, then the squash that

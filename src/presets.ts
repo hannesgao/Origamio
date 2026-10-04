@@ -14,7 +14,13 @@ import {
   vec,
 } from './geometry';
 import { type LayerSelection, type Placement, bottomLayers, topLayers } from './paper';
-import { type FoldPart, type FoldStep, type Sequence, type ViewFrame } from './sequence';
+import {
+  type FoldPart,
+  type FoldStep,
+  type Paper,
+  type Sequence,
+  type ViewFrame,
+} from './sequence';
 
 export interface PresetStep {
   readonly line: Line;
@@ -40,6 +46,8 @@ export interface Preset {
   readonly title: string;
   /** How the finished model stands, for the fixed 3D views. */
   readonly view?: ViewFrame;
+  /** The sheet, when not the unit square. */
+  readonly paper?: Paper;
   readonly steps: readonly PresetStep[];
 }
 
@@ -64,6 +72,7 @@ export function presetToSequence(preset: Preset): Sequence {
   return {
     name: preset.label,
     description: preset.title,
+    ...(preset.paper ? { paper: preset.paper } : {}),
     ...(preset.view ? { view: preset.view } : {}),
     steps,
   };
@@ -215,6 +224,30 @@ const squareBase = (): PresetStep => {
   );
 };
 
+/**
+ * The bird base closed along its centre line: the first eight steps of the
+ * crane. Two narrow points rise from u = 0.62 to the tip at u = 1 (the
+ * front one from corner D, the back one from corner B) and the two wide
+ * flaps below the spine (corners A and C) hang from the pivot at u = 0.5.
+ * A crane, a dog and a rabbit part ways from here.
+ */
+const closedBirdBase = (): PresetStep[] => [
+  crease(D, B),
+  crease(C, A),
+  squareBase(),
+  petal('front'),
+  petal('back'),
+  narrowPoint(Q4, 'top', 'Narrow front point'),
+  narrowPoint(Q2, 'bottom', 'Narrow back point'),
+  bring(H, E, { label: 'Close along centre' }),
+];
+
+/** The view of a model standing on the sheet's diagonal: face up the diagonal, back across it. */
+const DIAGONAL_VIEW: ViewFrame = {
+  front: uv(1, 0),
+  top: vec(uv(0, 1).x - uv(0, 0).x, uv(0, 1).y - uv(0, 0).y),
+};
+
 function craneSteps(): PresetStep[] {
   // Neck and tail rise in a V from just above the points' base. The neck is
   // steep enough that its crease leaves the point above the shoulder; a
@@ -235,19 +268,7 @@ function craneSteps(): PresetStep[] {
   const wingWindow: Polygon = [uv(-0.2, -1), uv(1.2, -1), uv(1.2, 0.001), uv(-0.2, 0.001)];
 
   return [
-    // Pre-crease both diagonals: corner to opposite corner, and back.
-    crease(D, B),
-    crease(C, A),
-    // Square base: medians folded, then the squash that puts the four flaps side by side.
-    squareBase(),
-    // Bird base: petal fold the front page (corner D) and the back page (corner B).
-    petal('front'),
-    petal('back'),
-    // Narrow both points: fold their edges to the centre line.
-    narrowPoint(Q4, 'top', 'Narrow front point'),
-    narrowPoint(Q2, 'bottom', 'Narrow back point'),
-    // Fold the model in half along its centre line: H onto E.
-    bring(H, E, { label: 'Close along centre' }),
+    ...closedBirdBase(),
     // Neck and tail: inside reverse folds that swing the two points up.
     reverseFold(neckBase, neckAngle, Q4, 'Reverse fold neck'),
     reverseFold(neckBase, deg(110), Q2, 'Reverse fold tail'),
@@ -278,6 +299,174 @@ function craneSteps(): PresetStep[] {
         placement: 'bottom',
       }),
     ),
+  ];
+}
+
+// --- Animals on a 3:2 sheet ----------------------------------------------
+//
+// The sheet is 1.5 wide and 1 high, x along its length, the centre line at
+// y = 0.5. Each corner folds to the middle of its end, which points both
+// ends; folded in half along the centre line the body stands on its belly
+// edge with a wedge at each end: the front wedge becomes a head or ears,
+// the back wedge a tail, by inside reverse folds about a point on the spine.
+
+const LONG: Paper = { width: 1.5, height: 1, front: '#e8923a', back: '#7a3f12' };
+const SPINE_LEFT = vec(0, 0.5);
+const SPINE_RIGHT = vec(1.5, 0.5);
+/** The two halves of the front end square, in unfolded coordinates: each is one layer of the front wedge. */
+const FRONT_TOP: Polygon = [vec(0, 0.5), vec(0, 1), vec(0.5, 1), vec(0.5, 0.5)];
+const FRONT_BOTTOM: Polygon = [vec(0, 0), vec(0.5, 0), vec(0.5, 0.5), vec(0, 0.5)];
+
+/** A point `distance` from `origin` in the direction `angle` (radians, 0 along +x). */
+const along = (origin: Vec, angle: number, distance: number): Vec =>
+  vec(origin.x + Math.cos(angle) * distance, origin.y + Math.sin(angle) * distance);
+
+const pointedBody = (): PresetStep[] => [
+  crease(vec(0.75, 1), vec(0.75, 0)),
+  group(
+    'Corners to the middles',
+    bring(vec(0, 1), vec(0.5, 0.5)),
+    bring(vec(0, 0), vec(0.5, 0.5)),
+    bring(vec(1.5, 1), vec(1, 0.5)),
+    bring(vec(1.5, 0), vec(1, 0.5)),
+  ),
+  bring(vec(0.75, 1), vec(0.75, 0), { label: 'Fold in half' }),
+];
+
+/** Inside reverse fold of the wedge ending at `tip` about the spine point at `x`, to `angle`. */
+const wedge = (tip: Vec, x: number, angle: number, label: string): PresetStep =>
+  bring(tip, along(vec(x, 0.5), angle, Math.abs(tip.x - x)), {
+    placement: 'inside',
+    attached: true,
+    label,
+  });
+
+/** The view of a model standing on its belly with its head to the left. */
+const LONG_VIEW: ViewFrame = { front: vec(-1, 0), top: vec(0, 1) };
+
+function dogSteps(): PresetStep[] {
+  const headPivot = 0.38;
+  const headAngle = deg(230);
+  const headTip = along(vec(headPivot, 0.5), headAngle, headPivot);
+  return [
+    ...pointedBody(),
+    // Head: the front wedge swings down and forward.
+    wedge(SPINE_LEFT, headPivot, headAngle, 'Reverse fold head'),
+    // Muzzle: the tip of the head turns forward.
+    bring(headTip, along(along(vec(headPivot, 0.5), headAngle, 0.2), deg(180), headPivot - 0.2), {
+      placement: 'inside',
+      // Only the tip of the head, which hangs ahead of x = 0.3.
+      window: [vec(-1, -1), vec(0.3, -1), vec(0.3, 1), vec(-1, 1)],
+      label: 'Reverse fold muzzle',
+    }),
+    // Ears: the free corner of each layer at the back of the head folds out.
+    group(
+      'Ears out',
+      bring(vec(0.5, 0.5), vec(0.4, 0.4), { region: FRONT_TOP, angle: 110 }),
+      bring(vec(0.5, 0.5), vec(0.4, 0.4), {
+        region: FRONT_BOTTOM,
+        angle: 110,
+        placement: 'bottom',
+      }),
+    ),
+    // Tail: the back wedge swings up and back. (A reverse fold's crease is
+    // the perpendicular bisector of tip and target, so an end wedge can only
+    // swing well back before the crease would run into the body.)
+    wedge(SPINE_RIGHT, 1.2, deg(145), 'Reverse fold tail'),
+  ];
+}
+
+/** The back end pointed, the front left square: a body that sits up at the front. */
+const pointedBack = (): PresetStep[] => [
+  crease(vec(0.75, 1), vec(0.75, 0)),
+  group(
+    'Back corners to the middle',
+    bring(vec(1.5, 1), vec(1, 0.5)),
+    bring(vec(1.5, 0), vec(1, 0.5)),
+  ),
+  bring(vec(0.75, 1), vec(0.75, 0), { label: 'Fold in half' }),
+];
+
+function rabbitSteps(): PresetStep[] {
+  return [
+    ...pointedBack(),
+    // Ears: the pointed end swings up and leans back over the body.
+    wedge(SPINE_RIGHT, 1.2, deg(140), 'Reverse fold ears'),
+    // Rump: the square end's corners tuck in, top and bottom, so the back is rounded.
+    group(
+      'Round the rump',
+      bring(vec(0, 0.5), vec(0.35, 0.15), { placement: 'inside' }),
+      bring(vec(0, 0), vec(0.25, 0.25), { placement: 'inside' }),
+    ),
+  ];
+}
+
+// --- Jumping frog on a 1:2 sheet --------------------------------------------
+//
+// The sheet is 1 wide and 2 high, the head at the top. The top square
+// collapses into a waterbomb (a triangle with its apex at the square's
+// centre), its corners fold up and out as front legs, the sides fold in,
+// and the bottom pleats into the spring.
+
+const TALL: Paper = { width: 1, height: 2, front: '#6aa84f', back: '#38761d' };
+const APEX = vec(0.5, 1.5);
+/** The top corners of the top square: the two front layers of each leg, in unfolded coordinates. */
+const LEFT_CORNER: Polygon = [vec(0, 1.5), vec(0.5, 1.5), vec(0.5, 2), vec(0, 2)];
+const RIGHT_CORNER: Polygon = [vec(0.5, 1.5), vec(1, 1.5), vec(1, 2), vec(0.5, 2)];
+/** The tips of the legs: the paper nearest the sheet's top corners (a region picks facets by their centroid). */
+const LEFT_TIP: Polygon = [vec(0, 1.62), vec(0.3, 1.62), vec(0.3, 2), vec(0, 2)];
+const RIGHT_TIP: Polygon = [vec(0.7, 1.62), vec(1, 1.62), vec(1, 2), vec(0.7, 2)];
+const BELOW_HEAD: Polygon = [vec(-1, -1), vec(2, -1), vec(2, 1), vec(-1, 1)];
+const HEAD_ONLY: Polygon = [vec(-1, 1.001), vec(2, 1.001), vec(2, 3), vec(-1, 3)];
+
+/**
+ * The waterbomb base of the top square: the top half comes down over the
+ * bottom half, then each side's corner comes down to the bottom centre and
+ * tucks in between the two, which folds both layers there along a
+ * diagonal. The result is a triangle with its apex at the square's centre:
+ * a full layer on each face, and the side halves inside, hinged at the
+ * centre line.
+ */
+const waterbomb = (): PresetStep =>
+  group(
+    'Waterbomb',
+    bring(vec(0.5, 2), vec(0.5, 1)),
+    bring(vec(0, 1.5), vec(0.5, 1), { placement: 'inside' }),
+    bring(vec(1, 1.5), vec(0.5, 1), { placement: 'inside' }),
+  );
+
+function frogSteps(): PresetStep[] {
+  return [
+    // The middle of the top square and the base of the head, so the collapse
+    // and the legs find their creases.
+    crease(vec(0.5, 2), vec(0.5, 1)),
+    crease(vec(0.5, 0), vec(0.5, 2)),
+    waterbomb(),
+    // Front legs: the two front layers of each corner fold up to the apex...
+    group(
+      'Legs up',
+      bring(vec(0, 1), APEX, { region: LEFT_CORNER, window: HEAD_ONLY }),
+      bring(vec(1, 1), APEX, { region: RIGHT_CORNER, window: HEAD_ONLY }),
+    ),
+    // ...and each leg's upper half back out to the side, held a little open:
+    // the crease crosses the leg half way up, from its middle at (0.5, 1.25).
+    group(
+      'Feet out',
+      bring(APEX, vec(0.26, 1.18), { region: LEFT_TIP, angle: 160 }),
+      bring(APEX, vec(0.74, 1.18), { region: RIGHT_TIP, angle: 160 }),
+    ),
+    group(
+      'Sides in',
+      // The crease runs on into the head's lower corners, which come along.
+      step(vec(0.25, 0), vec(0.25, 1), vec(0.1, 0.5), { window: BELOW_HEAD, attached: true }),
+      step(vec(0.75, 0), vec(0.75, 1), vec(0.9, 0.5), { window: BELOW_HEAD, attached: true }),
+    ),
+    step(vec(0, 0.5), vec(1, 0.5), vec(0.5, 0.1), { label: 'Bottom up', angle: 150 }),
+    step(vec(0, 0.75), vec(1, 0.75), vec(0.5, 0.95), {
+      region: [vec(0, 0), vec(1, 0), vec(1, 0.5), vec(0, 0.5)],
+      label: 'Half back down',
+      angle: 150,
+    }),
   ];
 }
 
@@ -325,7 +514,32 @@ export const PRESETS: readonly Preset[] = [
       'Diagonals, preliminary base, bird base, narrow the points, close the model, reverse fold neck, tail and head, wings down',
     // The finished crane lies on its side along the sheet's diagonal: its face
     // points up the diagonal, its back towards the other diagonal.
-    view: { front: uv(1, 0), top: vec(uv(0, 1).x - uv(0, 0).x, uv(0, 1).y - uv(0, 0).y) },
+    view: DIAGONAL_VIEW,
     steps: craneSteps(),
+  },
+  {
+    id: 'dog',
+    label: 'Dog',
+    title: 'Pointed body folded in half, head down with a muzzle and ears, tail up',
+    paper: LONG,
+    view: LONG_VIEW,
+    steps: dogSteps(),
+  },
+  {
+    id: 'rabbit',
+    label: 'Rabbit',
+    title:
+      'Body pointed at one end and folded in half, the point up as ears, the other end rounded',
+    paper: LONG,
+    view: { front: vec(1, 0), top: vec(0, 1) },
+    steps: rabbitSteps(),
+  },
+  {
+    id: 'frog',
+    label: 'Jumping frog',
+    title: 'Waterbomb head with legs, sides in, pleated spring',
+    paper: TALL,
+    view: { front: vec(0, 1), top: vec(1, 0) },
+    steps: frogSteps(),
   },
 ];
