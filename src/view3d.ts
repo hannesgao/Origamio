@@ -143,14 +143,14 @@ export const MIN_ORBIT_ZOOM = 0.5;
 export const MAX_ORBIT_ZOOM = 4;
 
 /** Paper thicknesses offered as presets, in millimetres of a 15 cm sheet. */
-export const THICKNESS_STEPS_MM: readonly number[] = [0, 0.05, 0.07, 0.1, 0.2];
+export const THICKNESS_STEPS_MM: readonly number[] = [0, 0.07, 0.2];
 export const DEFAULT_THICKNESS_MM = 0.07;
 export const MAX_THICKNESS_MM = 1;
 /** The sheet the thickness presets are given for, in millimetres. */
 export const SHEET_MM = 150;
 
 /** Crease openings offered as presets, in degrees; any other value can be typed. */
-export const OPENING_STEPS: readonly number[] = [0, 3, 6, 10, 15, 30];
+export const OPENING_STEPS: readonly number[] = [0, 6, 15, 30];
 export const DEFAULT_OPENING = 6;
 export const MAX_OPENING = 90;
 
