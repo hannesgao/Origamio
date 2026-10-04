@@ -70,11 +70,11 @@ note and the other views work as before.
   angles contradict each other, as the wings and body of a crane do, the
   sheet settles on a compromise the way paper gives: a panel may bend a
   little across its diagonals before a crease yields, so a crane stands with
-  its wings on both sides, gently curved, and a slightly puffed body. Layers that lie on one
-  another in the flat model stay in that order, each kept a paper's
-  thickness above the one beneath it, so a stack of twelve layers is twelve
-  papers thick and no layer passes through another (to within what the loop
-  of wings and body allows). It is drawn with WebGL (three.js): the paper has
+  Layers that lie on one
+  another in the flat model stay in that order: that no layer passes through
+  another is a hard rule, and that each sits a paper's thickness above the
+  one beneath it is a preference, since layers welded at a crease or a tip
+  cannot be a thickness apart there. It is drawn with WebGL (three.js): the paper has
   a thickness (_Paper_ chips of 0, 0.07 and 0.2 mm for a 15 cm sheet, or any
   value typed), a soft key light, a ground shadow under the model (hidden in the
   top view), crease lines only where the sheet bends or ends, and the paper

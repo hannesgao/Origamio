@@ -211,11 +211,17 @@ export const solverTuning = {
   flatCreaseGive: 0.3,
   /** How hard a facet pulls itself flat across its diagonals: paper bends a little, before a crease gives. */
   facetStiffness: 0.6,
+  /**
+   * How hard layers are pushed apart to the paper's thickness, 0 to 1. The
+   * order of layers is kept hard; the thickness is a preference, since
+   * layers welded at a crease or a tip cannot be a thickness apart there.
+   */
+  thicknessStiffness: 0.3,
 };
 /** Triangles thinner than this share of their facet get no flatness constraint. */
 const THIN_TRIANGLE = 1e-3;
 /** Sweeps at the end with the creases free, so that facets are rigid and layers in order. */
-const SETTLE_SWEEPS = 12;
+const SETTLE_SWEEPS = 100;
 /** How close (as a share of the sheet) a vertex must come to a facet to be held off it. */
 const CONTACT_REACH = 0.25;
 
@@ -593,8 +599,8 @@ function contactConstraint(
   const n = mul3(norm3(cross3(sub3(b, a), sub3(d, a))), c.side);
   const on = add3(add3(mul3(a, c.w[0]), mul3(b, c.w[1])), mul3(d, c.w[2]));
   const p = pos[c.vertex] as Vec3;
-  const gap = dot3(sub3(p, on), n) - thickness;
-  if (gap >= 0) return 0;
+  const gap = dot3(sub3(p, on), n);
+  if (gap >= thickness) return 0;
   const wp = pinned.has(c.vertex) ? 0 : 1;
   let sum = wp;
   for (let k = 0; k < 3; k++) {
@@ -602,13 +608,15 @@ function contactConstraint(
     if (!pinned.has(c.tri[k] as number)) sum += w * w;
   }
   if (sum < 1e-12) return 0;
-  const lambda = -gap / sum;
+  const hard = Math.max(0, -gap);
+  const soft = (thickness - Math.max(gap, 0)) * solverTuning.thicknessStiffness;
+  const lambda = (hard + soft) / sum;
   if (wp) pos[c.vertex] = add3(p, mul3(n, lambda));
   for (let k = 0; k < 3; k++) {
     const vi = c.tri[k] as number;
     if (!pinned.has(vi)) pos[vi] = sub3(pos[vi] as Vec3, mul3(n, lambda * (c.w[k] as number)));
   }
-  return -gap;
+  return hard;
 }
 
 /**
@@ -636,8 +644,8 @@ function separationConstraint(
   let up = add3(norm3(upOf(c.under, c.underFlipped)), norm3(upOf(c.over, c.overFlipped)));
   if (len3(up) < 1e-9) up = upOf(c.under, c.underFlipped);
   up = norm3(up);
-  const gap = dot3(sub3(q, p), up) - thickness;
-  if (gap >= 0) return 0;
+  const gap = dot3(sub3(q, p), up);
+  if (gap >= thickness) return 0;
   let sum = 0;
   for (let n = 0; n < 3; n++) {
     const wu = c.underW[n] as number;
@@ -646,14 +654,17 @@ function separationConstraint(
     if (!pinned.has(c.over[n] as number)) sum += wo * wo;
   }
   if (sum < 1e-12) return 0;
-  const lambda = -gap / sum;
+  // Through to the other side is corrected in full; short of the thickness, in part.
+  const hard = Math.max(0, -gap);
+  const soft = (thickness - Math.max(gap, 0)) * solverTuning.thicknessStiffness;
+  const lambda = (hard + soft) / sum;
   for (let n = 0; n < 3; n++) {
     const o = c.over[n] as number;
     const u = c.under[n] as number;
     if (!pinned.has(o)) pos[o] = add3(pos[o] as Vec3, mul3(up, lambda * (c.overW[n] as number)));
     if (!pinned.has(u)) pos[u] = sub3(pos[u] as Vec3, mul3(up, lambda * (c.underW[n] as number)));
   }
-  return -gap;
+  return hard;
 }
 
 /**
@@ -739,14 +750,14 @@ export function solveSheet(
     inFlight && options.contact
       ? findContacts(state, mesh, pos, inFlight, options.contact, CONTACT_REACH * state.size)
       : [];
-  const separationSweep = (): number => {
+  const separationSweep = (apart: number): number => {
     let moved = 0;
     for (const c of mesh.overlaps) {
       // A flap in flight has no settled order against the rest of the sheet.
       if (inFlight && inFlight.has(c.underId) !== inFlight.has(c.overId)) continue;
-      moved = Math.max(moved, separationConstraint(pos, c, thickness, pinned));
+      moved = Math.max(moved, separationConstraint(pos, c, apart, pinned));
     }
-    for (const c of contacts) moved = Math.max(moved, contactConstraint(pos, c, thickness, pinned));
+    for (const c of contacts) moved = Math.max(moved, contactConstraint(pos, c, apart, pinned));
     return moved;
   };
 
@@ -768,13 +779,15 @@ export function solveSheet(
         bendConstraint(pos, c.i, c.j, c.k, c.l, Math.PI, solverTuning.facetStiffness, pinned),
       );
     }
-    moved = Math.max(moved, separationSweep());
+    moved = Math.max(moved, separationSweep(thickness));
     if (moved < tolerance) break;
   }
-  // Then let the sheet settle with its creases free: facets rigid, layers in order.
+  // Then let the sheet settle with its creases free and the thickness no
+  // longer asked for: facets rigid, layers in order, which is a state that
+  // exists, so the sweeps converge.
   let residual = 0;
   for (let sweep = 0; sweep < settle; sweep++) {
-    residual = Math.max(lengthSweep(), separationSweep());
+    residual = Math.max(lengthSweep(), separationSweep(0));
     if (residual < tolerance) break;
   }
 
