@@ -7,9 +7,9 @@
     {
       "line": [
         [0.5, 0],
-        [0.5, 1]
+        [0.5, -1]
       ],
-      "side": -1,
+      "side": 1,
       "label": "Right half over"
     },
     {
@@ -23,9 +23,9 @@
     {
       "line": [
         [0.25, 0],
-        [0.25, 1]
+        [0.25, -0.5]
       ],
-      "side": -1,
+      "side": 1,
       "label": "Right half over"
     }
   ]

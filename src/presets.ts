@@ -4,13 +4,23 @@
  * placement options of `fold`. Coordinates are for a unit sheet with its
  * lower-left corner at the origin.
  */
-import { type Line, type Polygon, type Vec, line, sideOf, vec } from './geometry';
+import {
+  type Line,
+  type Polygon,
+  type Vec,
+  line,
+  perpendicularBisector,
+  sideOf,
+  vec,
+} from './geometry';
 import { type LayerSelection, type Placement, topLayers } from './paper';
 import { type FoldStep, type Sequence } from './sequence';
 
 export interface PresetStep {
   readonly line: Line;
   readonly movingPoint: Vec;
+  /** For a point-to-point step: where `movingPoint` lands. Documentation only. */
+  readonly landsOn?: Vec;
   readonly layers?: LayerSelection;
   readonly region?: Polygon;
   readonly window?: Polygon;
@@ -28,7 +38,8 @@ export interface Preset {
 /** A preset as replayable data: the moving point becomes a side. */
 export function presetToSequence(preset: Preset): Sequence {
   const steps: FoldStep[] = preset.steps.map((s) => {
-    const { line: l, movingPoint, label, ...options } = s;
+    const { line: l, movingPoint, landsOn, label, ...options } = s;
+    void landsOn;
     const step: FoldStep = { line: l, side: sideOf(l, movingPoint), options };
     return label ? { ...step, label } : step;
   });
@@ -43,11 +54,21 @@ const step = (a: Vec, b: Vec, movingPoint: Vec, options: StepOptions = {}): Pres
   ...options,
 });
 
-const halfLeftRight = step(vec(0.5, 0), vec(0.5, 1), vec(1, 0.5), { label: 'Right half over' });
-const halfTopBottom = step(vec(0, 0.5), vec(1, 0.5), vec(0.25, 1), { label: 'Top half down' });
-const quarterLeftRight = step(vec(0.25, 0), vec(0.25, 1), vec(0.5, 0.25), {
-  label: 'Right half over',
+/**
+ * A fold written the way instructions are: bring `from` onto `to`. The crease
+ * is the perpendicular bisector of the two points and the side holding `from`
+ * moves, exactly what the Point tool does on the sheet.
+ */
+const bring = (from: Vec, to: Vec, options: StepOptions = {}): PresetStep => ({
+  line: perpendicularBisector(from, to),
+  movingPoint: from,
+  landsOn: to,
+  ...options,
 });
+
+const halfLeftRight = bring(vec(1, 0), vec(0, 0), { label: 'Right half over' });
+const halfTopBottom = bring(vec(0, 1), vec(0, 0), { label: 'Top half down' });
+const quarterLeftRight = bring(vec(0.5, 0), vec(0, 0), { label: 'Right half over' });
 
 // --- Crane -------------------------------------------------------------------
 //
@@ -64,10 +85,6 @@ const TAN_22_5 = Math.SQRT2 - 1;
 /** Sheet coordinates of a point given along (u) and across (v) the centre line. */
 const uv = (u: number, v: number): Vec => vec((u - v) * SQRT_HALF, (u + v) * SQRT_HALF);
 
-/** The point at `distance` from `origin` in the direction `angle` (radians). */
-const towards = (origin: Vec, angle: number, distance: number): Vec =>
-  vec(origin.x + Math.cos(angle) * distance, origin.y + Math.sin(angle) * distance);
-
 const rect = (x0: number, y0: number, x1: number, y1: number): Polygon => [
   vec(x0, y0),
   vec(x1, y0),
@@ -76,27 +93,19 @@ const rect = (x0: number, y0: number, x1: number, y1: number): Polygon => [
 ];
 
 const A = vec(0, 0);
+const B = vec(1, 0);
 const C = vec(1, 1);
 const D = vec(0, 1);
 const E = vec(0.5, 0);
 const H = vec(0, 0.5);
+/** The far corner of the preliminary base, one sheet length up the centre line from A. */
+const O = uv(1, 0);
 
 /** Quadrants of the unfolded sheet; Q1 holds corner A, Q4 corner D. */
 const Q1 = rect(0, 0, 0.5, 0.5);
 const Q4 = rect(0, 0.5, 0.5, 1);
 
-/** The kite creases of the petal fold: through A at 22.5° from each lower edge. */
-const kiteRight = (): [Vec, Vec] => [A, towards(A, Math.PI / 8, 1)];
-const kiteLeft = (): [Vec, Vec] => [A, towards(A, (3 * Math.PI) / 8, 1)];
-/** The petal crease: where the kite creases meet the upper edges of the base. */
-const petalLine = (): [Vec, Vec] => [vec(0.5, TAN_22_5 / 2), vec(TAN_22_5 / 2, 0.5)];
-
-/** Petal fold one layer of the preliminary base into a point: two kite folds, then lift. */
-const petal = (region: Polygon, placement: Placement): PresetStep[] => [
-  step(...kiteRight(), E, { region, placement, label: 'Kite fold' }),
-  step(...kiteLeft(), H, { region, placement, label: 'Kite fold' }),
-  step(...petalLine(), A, { region, placement, label: 'Petal fold' }),
-];
+const deg = (d: number): number => (d * Math.PI) / 180;
 
 /** A point `distance` from `origin` along the (u, v) direction `angle`. */
 const alongUv = (origin: Vec, angle: number, distance: number): Vec => {
@@ -106,60 +115,66 @@ const alongUv = (origin: Vec, angle: number, distance: number): Vec => {
 };
 
 /**
- * Narrow a petal point: fold each of its two edges to the centre line with a
- * crease from the tip. The edges run from the tip at ±22.5°, so the creases
- * run at ±11.25°.
+ * Petal fold one layer of the preliminary base into a point: fold both lower
+ * edges to the centre line (the edge midpoints E and H land half way up it),
+ * then lift the bottom corner A all the way to the top corner O.
+ */
+const petal = (region: Polygon, placement: Placement): PresetStep[] => [
+  bring(E, uv(0.5, 0), { region, placement, label: 'Kite fold' }),
+  bring(H, uv(0.5, 0), { region, placement, label: 'Kite fold' }),
+  bring(A, O, { region, placement, label: 'Petal fold' }),
+];
+
+/**
+ * Narrow a petal point: fold each of its two edges to the centre line. A
+ * point half way along an edge lies at ±22.5° from the tip; it lands on the
+ * centre line at the same distance from the tip.
  */
 const narrowPoint = (region: Polygon, placement: Placement): PresetStep[] => {
-  const tip = uv(1, 0);
+  const reach = 0.5 / Math.cos(deg(22.5));
+  const onCentre = uv(1 - reach, 0);
   return [
-    step(tip, alongUv(tip, Math.PI + Math.PI / 16, 1), uv(0.5, -TAN_22_5 / 2), {
-      region,
-      placement,
-      label: 'Narrow point',
-    }),
-    step(tip, alongUv(tip, Math.PI - Math.PI / 16, 1), uv(0.5, TAN_22_5 / 2), {
-      region,
-      placement,
-      label: 'Narrow point',
-    }),
+    bring(uv(0.5, -TAN_22_5 / 2), onCentre, { region, placement, label: 'Narrow point' }),
+    bring(uv(0.5, TAN_22_5 / 2), onCentre, { region, placement, label: 'Narrow point' }),
   ];
 };
 
-/** Inside reverse fold of a point lying along the centre line beyond u = `at`. */
+/**
+ * Inside reverse fold of a point lying along the centre line beyond u = `at`:
+ * its tip swings from the centre line to the direction `angle`.
+ */
 const reverseFold = (at: number, angle: number, region: Polygon, label: string): PresetStep => {
   const pivot = uv(at, 0);
-  return step(pivot, alongUv(pivot, angle, 1), uv(1, 0), { region, placement: 'inside', label });
+  return bring(O, alongUv(pivot, angle, 1 - at), { region, placement: 'inside', label });
 };
 
-const deg = (d: number): number => (d * Math.PI) / 180;
-
-/** Pre-crease a line: fold everything over, then fold the top layer back. */
-const crease = (a: Vec, b: Vec, movingPoint: Vec, movedTo: Vec): PresetStep[] => [
-  step(a, b, movingPoint, { label: 'Pre-crease' }),
-  step(a, b, movedTo, { layers: topLayers(1), label: 'Unfold' }),
+/** Pre-crease a line: fold `from` onto `to`, then fold the top layer back. */
+const crease = (from: Vec, to: Vec): PresetStep[] => [
+  bring(from, to, { label: 'Pre-crease' }),
+  bring(to, from, { layers: topLayers(1), label: 'Unfold' }),
 ];
 
 function craneSteps(): PresetStep[] {
-  // Neck and tail rise in a V from just above the points' base at the F line.
+  // Neck and tail rise in a V from just above the points' base.
   const neckBase = 0.62;
   const neckAngle = deg(70);
   const neckStart = uv(neckBase, 0);
-  // Where the head crease meets the neck, and the window that keeps the fold
-  // on the neck: everything above the body (v > 0.03) is the neck or the tail,
-  // and the tail is excluded by its region.
+  const neckLength = 1 - neckBase;
+  // The neck tip, where the head crease sits on the neck, and the window that
+  // keeps the head fold on the neck: everything above the body (v > 0.03) is
+  // the neck or the tail, and the tail is excluded by its region.
+  const neckTip = alongUv(neckStart, neckAngle, neckLength);
   const headAt = alongUv(neckStart, neckAngle, 0.27);
-  const headCrease = alongUv(headAt, neckAngle - deg(45), 1);
+  const headLength = neckLength - 0.27;
   const neckWindow: Polygon = [uv(0.5, 0.03), uv(1.3, 0.03), uv(1.3, 0.6), uv(0.5, 0.6)];
   const wingPivot = uv(0.5, 0);
-  const wingCrease = alongUv(wingPivot, deg(45), 1);
   // Only the layers below the spine are wings; the neck and tail rise above it.
   const wingWindow: Polygon = [uv(-0.2, -1), uv(1.2, -1), uv(1.2, 0.001), uv(-0.2, 0.001)];
 
   return [
-    // Pre-crease both diagonals.
-    ...crease(A, C, D, vec(1, 0)),
-    ...crease(vec(1, 0), D, A, C),
+    // Pre-crease both diagonals: corner to opposite corner, and back.
+    ...crease(D, B),
+    ...crease(C, A),
     // Preliminary base: fold in half twice along the medians.
     halfLeftRight,
     halfTopBottom,
@@ -169,20 +184,20 @@ function craneSteps(): PresetStep[] {
     // Narrow both points: fold their edges to the centre line.
     ...narrowPoint(Q4, 'top'),
     ...narrowPoint(Q1, 'bottom'),
-    // Fold the model in half along its centre line.
-    step(A, vec(1, 1), H, { label: 'Close along centre' }),
-    // Neck and tail: inside reverse folds of the two points.
-    reverseFold(neckBase, neckAngle / 2, Q4, 'Reverse fold neck'),
-    reverseFold(neckBase, deg(55), Q1, 'Reverse fold tail'),
-    // Head: reverse fold the tip of the neck forward.
-    step(headAt, headCrease, alongUv(headAt, neckAngle, 1), {
+    // Fold the model in half along its centre line: H onto E.
+    bring(H, E, { label: 'Close along centre' }),
+    // Neck and tail: inside reverse folds that swing the two points up.
+    reverseFold(neckBase, neckAngle, Q4, 'Reverse fold neck'),
+    reverseFold(neckBase, deg(110), Q1, 'Reverse fold tail'),
+    // Head: reverse fold the tip of the neck forward and down, a quarter turn.
+    bring(neckTip, alongUv(headAt, neckAngle - deg(90), headLength), {
       region: Q4,
       window: neckWindow,
       placement: 'inside',
       label: 'Reverse fold head',
     }),
-    // Wings down.
-    step(wingPivot, wingCrease, A, { window: wingWindow, label: 'Wings down' }),
+    // Wings down: the wing corner swings from the centre line to straight down.
+    bring(A, alongUv(wingPivot, deg(-90), 0.5), { window: wingWindow, label: 'Wings down' }),
   ];
 }
 
