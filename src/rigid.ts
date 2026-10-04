@@ -331,10 +331,30 @@ export function stepPose(
     const from = openedAngle(angleBefore(h, animation), open);
     return from + (target - from) * t;
   };
-  const anchor = animation
-    ? [...state.facets].filter((f) => !animation.movedIds.has(f.id)).sort((f, g) => f.z - g.z)[0]
+  const still = animation
+    ? new Set(state.facets.filter((f) => !animation.movedIds.has(f.id)).map((f) => f.id))
     : undefined;
+  const anchor = anchorFacet(state, still);
   return { angleOf, ...(anchor ? { rootId: anchor.id } : {}) };
+}
+
+/**
+ * The facet to hold still: the largest one lying deepest inside the stack,
+ * so that wings and points swing while the body stays where it is.
+ */
+export function anchorFacet(state: PaperState, among?: ReadonlySet<number>): Facet | undefined {
+  let best: Facet | undefined;
+  let bestKey = -1;
+  for (const f of state.facets) {
+    if (among && !among.has(f.id)) continue;
+    const c = apply(f.transform, centroid(f.poly));
+    const key = layersAt(state, c) * 10 + polygonArea(f.poly);
+    if (key > bestKey) {
+      bestKey = key;
+      best = f;
+    }
+  }
+  return best;
 }
 
 export interface PoseOptions {
@@ -360,9 +380,7 @@ export function placePanels(
   const byId = new Map(state.facets.map((f) => [f.id, f]));
   if (byId.size === 0) return [];
   const chosen = options.rootId !== undefined ? byId.get(options.rootId) : undefined;
-  const root =
-    chosen ??
-    [...state.facets].sort((f, g) => f.z - g.z || polygonArea(g.poly) - polygonArea(f.poly))[0];
+  const root = chosen ?? anchorFacet(state);
   if (!root) return [];
   const angleOf = options.angleOf ?? ((h: Hinge): number => h.angle);
   // The root sits where the flat model puts it, so the two agree.
