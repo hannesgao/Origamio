@@ -184,13 +184,21 @@ export function hinges(state: PaperState): Hinge[] {
  * sheet of paper can take.
  */
 export function tears(state: PaperState): number {
+  return neighbours(state).torn.length;
+}
+
+/** The facet pairs that `tears` counts, with the shared edge, for diagnostics. */
+export function tornPairs(state: PaperState): readonly { a: Vec; b: Vec; p: number; q: number }[] {
   return neighbours(state).torn;
 }
 
-function neighbours(state: PaperState): { hinges: Hinge[]; torn: number } {
+function neighbours(state: PaperState): {
+  hinges: Hinge[];
+  torn: { a: Vec; b: Vec; p: number; q: number }[];
+} {
   const tolerance = EPS * 1e3 * state.size;
   const result: Hinge[] = [];
-  let torn = 0;
+  const torn: { a: Vec; b: Vec; p: number; q: number }[] = [];
   const facets = state.facets;
   for (let i = 0; i < facets.length; i++) {
     const p = facets[i] as Facet;
@@ -207,7 +215,7 @@ function neighbours(state: PaperState): { hinges: Hinge[]; torn: number } {
           p.transform,
         );
         if (!sameTransform(folded, q.transform, tolerance)) {
-          torn++;
+          torn.push({ a: shared[0], b: shared[1], p: p.id, q: q.id });
           continue;
         }
         angle = q.z > p.z === !isFlipped(p) ? Math.PI : -Math.PI;

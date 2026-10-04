@@ -13,8 +13,8 @@ import {
   sideOf,
   vec,
 } from './geometry';
-import { type LayerSelection, type Placement, topLayers } from './paper';
-import { type FoldStep, type Sequence } from './sequence';
+import { type LayerSelection, type Placement, bottomLayers, topLayers } from './paper';
+import { type FoldPart, type FoldStep, type Sequence } from './sequence';
 
 export interface PresetStep {
   readonly line: Line;
@@ -25,6 +25,10 @@ export interface PresetStep {
   readonly region?: Polygon;
   readonly window?: Polygon;
   readonly placement?: Placement;
+  /** Fold angle for display in degrees; below 180 the 3D view keeps the crease open. */
+  readonly angle?: number;
+  /** Further folds made in the same step, after this one. */
+  readonly also?: readonly PresetStep[];
   readonly label?: string;
 }
 
@@ -37,14 +41,33 @@ export interface Preset {
 
 /** A preset as replayable data: the moving point becomes a side. */
 export function presetToSequence(preset: Preset): Sequence {
-  const steps: FoldStep[] = preset.steps.map((s) => {
-    const { line: l, movingPoint, landsOn, label, ...options } = s;
+  const part = (s: PresetStep): FoldPart => {
+    const { line: l, movingPoint, landsOn, label, also, angle, ...options } = s;
     void landsOn;
-    const step: FoldStep = { line: l, side: sideOf(l, movingPoint), options };
-    return label ? { ...step, label } : step;
+    void label;
+    void also;
+    void angle;
+    return { line: l, side: sideOf(l, movingPoint), options };
+  };
+  const steps: FoldStep[] = preset.steps.map((s) => {
+    const first = part(s);
+    const options = s.angle !== undefined ? { ...first.options, angle: s.angle } : first.options;
+    return {
+      ...first,
+      options,
+      ...(s.also && s.also.length > 0 ? { also: s.also.map(part) } : {}),
+      ...(s.label ? { label: s.label } : {}),
+    };
   });
   return { name: preset.label, description: preset.title, steps };
 }
+
+/** A step made of several folds at once: the first carries the label. */
+const group = (label: string, first: PresetStep, ...rest: PresetStep[]): PresetStep => ({
+  ...first,
+  also: rest,
+  label,
+});
 
 type StepOptions = Omit<PresetStep, 'line' | 'movingPoint'>;
 
@@ -101,9 +124,9 @@ const H = vec(0, 0.5);
 /** The far corner of the preliminary base, one sheet length up the centre line from A. */
 const O = uv(1, 0);
 
-/** Quadrants of the unfolded sheet; Q1 holds corner A, Q4 corner D. */
-const Q1 = rect(0, 0, 0.5, 0.5);
+/** Quadrants of the unfolded sheet; Q4 holds corner D, Q2 corner B. */
 const Q4 = rect(0, 0.5, 0.5, 1);
+const Q2 = rect(0.5, 0, 1, 0.5);
 
 const deg = (d: number): number => (d * Math.PI) / 180;
 
@@ -115,28 +138,36 @@ const alongUv = (origin: Vec, angle: number, distance: number): Vec => {
 };
 
 /**
- * Petal fold one layer of the preliminary base into a point: fold both lower
- * edges to the centre line (the edge midpoints E and H land half way up it),
- * then lift the bottom corner A all the way to the top corner O.
+ * Petal fold one page of the square base into a point, all at once: fold
+ * both lower edges of the two-layer flaps to the centre line (the edge
+ * midpoints E and H land half way up it), then lift the bottom corner A to
+ * the top corner O. `front` works the top page, `back` the bottom one.
  */
-const petal = (region: Polygon, placement: Placement): PresetStep[] => [
-  bring(E, uv(0.5, 0), { region, placement, label: 'Kite fold' }),
-  bring(H, uv(0.5, 0), { region, placement, label: 'Kite fold' }),
-  bring(A, O, { region, placement, label: 'Petal fold' }),
-];
+const petal = (side: 'front' | 'back'): PresetStep => {
+  const flap = side === 'front' ? topLayers(2) : bottomLayers(2);
+  const placement: Placement = side === 'front' ? 'top' : 'bottom';
+  const page = side === 'front' ? Q4 : Q2;
+  return group(
+    side === 'front' ? 'Petal fold front' : 'Petal fold back',
+    bring(E, uv(0.5, 0), { layers: flap, placement }),
+    bring(H, uv(0.5, 0), { layers: flap, placement }),
+    bring(A, O, { region: page, placement }),
+  );
+};
 
 /**
- * Narrow a petal point: fold each of its two edges to the centre line. A
- * point half way along an edge lies at ±22.5° from the tip; it lands on the
- * centre line at the same distance from the tip.
+ * Narrow a petal point: fold each of its two edges to the centre line, both
+ * in one step. A point half way along an edge lies at ±22.5° from the tip;
+ * it lands on the centre line at the same distance from the tip.
  */
-const narrowPoint = (region: Polygon, placement: Placement): PresetStep[] => {
+const narrowPoint = (region: Polygon, placement: Placement, label: string): PresetStep => {
   const reach = 0.5 / Math.cos(deg(22.5));
   const onCentre = uv(1 - reach, 0);
-  return [
-    bring(uv(0.5, -TAN_22_5 / 2), onCentre, { region, placement, label: 'Narrow point' }),
-    bring(uv(0.5, TAN_22_5 / 2), onCentre, { region, placement, label: 'Narrow point' }),
-  ];
+  return group(
+    label,
+    bring(uv(0.5, -TAN_22_5 / 2), onCentre, { region, placement }),
+    bring(uv(0.5, TAN_22_5 / 2), onCentre, { region, placement }),
+  );
 };
 
 /**
@@ -148,11 +179,26 @@ const reverseFold = (at: number, angle: number, region: Polygon, label: string):
   return bring(O, alongUv(pivot, angle, 1 - at), { region, placement: 'inside', label });
 };
 
-/** Pre-crease a line: fold `from` onto `to`, then fold the top layer back. */
-const crease = (from: Vec, to: Vec): PresetStep[] => [
-  bring(from, to, { label: 'Pre-crease' }),
-  bring(to, from, { layers: topLayers(1), label: 'Unfold' }),
-];
+/** Pre-crease a line in one step: fold `from` onto `to`, then fold the top layer back. */
+const crease = (from: Vec, to: Vec): PresetStep =>
+  group('Pre-crease', bring(from, to), bring(to, from, { layers: topLayers(1) }));
+
+/** The square base in one step: both medians, then the squash that frees the nested flap. */
+const squareBase = (): PresetStep => {
+  // The centre of the sheet; the axis of the base runs from A through it.
+  const centre = vec(0.5, 0.5);
+  const axis: [Vec, Vec] = [A, centre];
+  // The left page: the triangle A-centre-D of the unfolded sheet, whose flap
+  // sits inside the other after the second median fold and swings over and back.
+  const leftPage: Polygon = [A, centre, D];
+  return group(
+    'Square base',
+    halfLeftRight,
+    halfTopBottom,
+    step(...axis, H, { region: leftPage }),
+    step(...axis, E, { region: leftPage }),
+  );
+};
 
 function craneSteps(): PresetStep[] {
   // Neck and tail rise in a V from just above the points' base.
@@ -173,22 +219,21 @@ function craneSteps(): PresetStep[] {
 
   return [
     // Pre-crease both diagonals: corner to opposite corner, and back.
-    ...crease(D, B),
-    ...crease(C, A),
-    // Preliminary base: fold in half twice along the medians.
-    halfLeftRight,
-    halfTopBottom,
-    // Bird base: petal fold the front layer (quadrant of D) and the back layer (quadrant of A).
-    ...petal(Q4, 'top'),
-    ...petal(Q1, 'bottom'),
+    crease(D, B),
+    crease(C, A),
+    // Square base: medians folded, then the squash that puts the four flaps side by side.
+    squareBase(),
+    // Bird base: petal fold the front page (corner D) and the back page (corner B).
+    petal('front'),
+    petal('back'),
     // Narrow both points: fold their edges to the centre line.
-    ...narrowPoint(Q4, 'top'),
-    ...narrowPoint(Q1, 'bottom'),
+    narrowPoint(Q4, 'top', 'Narrow front point'),
+    narrowPoint(Q2, 'bottom', 'Narrow back point'),
     // Fold the model in half along its centre line: H onto E.
     bring(H, E, { label: 'Close along centre' }),
     // Neck and tail: inside reverse folds that swing the two points up.
     reverseFold(neckBase, neckAngle, Q4, 'Reverse fold neck'),
-    reverseFold(neckBase, deg(110), Q1, 'Reverse fold tail'),
+    reverseFold(neckBase, deg(110), Q2, 'Reverse fold tail'),
     // Head: reverse fold the tip of the neck forward and down, a quarter turn.
     bring(neckTip, alongUv(headAt, neckAngle - deg(90), headLength), {
       region: Q4,
@@ -196,8 +241,13 @@ function craneSteps(): PresetStep[] {
       placement: 'inside',
       label: 'Reverse fold head',
     }),
-    // Wings down: the wing corner swings from the centre line to straight down.
-    bring(A, alongUv(wingPivot, deg(-90), 0.5), { window: wingWindow, label: 'Wings down' }),
+    // Wings: the wing corner swings from the centre line down, and stays spread
+    // at 150° so the crane stands in the 3D view.
+    bring(A, alongUv(wingPivot, deg(-90), 0.5), {
+      window: wingWindow,
+      angle: 150,
+      label: 'Spread wings',
+    }),
   ];
 }
 
