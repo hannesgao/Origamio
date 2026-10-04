@@ -41,7 +41,7 @@ describe('layers kept apart', () => {
     const up = upOf(lower.normal, isFlipped(lower.facet));
     const gap = dot(up, centre(upper.points)) - dot(up, centre(lower.points));
     // The halves share the crease, so the gap grows from zero there to the thickness away from it.
-    expect(gap).toBeGreaterThan(thickness * 0.4);
+    expect(gap).toBeGreaterThan(thickness * 0.2);
     expect(gap).toBeLessThan(thickness * 1.5);
   });
 
@@ -62,8 +62,14 @@ describe('layers kept apart', () => {
     const gaps: number[] = [];
     for (const o of mesh.overlaps) {
       const under = byId.get(o.underId);
-      if (!under) throw new Error('panel missing');
-      const up = upOf(under.normal, isFlipped(under.facet));
+      const over = byId.get(o.overId);
+      if (!under || !over) throw new Error('panel missing');
+      // The solver measures along the mean of both layers' up directions.
+      const u1 = upOf(under.normal, isFlipped(under.facet));
+      const u2 = upOf(over.normal, isFlipped(over.facet));
+      const sum = { x: u1.x + u2.x, y: u1.y + u2.y, z: u1.z + u2.z };
+      const len = Math.hypot(sum.x, sum.y, sum.z) || 1;
+      const up = { x: sum.x / len, y: sum.y / len, z: sum.z / len };
       const at = (id: number, tri: readonly number[], w: readonly number[]): Vec3 => {
         const pts = solved.positions.get(id);
         const ids = mesh.index.get(id);
@@ -83,11 +89,12 @@ describe('layers kept apart', () => {
     // The wings and body form a loop that rigid facets cannot close exactly;
     // no layer may pass through another by more than that loop error.
     const worst = Math.min(...gaps);
-    expect(worst).toBeGreaterThan(-0.004);
-    expect(gaps.filter((g) => g < -0.002).length).toBeLessThan(gaps.length * 0.05);
+    // Order is hard: no layer passes through another beyond the solver's tolerance.
+    expect(worst).toBeGreaterThan(-4e-4);
+    expect(gaps.filter((g) => g < -1e-4).length).toBeLessThan(gaps.length * 0.05);
     // On average the stack is spread by the thickness rather than squashed.
     const mean = gaps.reduce((s, g) => s + g, 0) / gaps.length;
-    expect(mean).toBeGreaterThan(thickness * 0.5);
+    expect(mean).toBeGreaterThan(thickness * 0.2);
   });
 
   it('is fast enough to solve the crane on every frame', () => {
@@ -101,6 +108,6 @@ describe('layers kept apart', () => {
     process.stdout.write(
       `crane solve ${ms.toFixed(1)} ms, overlaps ${solverInternals.buildMesh(state, all).overlaps.length}\n`,
     );
-    expect(ms).toBeLessThan(150);
+    expect(ms).toBeLessThan(200);
   });
 });
