@@ -51,11 +51,15 @@ export interface FoldStep extends FoldPart {
  * lie somewhere else than the part of the previous sheet they came from.
  */
 export function applyStep(state: PaperState, step: FoldStep): FoldResult {
-  let current = fold(state, step.line, step.side, step.options).state;
+  const first = fold(state, step.line, step.side, step.options);
+  let current = first.state;
+  let takenAlong = first.takenAlong;
   for (const part of step.also ?? []) {
-    current = fold(current, part.line, part.side, part.options).state;
+    const next = fold(current, part.line, part.side, part.options);
+    current = next.state;
+    takenAlong += next.takenAlong;
   }
-  return { state: current, movedIds: movedBetween(state, current), line: step.line };
+  return { state: current, movedIds: movedBetween(state, current), line: step.line, takenAlong };
 }
 
 /** Ids of the facets of `after` whose paper moved since `before`. */
@@ -120,6 +124,8 @@ export interface StepJson {
   readonly region?: readonly PointJson[];
   readonly window?: readonly PointJson[];
   readonly placement?: Placement;
+  /** Take attached facets along so the paper never tears; omitted means false. */
+  readonly attached?: boolean;
   /** Fold angle for display in degrees, (0, 180]; omitted means folded flat. */
   readonly angle?: number;
   /** Further folds of the same step: the same fields without `also`, `angle` and `label`. */
@@ -166,6 +172,7 @@ function partToJson(part: FoldPart): StepPartJson {
     ...(options.region ? { region: options.region.map(pointJson) } : {}),
     ...(options.window ? { window: options.window.map(pointJson) } : {}),
     ...(options.placement && options.placement !== 'top' ? { placement: options.placement } : {}),
+    ...(options.attached ? { attached: true } : {}),
   };
 }
 
@@ -298,6 +305,7 @@ function parsePart(value: unknown, where: string): FoldPart {
     region?: Polygon;
     window?: Polygon;
     placement?: Placement;
+    attached?: boolean;
   } = {};
   const layers = parseLayers(value['layers'], `${where}.layers`);
   if (layers.kind !== 'all') options.layers = layers;
@@ -313,6 +321,11 @@ function parsePart(value: unknown, where: string): FoldPart {
       return fail(`${where}.placement`, `expected one of ${PLACEMENTS.join(', ')}`);
     }
     if (placement !== 'top') options.placement = placement as Placement;
+  }
+  const attached = value['attached'];
+  if (attached !== undefined) {
+    if (typeof attached !== 'boolean') return fail(`${where}.attached`, 'expected true or false');
+    if (attached) options.attached = true;
   }
   return { line: line(a, b), side, options };
 }

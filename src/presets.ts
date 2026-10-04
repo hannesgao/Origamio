@@ -25,6 +25,8 @@ export interface PresetStep {
   readonly region?: Polygon;
   readonly window?: Polygon;
   readonly placement?: Placement;
+  /** Take attached paper along so the step never tears the sheet. */
+  readonly attached?: boolean;
   /** Fold angle for display in degrees; below 180 the 3D view keeps the crease open. */
   readonly angle?: number;
   /** Further folds made in the same step, after this one. */
@@ -163,10 +165,11 @@ const petal = (side: 'front' | 'back'): PresetStep => {
 const narrowPoint = (region: Polygon, placement: Placement, label: string): PresetStep => {
   const reach = 0.5 / Math.cos(deg(22.5));
   const onCentre = uv(1 - reach, 0);
+  // The point is two layers joined at its base; folding its edge takes both.
   return group(
     label,
-    bring(uv(0.5, -TAN_22_5 / 2), onCentre, { region, placement }),
-    bring(uv(0.5, TAN_22_5 / 2), onCentre, { region, placement }),
+    bring(uv(0.5, -TAN_22_5 / 2), onCentre, { region, placement, attached: true }),
+    bring(uv(0.5, TAN_22_5 / 2), onCentre, { region, placement, attached: true }),
   );
 };
 
@@ -176,7 +179,12 @@ const narrowPoint = (region: Polygon, placement: Placement, label: string): Pres
  */
 const reverseFold = (at: number, angle: number, region: Polygon, label: string): PresetStep => {
   const pivot = uv(at, 0);
-  return bring(O, alongUv(pivot, angle, 1 - at), { region, placement: 'inside', label });
+  return bring(O, alongUv(pivot, angle, 1 - at), {
+    region,
+    placement: 'inside',
+    attached: true,
+    label,
+  });
 };
 
 /** Pre-crease a line in one step: fold `from` onto `to`, then fold the top layer back. */
@@ -201,9 +209,11 @@ const squareBase = (): PresetStep => {
 };
 
 function craneSteps(): PresetStep[] {
-  // Neck and tail rise in a V from just above the points' base.
+  // Neck and tail rise in a V from just above the points' base. The neck is
+  // steep enough that its crease leaves the point above the shoulder; a
+  // shallower one would run into the body.
   const neckBase = 0.62;
-  const neckAngle = deg(70);
+  const neckAngle = deg(85);
   const neckStart = uv(neckBase, 0);
   const neckLength = 1 - neckBase;
   // The neck tip, where the head crease sits on the neck, and the window that
@@ -239,12 +249,14 @@ function craneSteps(): PresetStep[] {
       region: Q4,
       window: neckWindow,
       placement: 'inside',
+      attached: true,
       label: 'Reverse fold head',
     }),
     // Wings: the wing corner swings from the centre line down, and stays spread
     // at 150° so the crane stands in the 3D view.
     bring(A, alongUv(wingPivot, deg(-90), 0.5), {
       window: wingWindow,
+      attached: true,
       angle: 150,
       label: 'Spread wings',
     }),

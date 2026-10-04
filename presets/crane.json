@@ -172,6 +172,7 @@
         [0.5, 1],
         [0, 1]
       ],
+      "attached": true,
       "also": [
         {
           "line": [
@@ -184,7 +185,8 @@
             [0.5, 0.5],
             [0.5, 1],
             [0, 1]
-          ]
+          ],
+          "attached": true
         }
       ],
       "label": "Narrow front point"
@@ -202,6 +204,7 @@
         [0.5, 0.5]
       ],
       "placement": "bottom",
+      "attached": true,
       "also": [
         {
           "line": [
@@ -215,7 +218,8 @@
             [1, 0.5],
             [0.5, 0.5]
           ],
-          "placement": "bottom"
+          "placement": "bottom",
+          "attached": true
         }
       ],
       "label": "Narrow back point"
@@ -230,8 +234,8 @@
     },
     {
       "line": [
-        [0.579283112, 1.237358849],
-        [0.405634934, 0.252551096]
+        [0.472436541, 1.217829048],
+        [0.428817153, 0.218780826]
       ],
       "side": 1,
       "region": [
@@ -241,6 +245,7 @@
         [0, 1]
       ],
       "placement": "inside",
+      "attached": true,
       "label": "Reverse fold neck"
     },
     {
@@ -256,12 +261,13 @@
         [0.5, 0.5]
       ],
       "placement": "inside",
+      "attached": true,
       "label": "Reverse fold tail"
     },
     {
       "line": [
-        [0.179892126, 0.286353929],
-        [0.521912269, 1.22604655]
+        [0.228054804, 0.224626618],
+        [0.315210547, 1.220821316]
       ],
       "side": 1,
       "region": [
@@ -277,6 +283,7 @@
         [-0.070710678, 0.777817459]
       ],
       "placement": "inside",
+      "attached": true,
       "label": "Reverse fold head"
     },
     {
@@ -291,6 +298,7 @@
         [0.847821031, 0.849235244],
         [-0.142128463, -0.140714249]
       ],
+      "attached": true,
       "angle": 150,
       "label": "Spread wings"
     }
