@@ -1,4 +1,4 @@
-import { area, centroid } from './geometry';
+import { area, centroid, containsPoint } from './geometry';
 import { type PaperState, currentPolygon, foldedPoints } from './paper';
 import { type ViewFrame } from './sequence';
 import { type Hinge, type Panel, type StepAnimation, type Vec3, hinges, stepPose } from './rigid';
@@ -169,6 +169,8 @@ export interface SceneOptions {
   readonly animation?: StepAnimation;
   /** Thickness of the paper, in sheet units; layers are kept this far apart. */
   readonly thickness?: number;
+  /** The facet to hold still, when the caller wants the same one as last time. */
+  readonly anchorId?: number;
 }
 
 /** A line to draw: the sheet's boundary or a crease that is bent in the current pose. */
@@ -203,6 +205,17 @@ export interface SolvedScene {
   readonly edges: SceneEdge[];
   /** Shade of every facet's corners, by facet id. */
   readonly shade: Record<number, FacetShade>;
+  /**
+   * Each facet's place in its stack, by facet id: how many facets lie
+   * under it in the flat model where it sits. Layers that the solver leaves
+   * almost coincident are drawn in this order, not in the order of their
+   * last fraction of a millimetre.
+   */
+  readonly rank: Record<number, number>;
+  /** False while a step plays: the picture is a frame of a swing, not a pose to frame the camera on. */
+  readonly settled: boolean;
+  /** The facet that was held still. */
+  readonly anchorId: number | undefined;
   /** Centre of the sheet's extent (in the sheet's plane) that views turn about. */
   readonly centre: Vec3;
   /** Farthest any solved point lies from the centre. */
@@ -299,6 +312,26 @@ function occlusionShade(panels: readonly Panel[], size: number): Record<number, 
   return result;
 }
 
+const rankCache = new WeakMap<PaperState, Record<number, number>>();
+
+/** How many facets lie under each facet at its centre, in the flat model. */
+export function stackRank(state: PaperState): Record<number, number> {
+  const cached = rankCache.get(state);
+  if (cached) return cached;
+  const folded = state.facets.map((f) => ({ f, poly: currentPolygon(f) }));
+  const result: Record<number, number> = {};
+  for (const { f, poly } of folded) {
+    const c = centroid(poly);
+    let below = 0;
+    for (const other of folded) {
+      if (other.f.z < f.z && containsPoint(other.poly, c)) below++;
+    }
+    result[f.id] = below;
+  }
+  rankCache.set(state, result);
+  return result;
+}
+
 /** The hinge along a facet's edge, if the edge lies on one. */
 function hingeAlong(
   byFacet: Map<number, Hinge[]>,
@@ -329,8 +362,10 @@ export function solvedScene(state: PaperState, options: SceneOptions): SolvedSce
   const pose = stepPose(state, options.opening, options.animation);
   // Solved from the rigid walk every time: a few milliseconds for a crane,
   // and a flat warm start would stall the crease constraints.
+  const anchorId = options.anchorId ?? pose.rootId;
   const panels = solveSheet(state, all, {
     ...pose,
+    ...(anchorId !== undefined ? { rootId: anchorId } : {}),
     iterations: 80,
     thickness: options.thickness ?? 0,
   }).panels;
@@ -378,7 +413,16 @@ export function solvedScene(state: PaperState, options: SceneOptions): SolvedSce
       reach = Math.max(reach, Math.hypot(p.x - centre.x, p.y - centre.y, p.z - centre.z));
     }
   }
-  return { panels, edges, shade: occlusionShade(panels, state.size), centre, reach };
+  return {
+    panels,
+    edges,
+    shade: occlusionShade(panels, state.size),
+    rank: stackRank(state),
+    settled: !animation,
+    anchorId,
+    centre,
+    reach,
+  };
 }
 
 /**

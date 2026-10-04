@@ -44,29 +44,47 @@ export class SolveCore {
   /** The first copy of each sheet seen, by id: the caches key on the object. */
   private readonly states = new Map<string, PaperState>();
   private animation: { id: number; contact: ContactMemory } | null = null;
+  /** The facet held still last time: kept while it exists and stays put, so the model does not rock. */
+  private anchorId: number | undefined;
 
   solve(request: SolveRequest): SolvedScene {
     const state = this.remember(request.stateId, request.state);
     const animation = request.animation;
-    if (!animation)
-      return solvedScene(state, { opening: request.opening, thickness: request.thickness });
-    const previous = this.remember(animation.previousId, animation.previous);
-    if (this.animation?.id !== animation.id) {
-      this.animation = {
-        id: animation.id,
-        contact: { before: previous, sides: new Map(), seeded: false },
-      };
+    const movedIds = new Set(animation?.movedIds ?? []);
+    const keep =
+      this.anchorId !== undefined &&
+      !movedIds.has(this.anchorId) &&
+      state.facets.some((f) => f.id === this.anchorId);
+    const anchor = keep ? { anchorId: this.anchorId as number } : {};
+    let scene: SolvedScene;
+    if (!animation) {
+      scene = solvedScene(state, {
+        opening: request.opening,
+        thickness: request.thickness,
+        ...anchor,
+      });
+    } else {
+      const previous = this.remember(animation.previousId, animation.previous);
+      if (this.animation?.id !== animation.id) {
+        this.animation = {
+          id: animation.id,
+          contact: { before: previous, sides: new Map(), seeded: false },
+        };
+      }
+      scene = solvedScene(state, {
+        opening: request.opening,
+        thickness: request.thickness,
+        ...anchor,
+        animation: {
+          previous,
+          movedIds,
+          progress: animation.progress,
+          contact: this.animation.contact,
+        },
+      });
     }
-    return solvedScene(state, {
-      opening: request.opening,
-      thickness: request.thickness,
-      animation: {
-        previous,
-        movedIds: new Set(animation.movedIds),
-        progress: animation.progress,
-        contact: this.animation.contact,
-      },
-    });
+    this.anchorId = scene.anchorId;
+    return scene;
   }
 
   private remember(id: string, state: PaperState): PaperState {

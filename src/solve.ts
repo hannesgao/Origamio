@@ -202,10 +202,16 @@ function findOverlaps(state: PaperState, mesh: Omit<Mesh, 'overlaps'>): Overlap[
   return overlaps;
 }
 
-/** How much softer a crease folded flat pulls than one folded to a given angle. */
-const FLAT_CREASE_GIVE = 0.3;
-/** How hard a facet pulls itself flat across its diagonals: paper bends a little, before a crease gives. */
-const FACET_STIFFNESS = 0.6;
+/**
+ * Tuning of the sweeps, exported through `solverInternals` so that tests
+ * can measure the effect of each knob.
+ */
+export const solverTuning = {
+  /** How much softer a crease folded flat pulls than one folded to a given angle. */
+  flatCreaseGive: 0.3,
+  /** How hard a facet pulls itself flat across its diagonals: paper bends a little, before a crease gives. */
+  facetStiffness: 0.6,
+};
 /** Triangles thinner than this share of their facet get no flatness constraint. */
 const THIN_TRIANGLE = 1e-3;
 /** Sweeps at the end with the creases free, so that facets are rigid and layers in order. */
@@ -696,6 +702,19 @@ export function solveSheet(
     const w = weight[i] as number;
     if (w > 0) pos[i] = mul3(pos[i] as Vec3, 1 / w);
   }
+  // The anchor keeps its own shape: its corners are pinned where the walk
+  // put them, not at the average with neighbours that disagree, or the
+  // pinned shape would carry the loop error for good.
+  if (rootId !== undefined && options.anchor !== false) {
+    const root = byId.get(rootId);
+    const poly = mesh.polys.get(rootId);
+    const ids = mesh.index.get(rootId);
+    if (root && poly && ids) {
+      poly.forEach((v, i) => {
+        pos[ids[i] as number] = pointOnPanel(root, v);
+      });
+    }
+  }
 
   const lengthSweep = (): number => {
     let moved = 0;
@@ -740,13 +759,13 @@ export function solveSheet(
       const shown = angleOf(c.hinge);
       const target = Math.PI - Math.abs(shown);
       const firm = Math.abs(c.hinge.shown) < Math.PI - 1e-9;
-      const stiffness = firm ? bendStiffness : bendStiffness * FLAT_CREASE_GIVE;
+      const stiffness = firm ? bendStiffness : bendStiffness * solverTuning.flatCreaseGive;
       moved = Math.max(moved, bendConstraint(pos, c.i, c.j, c.k, c.l, target, stiffness, pinned));
     }
     for (const c of mesh.flats) {
       moved = Math.max(
         moved,
-        bendConstraint(pos, c.i, c.j, c.k, c.l, Math.PI, FACET_STIFFNESS, pinned),
+        bendConstraint(pos, c.i, c.j, c.k, c.l, Math.PI, solverTuning.facetStiffness, pinned),
       );
     }
     moved = Math.max(moved, separationSweep());
@@ -863,5 +882,5 @@ function bendConstraint(
   return Math.abs(s) * Math.sqrt(sum);
 }
 
-export const solverInternals = { buildMesh };
+export const solverInternals = { buildMesh, tuning: solverTuning };
 export type { Facet };

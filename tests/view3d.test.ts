@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { FoldHistory, createPaper } from '../src/paper';
+import { vec } from '../src/geometry';
+import { FoldHistory, createPaper, fold } from '../src/paper';
 import { type StepAnimation, type Vec3, hingeOpening, hinges } from '../src/rigid';
 import { FOV, buildMesh, cameraFrame } from '../src/scene3d';
 import { buildStamp } from '../src/ui';
-import { solvedScene, viewRotation } from '../src/view3d';
+import { solvedScene, stackRank, viewRotation } from '../src/view3d';
 import { foldLeftRight, foldLeftRightAgain, foldTopBottom, run } from './presets';
 
 const zs = (points: readonly Vec3[]): number[] => points.map((p) => p.z);
@@ -82,6 +83,47 @@ describe('viewRotation', () => {
     // Pitch 0 looks straight down at the sheet.
     const down = viewRotation({ yaw: 0, pitch: 0, roll: 0, zoom: 1 });
     expect(down[2]).toEqual({ x: 0, y: 0, z: 1 });
+  });
+});
+
+describe('settled', () => {
+  it('is false only while a step plays', () => {
+    const before = createPaper();
+    const after = fold(before, { a: vec(0.5, 0), b: vec(0.5, 1) }, 1);
+    const movedIds = new Set(after.movedIds);
+    expect(solvedScene(after.state, { opening: 0 }).settled).toBe(true);
+    expect(
+      solvedScene(after.state, {
+        opening: 0,
+        animation: { previous: before, movedIds, progress: 0.5 },
+      }).settled,
+    ).toBe(false);
+    expect(
+      solvedScene(after.state, {
+        opening: 0,
+        animation: { previous: before, movedIds, progress: 1 },
+      }).settled,
+    ).toBe(false);
+  });
+});
+
+describe('stackRank', () => {
+  it('counts the facets under each facet in the flat model', () => {
+    const half = fold(createPaper(), { a: vec(0.5, 0), b: vec(0.5, 1) }, 1).state;
+    const ranks = stackRank(half);
+    const [lower, upper] = [...half.facets].sort((a, b) => a.z - b.z);
+    if (!lower || !upper) throw new Error('two facets expected');
+    expect(ranks[lower.id]).toBe(0);
+    expect(ranks[upper.id]).toBe(1);
+    const scene = solvedScene(half, { opening: 0 });
+    expect(scene.rank).toEqual(ranks);
+    const built = buildMesh(
+      scene,
+      { front: '#fff', back: '#000', ink: '#000', thickness: 0, shadow: true, perspective: true },
+      new Set(),
+    );
+    expect(built.ranks).toHaveLength(built.positions.length / 3);
+    expect(built.ups).toHaveLength(built.positions.length);
   });
 });
 
