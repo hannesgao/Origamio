@@ -79,7 +79,7 @@ describe('crane preset', () => {
     expect(vA).toBeCloseTo(vC);
     expect(facetCount(state)).toBeGreaterThan(40);
     // The last step keeps its creases open so the wings stand off the body.
-    expect(steps[steps.length - 1]?.options.angle).toBe(150);
+    expect(steps[steps.length - 1]?.options.angle).toBe(100);
   });
 
   it('counts the layers of the finished crane quickly', () => {

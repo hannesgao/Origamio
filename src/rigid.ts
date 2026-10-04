@@ -26,7 +26,7 @@ import {
   reflection,
   sub,
 } from './geometry';
-import { type Facet, type PaperState, isFlipped } from './paper';
+import { type Facet, type PaperState, isFlipped, layersAt } from './paper';
 
 export interface Vec3 {
   readonly x: number;
@@ -52,6 +52,8 @@ export interface Hinge {
    * display angle below 180°, in which case that angle with the same sign.
    */
   readonly shown: number;
+  /** How many layers of the folded sheet lie at this crease (at least 2 when folded). */
+  readonly cover: number;
 }
 
 /** A rigid transform in space: `rotate` is a row-major 3×3 rotation, then `move`. */
@@ -223,7 +225,15 @@ function neighbours(state: PaperState): {
       const degrees = creaseAngle(state, shared, tolerance);
       const shown =
         angle === 0 || degrees === undefined ? angle : Math.sign(angle) * degrees * (Math.PI / 180);
-      result.push({ a: shared[0], b: shared[1], p: p.id, q: q.id, angle, shown });
+      // Layers stacked where the crease lies, just inside facet p.
+      const mid = { x: (shared[0].x + shared[1].x) / 2, y: (shared[0].y + shared[1].y) / 2 };
+      const inward = centroid(p.poly);
+      const probe = apply(p.transform, {
+        x: mid.x + (inward.x - mid.x) * 0.02,
+        y: mid.y + (inward.y - mid.y) * 0.02,
+      });
+      const cover = Math.max(1, layersAt(state, probe));
+      result.push({ a: shared[0], b: shared[1], p: p.id, q: q.id, angle, shown, cover });
     }
   }
   return { hinges: result, torn };
@@ -278,6 +288,15 @@ export const openedAngle = (angle: number, opening: number): number =>
   angle === 0 ? 0 : Math.sign(angle) * Math.max(0, Math.abs(angle) - opening);
 
 /**
+ * How far a hinge opens for a requested opening: a crease on the outside of
+ * the stack opens fully, one buried under many layers barely at all, so the
+ * sheet reads as pressed paper rather than as fanned-out layers. A crease
+ * folded to a chosen angle keeps that angle.
+ */
+export const hingeOpening = (hinge: Hinge, opening: number): number =>
+  Math.abs(hinge.shown) < Math.PI - 1e-9 ? 0 : (opening * 2) / Math.max(2, hinge.cover);
+
+/**
  * The angle a hinge had before the current step. A hinge crossing the step's
  * fold (one facet moved, the other not) is new, or was folded flat before an
  * unfold; every other hinge kept its angle.
@@ -306,9 +325,10 @@ export function stepPose(
 ): PoseOptions {
   const t = animation ? Math.min(1, Math.max(0, animation.progress)) : 1;
   const angleOf = (h: Hinge): number => {
-    const target = openedAngle(h.shown, opening);
+    const open = hingeOpening(h, opening);
+    const target = openedAngle(h.shown, open);
     if (!animation || t >= 1) return target;
-    const from = openedAngle(angleBefore(h, animation), opening);
+    const from = openedAngle(angleBefore(h, animation), open);
     return from + (target - from) * t;
   };
   const anchor = animation

@@ -8,10 +8,33 @@ export type { StepAnimation } from './rigid';
 export interface Orbit {
   readonly yaw: number;
   readonly pitch: number;
+  /** Turn of the picture about the line of sight; the named views use it. */
+  readonly roll: number;
   readonly zoom: number;
 }
 
-export const DEFAULT_ORBIT: Orbit = { yaw: -0.55, pitch: 0.95, zoom: 1 };
+export const DEFAULT_ORBIT: Orbit = { yaw: -0.55, pitch: 0.95, roll: 0, zoom: 1 };
+
+/**
+ * Fixed views, named for a model whose spine runs along the sheet's
+ * diagonal, like the crane: the side view looks at the sheet face-on with
+ * the spine level, the top view looks across the spine along the sheet
+ * (wings spread, body edge-on), the front view looks along the spine with
+ * the picture turned so the body stands upright.
+ */
+export const NAMED_VIEWS: readonly {
+  readonly id: string;
+  readonly label: string;
+  readonly orbit: Orbit;
+}[] = [
+  {
+    id: 'front',
+    label: 'Front',
+    orbit: { yaw: Math.PI / 4, pitch: Math.PI / 2, roll: Math.PI / 2, zoom: 1 },
+  },
+  { id: 'side', label: 'Side', orbit: { yaw: -Math.PI / 4, pitch: 0, roll: 0, zoom: 1 } },
+  { id: 'top', label: 'Top', orbit: { yaw: -Math.PI / 4, pitch: Math.PI / 2, roll: 0, zoom: 1 } },
+];
 export const MIN_ORBIT_ZOOM = 0.5;
 export const MAX_ORBIT_ZOOM = 4;
 
@@ -62,7 +85,13 @@ function rotate(orbit: Orbit, centre: Vec3, p: Vec3): Vec3 {
   const cp = Math.cos(orbit.pitch);
   const sp = Math.sin(orbit.pitch);
   // Pitch 0 looks straight down; pitch π/2 looks along the table.
-  return { x: x1, y: y1 * cp + z * sp, z: -y1 * sp + z * cp };
+  const x2 = x1;
+  const y2 = y1 * cp + z * sp;
+  const z2 = -y1 * sp + z * cp;
+  // Roll turns the picture about the line of sight.
+  const cr = Math.cos(orbit.roll);
+  const sr = Math.sin(orbit.roll);
+  return { x: x2 * cr - y2 * sr, y: x2 * sr + y2 * cr, z: z2 };
 }
 
 /** Hex colour darkened or lightened by `factor` (1 keeps it). */

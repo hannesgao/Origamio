@@ -22,6 +22,7 @@ import {
   DEFAULT_OPENING,
   DEFAULT_ORBIT,
   MAX_OPENING,
+  NAMED_VIEWS,
   OPENING_STEPS,
   MAX_ORBIT_ZOOM,
   MIN_ORBIT_ZOOM,
@@ -143,6 +144,23 @@ const SNAP_ICON =
 const SNAP_KEY = 'origamio.snap';
 /** How close the pointer must be to a corner, midpoint or edge, in CSS pixels. */
 const SNAP_PIXELS = 10;
+
+/** The build time as shown in the status bar: German local time, to the minute. */
+export function buildStamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('de-DE', {
+    timeZone: 'Europe/Berlin',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('day')}.${get('month')}.${get('year')} ${get('hour')}:${get('minute')}`;
+}
 const GITHUB_ICON =
   '<path d="M10 2.5a7.5 7.5 0 0 0-2.37 14.62c.37.07.51-.16.51-.36v-1.3c-2.09.45-2.53-1-2.53-1-.34-.87-.83-1.1-.83-1.1-.68-.46.05-.45.05-.45.75.05 1.15.77 1.15.77.67 1.14 1.75.81 2.18.62.07-.48.26-.81.47-1-1.67-.19-3.42-.83-3.42-3.7 0-.82.29-1.49.77-2.01-.08-.19-.33-.95.07-1.98 0 0 .63-.2 2.06.77a7.2 7.2 0 0 1 3.76 0c1.43-.97 2.06-.77 2.06-.77.4 1.03.15 1.79.07 1.98.48.52.77 1.19.77 2.01 0 2.88-1.75 3.51-3.43 3.7.27.23.51.69.51 1.39v2.06c0 .2.14.44.52.36A7.5 7.5 0 0 0 10 2.5Z" fill="currentColor" stroke="none" />';
 const MORE_ICON =
@@ -749,11 +767,25 @@ export function createApp(root: HTMLElement): App {
   const orbitReset = el(
     'button',
     { type: 'button', class: 'btn', title: 'Turn the model back to the default view' },
-    [icon(FULL_ICON), el('span', { class: 'btn-label' }, ['Reset view'])],
+    [icon(FULL_ICON), el('span', { class: 'btn-label' }, ['Reset'])],
+  );
+  // Named views, for a model whose spine runs along the sheet's diagonal (the crane).
+  const viewButtons = NAMED_VIEWS.map((view) =>
+    el(
+      'button',
+      {
+        type: 'button',
+        'aria-pressed': 'false',
+        'data-view': view.id,
+        title: `${view.label} view`,
+      },
+      [view.label],
+    ),
   );
   const solidTools = el('div', { class: 'card-tools' }, [
     solidStrip,
     el('span', { class: 'caption' }, ['Drag to turn']),
+    el('div', { class: 'tool-toggle', role: 'group', 'aria-label': 'Named views' }, viewButtons),
     orbitReset,
   ]);
   // How far every crease is opened from flat, in degrees: a few presets, or any value typed.
@@ -911,6 +943,9 @@ export function createApp(root: HTMLElement): App {
           ['MIT License'],
         ),
         el('span', { class: 'credit credit-version' }, [`v${__APP_VERSION__}`]),
+        el('span', { class: 'credit credit-build', title: `Built ${__BUILD_TIME__} (UTC)` }, [
+          buildStamp(__BUILD_TIME__),
+        ]),
         el(
           'a',
           {
@@ -2228,10 +2263,30 @@ export function createApp(root: HTMLElement): App {
     orbit = {
       yaw: wrapAngle(next.yaw),
       pitch: wrapAngle(next.pitch),
+      roll: wrapAngle(next.roll),
       zoom: Math.max(MIN_ORBIT_ZOOM, Math.min(MAX_ORBIT_ZOOM, next.zoom)),
     };
+    const same = (a: number, b: number): boolean => Math.abs(wrapAngle(a - b)) < 1e-6;
+    viewButtons.forEach((button, i) => {
+      const view = NAMED_VIEWS[i]?.orbit;
+      button.setAttribute(
+        'aria-pressed',
+        String(
+          view !== undefined &&
+            same(view.yaw, orbit.yaw) &&
+            same(view.pitch, orbit.pitch) &&
+            same(view.roll, orbit.roll),
+        ),
+      );
+    });
     render();
   };
+  viewButtons.forEach((button, i) =>
+    button.addEventListener('click', () => {
+      const view = NAMED_VIEWS[i];
+      if (view) setOrbit({ ...view.orbit, zoom: orbit.zoom });
+    }),
+  );
   solidSvg.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
