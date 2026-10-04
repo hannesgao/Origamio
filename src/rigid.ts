@@ -369,25 +369,47 @@ export function stepPose(
 ): PoseOptions {
   const t = animation ? Math.min(1, Math.max(0, animation.progress)) : 1;
   const byId = new Map(state.facets.map((f) => [f.id, f]));
+  // The way the moving paper swings at a crease the step crosses: over the
+  // top of the still paper when the moved facet lands above it in the
+  // stack, under it otherwise. The crease's angle reads that in the still
+  // facet's own sense: a positive angle lifts the neighbour towards its front.
+  const swingOf = (h: Hinge): { side: 1 | -1; sense: 1 | -1 } | undefined => {
+    const pMoved = animation?.movedIds.has(h.p) ?? false;
+    if (!animation || pMoved === animation.movedIds.has(h.q)) return undefined;
+    const still = byId.get(pMoved ? h.q : h.p);
+    const moved = byId.get(pMoved ? h.p : h.q);
+    if (!still || !moved) return undefined;
+    return { side: moved.z > still.z ? 1 : -1, sense: isFlipped(still) ? -1 : 1 };
+  };
+  // Paper folded inside, between layers, is hinged to still paper on both
+  // sides of it and cannot swing rigidly either way: it goes the way most
+  // of its creases say, and the creases that disagree are released for the
+  // step, so the layers in its way bend out of it as paper does.
+  const released = new Set<Hinge>();
+  let swing: 1 | -1 | undefined;
+  if (animation && t < 1) {
+    const crossing: [Hinge, 1 | -1][] = [];
+    for (const h of hinges(state)) {
+      const swing = swingOf(h);
+      if (swing) crossing.push([h, swing.side]);
+    }
+    const over = crossing.filter(([, side]) => side === 1).length;
+    const minority = over >= crossing.length - over ? -1 : 1;
+    for (const [h, side] of crossing) if (side === minority) released.add(h);
+    if (crossing.length > 0) swing = minority === 1 ? -1 : 1;
+  }
   const angleOf = (h: Hinge): number => {
     const open = hingeOpening(h, opening);
     const target = openedAngle(h.shown, open);
     if (!animation || t >= 1) return target;
     const openBefore = hingeOpening({ ...h, cover: coverBefore(h, animation.previous) }, opening);
     const from = openedAngle(angleBefore(h, animation), openBefore);
-    const pMoved = animation.movedIds.has(h.p);
-    if (pMoved === animation.movedIds.has(h.q)) return from + (target - from) * t;
+    const swing = swingOf(h);
+    if (swing === undefined) return from + (target - from) * t;
     // A crease the step folds or unfolds: the moving paper swings on the
-    // side it lands on, whatever the crease's own sign says mid-way. The
-    // side is where the moved facet ends up against the still one, and the
-    // sense of a positive angle is towards the still facet's front.
-    const still = byId.get(pMoved ? h.q : h.p);
-    const moved = byId.get(pMoved ? h.p : h.q);
-    if (!still || !moved) return from + (target - from) * t;
-    const side = moved.z > still.z ? 1 : -1;
-    const sense = isFlipped(still) ? -1 : 1;
+    // side it lands on, whatever the crease's own sign says mid-way.
     const magnitude = Math.abs(from) + (Math.abs(target) - Math.abs(from)) * t;
-    return side * sense * magnitude;
+    return swing.side * swing.sense * magnitude;
   };
   const still = animation
     ? new Set(state.facets.filter((f) => !animation.movedIds.has(f.id)).map((f) => f.id))
@@ -396,6 +418,8 @@ export function stepPose(
   return {
     angleOf,
     ...(anchor ? { rootId: anchor.id } : {}),
+    ...(released.size > 0 ? { released } : {}),
+    ...(swing !== undefined ? { swing } : {}),
     ...(animation && t < 1
       ? { moved: animation.movedIds, ...(animation.contact ? { contact: animation.contact } : {}) }
       : {}),
@@ -443,6 +467,13 @@ export interface PoseOptions {
   readonly moved?: ReadonlySet<number>;
   /** With `moved`: the sides remembered so far, kept up to date by the solver. */
   readonly contact?: ContactMemory;
+  /**
+   * Creases that hold no angle for now: the walk does not cross them and
+   * the solver does not bend them, the paper stays joined along them.
+   */
+  readonly released?: ReadonlySet<Hinge>;
+  /** With `moved`: the way the moving paper swings, up (1) or down (-1) the stack. */
+  readonly swing?: 1 | -1;
 }
 
 /**
@@ -468,6 +499,7 @@ export function placePanels(
     const id = queue.shift() as number;
     const pose = poses.get(id) as Pose;
     for (const h of all) {
+      if (options.released?.has(h)) continue;
       const other = h.p === id ? h.q : h.q === id ? h.p : null;
       if (other === null || poses.has(other)) continue;
       const neighbour = byId.get(other);
