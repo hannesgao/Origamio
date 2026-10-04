@@ -3,22 +3,74 @@
  * on a fresh sheet: presets ship in this format, and anything folded by hand
  * can be exported to it. The JSON form is documented in the README.
  */
-import { type Line, type Polygon, type Side, type Vec, distance, line, vec } from './geometry';
+import {
+  type Line,
+  type Polygon,
+  type Side,
+  type Vec,
+  apply,
+  centroid,
+  containsPoint,
+  distance,
+  line,
+  vec,
+} from './geometry';
 import {
   type FoldOptions,
+  type FoldResult,
   type LayerSelection,
+  type PaperState,
   type Placement,
   ALL_LAYERS,
   bottomLayers,
+  fold,
   topLayers,
 } from './paper';
 
-export interface FoldStep {
+/** One fold: a line in the folded coordinates of that moment, the side that flips, and its options. */
+export interface FoldPart {
   readonly line: Line;
   readonly side: Side;
   readonly options: FoldOptions;
+}
+
+export interface FoldStep extends FoldPart {
+  /**
+   * Further folds that happen in the same step, applied in order after the
+   * first. A collapse or a petal fold is several creases forming at once;
+   * grouping them keeps every state between steps one that real paper can
+   * take, and plays them together.
+   */
+  readonly also?: readonly FoldPart[];
   /** Short name shown on the timeline, such as "Petal fold". */
   readonly label?: string;
+}
+
+/**
+ * Apply a whole step. The moved facets are those of the final sheet that
+ * lie somewhere else than the part of the previous sheet they came from.
+ */
+export function applyStep(state: PaperState, step: FoldStep): FoldResult {
+  let current = fold(state, step.line, step.side, step.options).state;
+  for (const part of step.also ?? []) {
+    current = fold(current, part.line, part.side, part.options).state;
+  }
+  return { state: current, movedIds: movedBetween(state, current), line: step.line };
+}
+
+/** Ids of the facets of `after` whose paper moved since `before`. */
+export function movedBetween(before: PaperState, after: PaperState): number[] {
+  const probe = { x: 0.37, y: 0.61 };
+  const moved: number[] = [];
+  for (const facet of after.facets) {
+    const c = centroid(facet.poly);
+    const origin = before.facets.find((f) => containsPoint(f.poly, c));
+    if (!origin) continue;
+    const here = apply(facet.transform, probe);
+    const there = apply(origin.transform, probe);
+    if (distance(here, there) > 1e-7) moved.push(facet.id);
+  }
+  return moved;
 }
 
 /**
@@ -70,8 +122,12 @@ export interface StepJson {
   readonly placement?: Placement;
   /** Fold angle for display in degrees, (0, 180]; omitted means folded flat. */
   readonly angle?: number;
+  /** Further folds of the same step: the same fields without `also`, `angle` and `label`. */
+  readonly also?: readonly StepPartJson[];
   readonly label?: string;
 }
+
+export type StepPartJson = Omit<StepJson, 'also' | 'angle' | 'label'>;
 
 export interface SequenceJson {
   readonly format: typeof SEQUENCE_FORMAT;
@@ -100,17 +156,25 @@ function layersJson(layers: LayerSelection | undefined): StepJson['layers'] | un
   return layers.kind === 'top' ? { top: layers.count } : { bottom: layers.count };
 }
 
-export function stepToJson(step: FoldStep): StepJson {
-  const { options } = step;
+function partToJson(part: FoldPart): StepPartJson {
+  const { options } = part;
   const layers = layersJson(options.layers);
   return {
-    line: [pointJson(step.line.a), pointJson(step.line.b)],
-    side: step.side,
+    line: [pointJson(part.line.a), pointJson(part.line.b)],
+    side: part.side,
     ...(layers ? { layers } : {}),
     ...(options.region ? { region: options.region.map(pointJson) } : {}),
     ...(options.window ? { window: options.window.map(pointJson) } : {}),
     ...(options.placement && options.placement !== 'top' ? { placement: options.placement } : {}),
+  };
+}
+
+export function stepToJson(step: FoldStep): StepJson {
+  const { options } = step;
+  return {
+    ...partToJson(step),
     ...(options.angle !== undefined && options.angle < 180 ? { angle: options.angle } : {}),
+    ...(step.also && step.also.length > 0 ? { also: step.also.map(partToJson) } : {}),
     ...(step.label ? { label: step.label } : {}),
   };
 }
@@ -189,6 +253,36 @@ function parseLayers(value: unknown, where: string): LayerSelection {
 }
 
 export function parseStep(value: unknown, where = 'step'): FoldStep {
+  const part = parsePart(value, where);
+  if (!isRecord(value)) return fail(where, 'expected an object');
+  const angle = value['angle'];
+  const options: FoldOptions = { ...part.options };
+  if (angle !== undefined) {
+    if (typeof angle !== 'number' || !(angle > 0 && angle <= 180)) {
+      return fail(`${where}.angle`, 'expected a number in (0, 180]');
+    }
+    if (angle < 180) (options as { angle?: number }).angle = angle;
+  }
+  const alsoValue = value['also'];
+  let also: FoldPart[] | undefined;
+  if (alsoValue !== undefined) {
+    if (!Array.isArray(alsoValue)) return fail(`${where}.also`, 'expected a list of folds');
+    also = alsoValue.map((v, i) => parsePart(v, `${where}.also[${i}]`));
+  }
+  const label = value['label'];
+  if (label !== undefined && typeof label !== 'string') {
+    return fail(`${where}.label`, 'expected a string');
+  }
+  return {
+    line: part.line,
+    side: part.side,
+    options,
+    ...(also && also.length > 0 ? { also } : {}),
+    ...(typeof label === 'string' && label ? { label } : {}),
+  };
+}
+
+function parsePart(value: unknown, where: string): FoldPart {
   if (!isRecord(value)) return fail(where, 'expected an object');
   const lineValue = value['line'];
   if (!Array.isArray(lineValue) || lineValue.length !== 2) {
@@ -204,7 +298,6 @@ export function parseStep(value: unknown, where = 'step'): FoldStep {
     region?: Polygon;
     window?: Polygon;
     placement?: Placement;
-    angle?: number;
   } = {};
   const layers = parseLayers(value['layers'], `${where}.layers`);
   if (layers.kind !== 'all') options.layers = layers;
@@ -221,23 +314,7 @@ export function parseStep(value: unknown, where = 'step'): FoldStep {
     }
     if (placement !== 'top') options.placement = placement as Placement;
   }
-  const angle = value['angle'];
-  if (angle !== undefined) {
-    if (typeof angle !== 'number' || !(angle > 0 && angle <= 180)) {
-      return fail(`${where}.angle`, 'expected a number in (0, 180]');
-    }
-    if (angle < 180) options.angle = angle;
-  }
-  const label = value['label'];
-  if (label !== undefined && typeof label !== 'string') {
-    return fail(`${where}.label`, 'expected a string');
-  }
-  return {
-    line: line(a, b),
-    side,
-    options,
-    ...(typeof label === 'string' && label ? { label } : {}),
-  };
+  return { line: line(a, b), side, options };
 }
 
 /** Parse a sequence from its JSON form (an object or JSON text); throws SequenceError. */

@@ -175,8 +175,22 @@ const sameTransform = (m: Mat, n: Mat, tolerance: number): boolean =>
  * no hinge, and the panels on either side are placed by the flat model.
  */
 export function hinges(state: PaperState): Hinge[] {
+  return neighbours(state).hinges;
+}
+
+/**
+ * Neighbouring facet pairs that the fold model pulled apart: real paper
+ * would have torn there. Zero means every state between steps is one a
+ * sheet of paper can take.
+ */
+export function tears(state: PaperState): number {
+  return neighbours(state).torn;
+}
+
+function neighbours(state: PaperState): { hinges: Hinge[]; torn: number } {
   const tolerance = EPS * 1e3 * state.size;
   const result: Hinge[] = [];
+  let torn = 0;
   const facets = state.facets;
   for (let i = 0; i < facets.length; i++) {
     const p = facets[i] as Facet;
@@ -192,7 +206,10 @@ export function hinges(state: PaperState): Hinge[] {
           reflection(applyToLine(p.transform, line(shared[0], shared[1]))),
           p.transform,
         );
-        if (!sameTransform(folded, q.transform, tolerance)) continue;
+        if (!sameTransform(folded, q.transform, tolerance)) {
+          torn++;
+          continue;
+        }
         angle = q.z > p.z === !isFlipped(p) ? Math.PI : -Math.PI;
       }
       const degrees = creaseAngle(state, shared, tolerance);
@@ -201,7 +218,7 @@ export function hinges(state: PaperState): Hinge[] {
       result.push({ a: shared[0], b: shared[1], p: p.id, q: q.id, angle, shown });
     }
   }
-  return result;
+  return { hinges: result, torn };
 }
 
 /** The display angle of the latest recorded crease that covers the segment, if any. */
@@ -236,6 +253,60 @@ function sharedEdge(p: Polygon, q: Polygon, tolerance: number): [Vec, Vec] | nul
     }
   }
   return null;
+}
+
+/** A step in progress: the creases it makes swing from their old angle to the new. */
+export interface StepAnimation {
+  /** The sheet before the step. */
+  readonly previous: PaperState;
+  /** Facets (of the current sheet) that the step moved. */
+  readonly movedIds: ReadonlySet<number>;
+  /** 0 at the start of the step, 1 at its end. */
+  readonly progress: number;
+}
+
+/** A folded crease opened by `opening`, keeping its direction; a flat crease stays flat. */
+export const openedAngle = (angle: number, opening: number): number =>
+  angle === 0 ? 0 : Math.sign(angle) * Math.max(0, Math.abs(angle) - opening);
+
+/**
+ * The angle a hinge had before the current step. A hinge crossing the step's
+ * fold (one facet moved, the other not) is new, or was folded flat before an
+ * unfold; every other hinge kept its angle.
+ */
+function angleBefore(hinge: Hinge, animation: StepAnimation): number {
+  const crosses = animation.movedIds.has(hinge.p) !== animation.movedIds.has(hinge.q);
+  if (!crosses) return hinge.shown;
+  if (hinge.angle !== 0) return 0;
+  // Folded and now unfolded: it came from whichever side it lay on before.
+  const before = animation.previous.facets;
+  const p = before.find((f) => f.id === hinge.p);
+  const q = before.find((f) => f.id === hinge.q);
+  if (!p || !q) return 0;
+  return q.z > p.z === !isFlipped(p) ? Math.PI : -Math.PI;
+}
+
+/**
+ * Pose options for a sheet shown with its creases opened by `opening`, and,
+ * while a step plays, with that step's creases part way between their old
+ * and new angles. The facets that stay put anchor the walk.
+ */
+export function stepPose(
+  state: PaperState,
+  opening: number,
+  animation?: StepAnimation,
+): PoseOptions {
+  const t = animation ? Math.min(1, Math.max(0, animation.progress)) : 1;
+  const angleOf = (h: Hinge): number => {
+    const target = openedAngle(h.shown, opening);
+    if (!animation || t >= 1) return target;
+    const from = openedAngle(angleBefore(h, animation), opening);
+    return from + (target - from) * t;
+  };
+  const anchor = animation
+    ? [...state.facets].filter((f) => !animation.movedIds.has(f.id)).sort((f, g) => f.z - g.z)[0]
+    : undefined;
+  return { angleOf, ...(anchor ? { rootId: anchor.id } : {}) };
 }
 
 export interface PoseOptions {

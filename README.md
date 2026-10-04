@@ -331,16 +331,17 @@ Every step is one call of `fold` on the sheet as it is at that moment:
 }
 ```
 
-| Field       | Meaning                                                                                                   |
-| ----------- | --------------------------------------------------------------------------------------------------------- |
-| `line`      | Two points on the fold line, in the **folded** coordinates of that step (unit sheet, origin bottom left). |
-| `side`      | `1` or `-1`: the half-plane to the left or to the right of the directed line flips over.                  |
-| `layers`    | `"all"` (default), `{ "top": k }` or `{ "bottom": k }`.                                                   |
-| `region`    | Optional convex polygon in **unfolded** coordinates; only facets inside it take part.                     |
-| `window`    | Optional convex polygon in **folded** coordinates; only facets inside it take part.                       |
-| `placement` | `"top"` (default), `"bottom"` or `"inside"`, see above.                                                   |
-| `angle`     | Optional fold angle in degrees, `(0, 180]`; below 180 the 3D view keeps the crease open at that angle.    |
-| `label`     | Optional name shown on the timeline.                                                                      |
+| Field       | Meaning                                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `line`      | Two points on the fold line, in the **folded** coordinates of that step (unit sheet, origin bottom left).                   |
+| `side`      | `1` or `-1`: the half-plane to the left or to the right of the directed line flips over.                                    |
+| `layers`    | `"all"` (default), `{ "top": k }` or `{ "bottom": k }`.                                                                     |
+| `region`    | Optional convex polygon in **unfolded** coordinates; only facets inside it take part.                                       |
+| `window`    | Optional convex polygon in **folded** coordinates; only facets inside it take part.                                         |
+| `placement` | `"top"` (default), `"bottom"` or `"inside"`, see above.                                                                     |
+| `angle`     | Optional fold angle in degrees, `(0, 180]`; below 180 the 3D view keeps the crease open at that angle.                      |
+| `also`      | Optional list of further folds (`line`, `side`, `layers`, `region`, `window`, `placement`) made in the same step, in order. |
+| `label`     | Optional name shown on the timeline.                                                                                        |
 
 `src/sequence.ts` parses and validates files (errors name the offending field)
 and serialises them with points kept on one line. The preset files are

@@ -1215,22 +1215,13 @@ export function createApp(root: HTMLElement): App {
     creaseCount.textContent = `${state.creases.length} crease${state.creases.length === 1 ? '' : 's'}`;
     // The 3D view: the sheet before the step lets a playing step swing its creases.
     const solidRect = solidSvg.getBoundingClientRect();
-    const previous = timeline.previous;
     const solid = render3d(state, {
       orbit,
       opening: ((Number(openingInput.value) || 0) * Math.PI) / 180,
       ...(solidRect.width > 0 && solidRect.height > 0
         ? { aspect: solidRect.width / solidRect.height }
         : {}),
-      ...(phase.kind === 'animating' && previous
-        ? {
-            animation: {
-              previous,
-              movedIds: phase.animation.movedIds,
-              progress: phase.animation.progress,
-            },
-          }
-        : {}),
+      ...(phase.kind === 'animating' ? { animation: phase.animation } : {}),
     });
     solidSvg.setAttribute('viewBox', solid.viewBox);
     solidSvg.innerHTML = solid.markup;
@@ -1504,6 +1495,13 @@ export function createApp(root: HTMLElement): App {
         `Step ${at + 1} of ${timeline.length}`,
         effect === false ? ' — moves nothing where it now sits' : '',
       ]),
+      ...(step.also && step.also.length > 0
+        ? [
+            el('p', { class: 'help' }, [
+              `This step makes ${step.also.length} more fold${step.also.length === 1 ? '' : 's'} at the same time; the fields below are its first fold.`,
+            ]),
+          ]
+        : []),
       el('label', { class: 'field' }, [el('span', { class: 'field-label' }, ['Name']), nameField]),
       el('div', { class: 'field' }, [
         el('span', { class: 'field-label' }, ['Layers that move']),
@@ -1559,14 +1557,15 @@ export function createApp(root: HTMLElement): App {
   const animate = (result: FoldResult): Promise<void> =>
     new Promise((resolve) => {
       const movedIds = new Set(result.movedIds);
-      // The step just applied sits before the playhead; its placement says which way the flap swings.
-      const under = timeline.steps[timeline.position - 1]?.options?.placement === 'bottom';
+      // The step just applied sits before the playhead; the sheet before it
+      // tells the views where its creases swing from.
+      const previous = timeline.previous ?? timeline.state;
       const start = performance.now();
       const tick = (now: number): void => {
         const progress = Math.min(1, ((now - start) * speed) / ANIMATION_MS);
         phase = {
           kind: 'animating',
-          animation: { movedIds, line: result.line, progress, ...(under ? { under } : {}) },
+          animation: { previous, movedIds, progress },
           start,
         };
         render();

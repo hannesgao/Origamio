@@ -5,8 +5,8 @@
  * move, rename) simply invalidates the cache from the edited index on.
  * Edits are undoable independently of the playhead.
  */
-import { type FoldResult, type PaperState, fold } from './paper';
-import { type FoldStep } from './sequence';
+import { type FoldResult, type PaperState } from './paper';
+import { type FoldStep, applyStep } from './sequence';
 
 interface Snapshot {
   readonly steps: readonly FoldStep[];
@@ -91,7 +91,7 @@ export class Timeline {
     const upTo = Math.min(index, this.list.length);
     for (let k = this.states.length; k <= upTo; k++) {
       const step = this.list[k - 1] as FoldStep;
-      const result = fold(this.states[k - 1] as PaperState, step.line, step.side, step.options);
+      const result = applyStep(this.states[k - 1] as PaperState, step);
       this.moved[k - 1] = result.movedIds.length > 0;
       this.states[k] = result.state;
     }
@@ -108,7 +108,7 @@ export class Timeline {
   forward(): FoldResult | null {
     const step = this.list[this.pos];
     if (!step) return null;
-    const result = fold(this.state, step.line, step.side, step.options);
+    const result = applyStep(this.state, step);
     this.moved[this.pos] = result.movedIds.length > 0;
     this.states[this.pos + 1] = result.state;
     this.pos++;
