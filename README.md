@@ -13,10 +13,13 @@ reflections and convex polygon clipping.
 
 ## Features
 
-- **Fold along any line.** Drag on the folded sheet to draw a fold line, then
-  click the side that should flip over. The endpoints snap to the corners,
-  edge midpoints and edges of the folded sheet, so a fold "corner to corner"
-  or "edge to the middle" is exact; hold Alt to draw freely.
+- **Fold along any line, or point to point.** With the _Line_ tool, drag on
+  the folded sheet to draw a fold line, then click the side that should flip
+  over. With the _Point_ tool, drag a corner (or any point) onto the point it
+  should land on: the sheet folds along the line halfway between them, the
+  way origami instructions are written. Endpoints snap to the corners, edge
+  crossings, edge midpoints and edges of the folded sheet, so "corner to
+  corner" or "corner to the middle" is exact; hold Alt to draw freely.
 - **Fold all layers or only the top _k_.** Choose between folding the whole
   stack or just the top few layers before you click.
 - **Live unfolded view.** The right panel always shows the sheet flattened out
@@ -107,16 +110,24 @@ view), so the cards and their canvases are the same height. The views size
 themselves to the space that is left. Everything you operate on is in the
 Folded card: the drag tool, the layer selection, zoom and the status line.
 
-1. **Draw a fold line.** Press on the folded sheet, drag, and release. A dashed
-   blue line shows where the fold will go; drags shorter than 2 % of the sheet
-   are ignored. While you draw, the corners and edge midpoints of the folded
-   sheet show as dots and the endpoint snaps to the nearest one (or onto an
-   edge) within a few pixels; a ring marks the snap and the status line names
-   it. The _Snap_ button turns this off, and Alt bypasses it for one drag. The
-   fold goes onto the timeline at the playhead.
+1. **Draw a fold line.** With the _Line_ tool, press on the folded sheet, drag,
+   and release. A dashed blue line shows where the fold will go; drags shorter
+   than 2 % of the sheet are ignored. While you draw, the corners, edge
+   crossings and edge midpoints of the folded sheet show as dots and the
+   endpoint snaps to the nearest one (or onto an edge) within a few pixels; a
+   ring marks the snap and the status line names it. The _Snap_ button turns
+   this off, and Alt bypasses it for one drag. The fold goes onto the timeline
+   at the playhead.
 2. **Choose the side.** Move the pointer over either side of the line; the side
    that would flip is shaded. Click to fold it over. Press Esc to discard the
    line instead.
+   **Or fold point to point.** With the _Point_ tool, press on a corner (or
+   any point) and drag it onto the point it should land on. The fold line is
+   the perpendicular bisector of the two points and the side holding the first
+   point is the one that moves, so the fold happens as soon as you release;
+   the dashed line and shading preview it while you drag. This is how most
+   origami instructions read ("fold the corner to the centre"), and with
+   snapping the result is exact.
 3. **Pick how many layers move.** The _All / Top n_ control in the Folded
    toolbar applies to the next fold: _All_ folds the whole stack, _Top n_
    folds only the facets that have fewer than _n_ distinct layers above them.

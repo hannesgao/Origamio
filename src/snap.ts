@@ -1,8 +1,8 @@
-import { type Line, type Vec, add, distance, dot, scale, sub } from './geometry';
+import { type Line, type Vec, add, cross, distance, dot, scale, sub } from './geometry';
 import { type PaperState, currentPolygon } from './paper';
 
 /** Where a fold line endpoint can snap to on the folded sheet. */
-export type SnapKind = 'vertex' | 'midpoint' | 'edge';
+export type SnapKind = 'vertex' | 'intersection' | 'midpoint' | 'edge';
 
 export interface SnapTarget {
   readonly point: Vec;
@@ -26,10 +26,24 @@ const edgeKey = (a: Vec, b: Vec): string => {
   return `${key(p)}|${key(q)}`;
 };
 
+/** Where two segments properly cross (not at an endpoint), if they do. */
+function crossing(p: Line, q: Line): Vec | null {
+  const r = sub(p.b, p.a);
+  const s = sub(q.b, q.a);
+  const denominator = cross(r, s);
+  if (Math.abs(denominator) < 1e-12) return null;
+  const w = sub(q.a, p.a);
+  const t = cross(w, s) / denominator;
+  const u = cross(w, r) / denominator;
+  const inside = (k: number): boolean => k > 1e-7 && k < 1 - 1e-7;
+  return inside(t) && inside(u) ? add(p.a, scale(r, t)) : null;
+}
+
 /**
- * The distinct corners, edge midpoints and edges of every facet in its
- * current (folded) position. Layers lying on top of each other share their
- * corners, so each point and edge is listed once.
+ * The distinct corners, crossings of edges from different layers, edge
+ * midpoints and edges of every facet in its current (folded) position.
+ * Layers lying on top of each other share their corners, so each point and
+ * edge is listed once.
  */
 export function snapTargets(state: PaperState): SnapTargets {
   const vertices = new Map<string, Vec>();
@@ -45,6 +59,17 @@ export function snapTargets(state: PaperState): SnapTargets {
   }
   const points: SnapTarget[] = [...vertices.values()].map((point) => ({ point, kind: 'vertex' }));
   const seen = new Set(vertices.keys());
+  const edgeList = [...edges.values()];
+  for (let i = 0; i < edgeList.length; i++) {
+    for (let j = i + 1; j < edgeList.length; j++) {
+      const point = crossing(edgeList[i] as Line, edgeList[j] as Line);
+      if (!point) continue;
+      const k = key(point);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      points.push({ point, kind: 'intersection' });
+    }
+  }
   for (const edge of edges.values()) {
     const mid = scale(add(edge.a, edge.b), 0.5);
     const k = key(mid);
@@ -52,7 +77,7 @@ export function snapTargets(state: PaperState): SnapTargets {
     seen.add(k);
     points.push({ point: mid, kind: 'midpoint' });
   }
-  return { points, edges: [...edges.values()] };
+  return { points, edges: edgeList };
 }
 
 /** The point of segment `edge` closest to `p`. */
@@ -65,14 +90,14 @@ function closestOnSegment(edge: Line, p: Vec): Vec {
 }
 
 /**
- * Snap `p` to the nearest target within `radius`: corners win over midpoints,
- * and both win over a point somewhere along an edge. Returns null when
- * nothing is close enough.
+ * Snap `p` to the nearest target within `radius`: corners win over edge
+ * crossings, those over midpoints, and all of them over a point somewhere
+ * along an edge. Returns null when nothing is close enough.
  */
 export function snapTo(targets: SnapTargets, p: Vec, radius: number): Snap | null {
   let best: Snap | null = null;
   let bestDistance = radius;
-  for (const kind of ['vertex', 'midpoint'] as const) {
+  for (const kind of ['vertex', 'intersection', 'midpoint'] as const) {
     for (const target of targets.points) {
       if (target.kind !== kind) continue;
       const d = distance(target.point, p);
