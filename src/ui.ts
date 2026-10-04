@@ -379,7 +379,12 @@ export function createApp(root: HTMLElement): App {
       return;
     }
     const key = solveKey(request);
-    if (key === lastSolved) return;
+    // The same sheet in the same pose: only the colours, thickness or
+    // projection can have changed, and those need no solve.
+    if (key === lastSolved) {
+      scene.restyle(sceneStyle(), highlighted);
+      return;
+    }
     solveInFlight = true;
     solver
       .solve(request)
@@ -1906,6 +1911,8 @@ export function createApp(root: HTMLElement): App {
   const setColours = (front: string, back: string): void => {
     paper = { ...paper, front: front.toLowerCase(), back: back.toLowerCase() };
     applyLayout();
+    // The flat views take the colours from CSS; the 3D view is drawn with them.
+    render();
   };
 
   /** Replace the sheet, keeping every step on the timeline; the playhead rewinds. */
@@ -2561,6 +2568,8 @@ export function createApp(root: HTMLElement): App {
     setPaper({ ...paper, width: paper.height, height: paper.width }),
   );
   narrowQuery.addEventListener('change', applyLayout);
+  // The 3D view takes its ink from the theme; follow the system when it switches.
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render());
   new ResizeObserver(scheduleFit).observe(workspace);
   for (const strip of [unfoldedStrip, solidStrip]) {
     for (const button of strip.querySelectorAll('button')) {

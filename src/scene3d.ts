@@ -251,6 +251,8 @@ export interface SheetScene {
     highlighted: ReadonlySet<number>,
   ): void;
   highlight(highlighted: ReadonlySet<number>): void;
+  /** Redraw the last sheet with new colours, thickness or projection; nothing is solved again. */
+  restyle(style: SceneStyle, highlighted: ReadonlySet<number>): void;
   reorbit(orbit: Orbit, frame: ViewFrame | undefined): void;
   pick(clientX: number, clientY: number): number | null;
   dispose(): void;
@@ -279,6 +281,9 @@ export class SceneUnavailable implements SheetScene {
     return;
   }
   highlight(): void {
+    return;
+  }
+  restyle(): void {
     return;
   }
   reorbit(): void {
@@ -318,7 +323,12 @@ export class Scene3d implements SheetScene {
   private pixelRatio = 1;
   private readonly raycaster = new Raycaster();
   private triangleFacet: number[] = [];
-  private last: { scene: SolvedScene; style: SceneStyle } | null = null;
+  private last: {
+    scene: SolvedScene;
+    style: SceneStyle;
+    orbit: Orbit;
+    frame: ViewFrame | undefined;
+  } | null = null;
   readonly canvas: HTMLCanvasElement;
 
   constructor(container: HTMLElement) {
@@ -408,7 +418,7 @@ export class Scene3d implements SheetScene {
     frame: ViewFrame | undefined,
     highlighted: ReadonlySet<number>,
   ): void {
-    this.last = { scene: solved, style };
+    this.last = { scene: solved, style, orbit, frame };
     const built = buildMesh(solved, style, highlighted);
     this.triangleFacet = built.triangleFacet;
     const geometry = new BufferGeometry();
@@ -446,9 +456,16 @@ export class Scene3d implements SheetScene {
     }
   }
 
+  restyle(style: SceneStyle, highlighted: ReadonlySet<number>): void {
+    if (!this.last) return;
+    this.update(this.last.scene, style, this.last.orbit, this.last.frame, highlighted);
+  }
+
   /** Redraw the last sheet from a new orbit (dragging, zooming, named views). */
   reorbit(orbit: Orbit, frame: ViewFrame | undefined): void {
     if (!this.last) return;
+    // Remembered, so that a later restyle keeps the view the user turned to.
+    this.last = { ...this.last, orbit, frame };
     this.placeCamera(this.last.scene, orbit);
     this.placeGround(this.last.scene, frame, orbit, this.last.style.shadow);
     this.draw();
