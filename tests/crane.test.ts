@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { type Vec, apply, approxEqualVec, bounds, vec } from '../src/geometry';
-import { type PaperState, createPaper, facetCount, foldedPoints, maxLayers } from '../src/paper';
+import {
+  type PaperState,
+  createPaper,
+  facetCount,
+  fold,
+  foldedPoints,
+  maxLayers,
+} from '../src/paper';
 import { PRESETS, presetToSequence } from '../src/presets';
-import { tears } from '../src/rigid';
+import { hinges, placePanels, stepPose, tears } from '../src/rigid';
 import { type FoldStep, applyStep } from '../src/sequence';
 
 const crane = PRESETS.find((p) => p.id === 'crane');
@@ -88,5 +95,45 @@ describe('crane preset', () => {
     const layers = maxLayers(state);
     expect(performance.now() - start).toBeLessThan(1000);
     expect(layers).toBeGreaterThan(20);
+  });
+});
+
+describe('crane animation', () => {
+  it('swings the moving paper of every fold to one side, half way through', () => {
+    let state = createPaper();
+    for (const step of steps) {
+      let before = state;
+      for (const part of [step, ...(step.also ?? [])]) {
+        const result = fold(before, part.line, part.side, part.options);
+        const movedIds = new Set(result.movedIds);
+        if (movedIds.size > 0) {
+          const all = hinges(result.state);
+          const pose = stepPose(result.state, 0.1, { previous: before, movedIds, progress: 0.5 });
+          const panels = placePanels(result.state, all, pose);
+          const byId = new Map(panels.map((p) => [p.facet.id, p]));
+          // Every crease the fold crosses must leave the sheet whole: the two
+          // facets of a hinge agree on where its ends are, to within the loop
+          // error. The reverse folds of the neck and head are not rigid and
+          // disagree by 0.17 half way; the petal folds once tore by 1.0.
+          let worst = 0;
+          for (const h of all) {
+            const p = byId.get(h.p);
+            const q = byId.get(h.q);
+            if (!p || !q) continue;
+            for (const end of [h.a, h.b]) {
+              const i = p.facet.poly.findIndex((v) => approxEqualVec(v, end));
+              const j = q.facet.poly.findIndex((v) => approxEqualVec(v, end));
+              if (i < 0 || j < 0) continue;
+              const a = p.points[i] as { x: number; y: number; z: number };
+              const b = q.points[j] as { x: number; y: number; z: number };
+              worst = Math.max(worst, Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z));
+            }
+          }
+          expect(worst, `${step.label ?? ''}: facets torn apart mid-swing`).toBeLessThan(0.2);
+        }
+        before = result.state;
+      }
+      state = applyStep(state, step as FoldStep).state;
+    }
   });
 });

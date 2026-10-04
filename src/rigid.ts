@@ -368,13 +368,26 @@ export function stepPose(
   animation?: StepAnimation,
 ): PoseOptions {
   const t = animation ? Math.min(1, Math.max(0, animation.progress)) : 1;
+  const byId = new Map(state.facets.map((f) => [f.id, f]));
   const angleOf = (h: Hinge): number => {
     const open = hingeOpening(h, opening);
     const target = openedAngle(h.shown, open);
     if (!animation || t >= 1) return target;
     const openBefore = hingeOpening({ ...h, cover: coverBefore(h, animation.previous) }, opening);
     const from = openedAngle(angleBefore(h, animation), openBefore);
-    return from + (target - from) * t;
+    const pMoved = animation.movedIds.has(h.p);
+    if (pMoved === animation.movedIds.has(h.q)) return from + (target - from) * t;
+    // A crease the step folds or unfolds: the moving paper swings on the
+    // side it lands on, whatever the crease's own sign says mid-way. The
+    // side is where the moved facet ends up against the still one, and the
+    // sense of a positive angle is towards the still facet's front.
+    const still = byId.get(pMoved ? h.q : h.p);
+    const moved = byId.get(pMoved ? h.p : h.q);
+    if (!still || !moved) return from + (target - from) * t;
+    const side = moved.z > still.z ? 1 : -1;
+    const sense = isFlipped(still) ? -1 : 1;
+    const magnitude = Math.abs(from) + (Math.abs(target) - Math.abs(from)) * t;
+    return side * sense * magnitude;
   };
   const still = animation
     ? new Set(state.facets.filter((f) => !animation.movedIds.has(f.id)).map((f) => f.id))
