@@ -101,11 +101,24 @@ const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 export const isHexColour = (value: unknown): value is string =>
   typeof value === 'string' && HEX_COLOUR.test(value);
 
+/**
+ * How the finished model stands, for the fixed views of the 3D card: two
+ * directions in the folded coordinates of the final state. `front` points
+ * at the viewer of the front view (for a crane, out of its beak), `top` at
+ * the viewer of the top view (up its back). Absent means the sheet's own
+ * axes: front along +x, top along +y.
+ */
+export interface ViewFrame {
+  readonly front: Vec;
+  readonly top: Vec;
+}
+
 export interface Sequence {
   readonly name: string;
   readonly description?: string;
   /** Omitted in files means the unit square. */
   readonly paper?: Paper;
+  readonly view?: ViewFrame;
   readonly steps: readonly FoldStep[];
 }
 
@@ -128,12 +141,12 @@ export interface StepJson {
   readonly attached?: boolean;
   /** Fold angle for display in degrees, (0, 180]; omitted means folded flat. */
   readonly angle?: number;
-  /** Further folds of the same step: the same fields without `also`, `angle` and `label`. */
+  /** Further folds of the same step: the same fields without `also` and `label`. */
   readonly also?: readonly StepPartJson[];
   readonly label?: string;
 }
 
-export type StepPartJson = Omit<StepJson, 'also' | 'angle' | 'label'>;
+export type StepPartJson = Omit<StepJson, 'also' | 'label'>;
 
 export interface SequenceJson {
   readonly format: typeof SEQUENCE_FORMAT;
@@ -146,6 +159,7 @@ export interface SequenceJson {
     readonly front?: string;
     readonly back?: string;
   };
+  readonly view?: { readonly front: PointJson; readonly top: PointJson };
   readonly steps: readonly StepJson[];
 }
 
@@ -173,14 +187,13 @@ function partToJson(part: FoldPart): StepPartJson {
     ...(options.window ? { window: options.window.map(pointJson) } : {}),
     ...(options.placement && options.placement !== 'top' ? { placement: options.placement } : {}),
     ...(options.attached ? { attached: true } : {}),
+    ...(options.angle !== undefined && options.angle < 180 ? { angle: options.angle } : {}),
   };
 }
 
 export function stepToJson(step: FoldStep): StepJson {
-  const { options } = step;
   return {
     ...partToJson(step),
-    ...(options.angle !== undefined && options.angle < 180 ? { angle: options.angle } : {}),
     ...(step.also && step.also.length > 0 ? { also: step.also.map(partToJson) } : {}),
     ...(step.label ? { label: step.label } : {}),
   };
@@ -201,6 +214,9 @@ export function sequenceToJson(sequence: Sequence): SequenceJson {
             back: sequence.paper.back.toLowerCase(),
           },
         }
+      : {}),
+    ...(sequence.view
+      ? { view: { front: pointJson(sequence.view.front), top: pointJson(sequence.view.top) } }
       : {}),
     steps: sequence.steps.map(stepToJson),
   };
@@ -262,14 +278,7 @@ function parseLayers(value: unknown, where: string): LayerSelection {
 export function parseStep(value: unknown, where = 'step'): FoldStep {
   const part = parsePart(value, where);
   if (!isRecord(value)) return fail(where, 'expected an object');
-  const angle = value['angle'];
-  const options: FoldOptions = { ...part.options };
-  if (angle !== undefined) {
-    if (typeof angle !== 'number' || !(angle > 0 && angle <= 180)) {
-      return fail(`${where}.angle`, 'expected a number in (0, 180]');
-    }
-    if (angle < 180) (options as { angle?: number }).angle = angle;
-  }
+  const options: FoldOptions = part.options;
   const alsoValue = value['also'];
   let also: FoldPart[] | undefined;
   if (alsoValue !== undefined) {
@@ -306,6 +315,7 @@ function parsePart(value: unknown, where: string): FoldPart {
     window?: Polygon;
     placement?: Placement;
     attached?: boolean;
+    angle?: number;
   } = {};
   const layers = parseLayers(value['layers'], `${where}.layers`);
   if (layers.kind !== 'all') options.layers = layers;
@@ -326,6 +336,13 @@ function parsePart(value: unknown, where: string): FoldPart {
   if (attached !== undefined) {
     if (typeof attached !== 'boolean') return fail(`${where}.attached`, 'expected true or false');
     if (attached) options.attached = true;
+  }
+  const angle = value['angle'];
+  if (angle !== undefined) {
+    if (typeof angle !== 'number' || !(angle > 0 && angle <= 180)) {
+      return fail(`${where}.angle`, 'expected a number in (0, 180]');
+    }
+    if (angle < 180) options.angle = angle;
   }
   return { line: line(a, b), side, options };
 }
@@ -373,10 +390,24 @@ export function parseSequence(input: unknown): Sequence {
     }
     paper = { width, height, front: front.toLowerCase(), back: back.toLowerCase() };
   }
+  const viewValue = value['view'];
+  let view: ViewFrame | undefined;
+  if (viewValue !== undefined) {
+    if (!isRecord(viewValue)) return fail('sequence.view', 'expected { front, top }');
+    const front = parsePoint(viewValue['front'], 'sequence.view.front');
+    const top = parsePoint(viewValue['top'], 'sequence.view.top');
+    const cross = front.x * top.y - front.y * top.x;
+    if (Math.hypot(front.x, front.y) < 1e-9 || Math.hypot(top.x, top.y) < 1e-9) {
+      return fail('sequence.view', 'expected two non-zero directions');
+    }
+    if (Math.abs(cross) < 1e-9) return fail('sequence.view', 'front and top must not be parallel');
+    view = { front, top };
+  }
   return {
     name: name.trim(),
     ...(typeof description === 'string' && description ? { description } : {}),
     ...(paper ? { paper } : {}),
+    ...(view ? { view } : {}),
     steps: steps.map((s, i) => parseStep(s, `steps[${i}]`)),
   };
 }

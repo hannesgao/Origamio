@@ -14,7 +14,7 @@ import {
   vec,
 } from './geometry';
 import { type LayerSelection, type Placement, bottomLayers, topLayers } from './paper';
-import { type FoldPart, type FoldStep, type Sequence } from './sequence';
+import { type FoldPart, type FoldStep, type Sequence, type ViewFrame } from './sequence';
 
 export interface PresetStep {
   readonly line: Line;
@@ -38,6 +38,8 @@ export interface Preset {
   readonly id: string;
   readonly label: string;
   readonly title: string;
+  /** How the finished model stands, for the fixed 3D views. */
+  readonly view?: ViewFrame;
   readonly steps: readonly PresetStep[];
 }
 
@@ -48,20 +50,23 @@ export function presetToSequence(preset: Preset): Sequence {
     void landsOn;
     void label;
     void also;
-    void angle;
-    return { line: l, side: sideOf(l, movingPoint), options };
-  };
-  const steps: FoldStep[] = preset.steps.map((s) => {
-    const first = part(s);
-    const options = s.angle !== undefined ? { ...first.options, angle: s.angle } : first.options;
     return {
-      ...first,
-      options,
-      ...(s.also && s.also.length > 0 ? { also: s.also.map(part) } : {}),
-      ...(s.label ? { label: s.label } : {}),
+      line: l,
+      side: sideOf(l, movingPoint),
+      options: angle !== undefined && angle < 180 ? { ...options, angle } : options,
     };
-  });
-  return { name: preset.label, description: preset.title, steps };
+  };
+  const steps: FoldStep[] = preset.steps.map((s) => ({
+    ...part(s),
+    ...(s.also && s.also.length > 0 ? { also: s.also.map(part) } : {}),
+    ...(s.label ? { label: s.label } : {}),
+  }));
+  return {
+    name: preset.label,
+    description: preset.title,
+    ...(preset.view ? { view: preset.view } : {}),
+    steps,
+  };
 }
 
 /** A step made of several folds at once: the first carries the label. */
@@ -126,9 +131,11 @@ const H = vec(0, 0.5);
 /** The far corner of the preliminary base, one sheet length up the centre line from A. */
 const O = uv(1, 0);
 
-/** Quadrants of the unfolded sheet; Q4 holds corner D, Q2 corner B. */
-const Q4 = rect(0, 0.5, 0.5, 1);
+/** Quadrants of the unfolded sheet; Q1 holds corner A, Q2 corner B, Q3 corner C, Q4 corner D. */
+const Q1 = rect(0, 0, 0.5, 0.5);
 const Q2 = rect(0.5, 0, 1, 0.5);
+const Q3 = rect(0.5, 0.5, 1, 1);
+const Q4 = rect(0, 0.5, 0.5, 1);
 
 const deg = (d: number): number => (d * Math.PI) / 180;
 
@@ -252,15 +259,25 @@ function craneSteps(): PresetStep[] {
       attached: true,
       label: 'Reverse fold head',
     }),
-    // Wings: the wing corner swings from the centre line down, and the crease
-    // stays open at 100°, so in the 3D view the wings stand nearly square to
-    // the body like a finished crane's.
-    bring(A, alongUv(wingPivot, deg(-90), 0.5), {
-      window: wingWindow,
-      attached: true,
-      angle: 100,
-      label: 'Spread wings',
-    }),
+    // Wings: the front page (corner A) swings up over the front, the back
+    // page (corner C) up behind, each crease kept open at 100° so the wings
+    // rise from the back on both sides in the 3D view.
+    group(
+      'Spread wings',
+      bring(A, alongUv(wingPivot, deg(90), 0.5), {
+        window: wingWindow,
+        region: Q1,
+        attached: true,
+        angle: 100,
+      }),
+      bring(A, alongUv(wingPivot, deg(90), 0.5), {
+        window: wingWindow,
+        region: Q3,
+        attached: true,
+        angle: 100,
+        placement: 'bottom',
+      }),
+    ),
   ];
 }
 
@@ -306,6 +323,9 @@ export const PRESETS: readonly Preset[] = [
     label: 'Crane',
     title:
       'Diagonals, preliminary base, bird base, narrow the points, close the model, reverse fold neck, tail and head, wings down',
+    // The finished crane lies on its side along the sheet's diagonal: its face
+    // points up the diagonal, its back towards the other diagonal.
+    view: { front: uv(1, 0), top: vec(uv(0, 1).x - uv(0, 0).x, uv(0, 1).y - uv(0, 0).y) },
     steps: craneSteps(),
   },
 ];

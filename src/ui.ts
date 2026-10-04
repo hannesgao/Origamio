@@ -22,7 +22,8 @@ import {
   DEFAULT_OPENING,
   DEFAULT_ORBIT,
   MAX_OPENING,
-  NAMED_VIEWS,
+  type NamedView,
+  namedViews,
   OPENING_STEPS,
   MAX_ORBIT_ZOOM,
   MIN_ORBIT_ZOOM,
@@ -35,6 +36,7 @@ import {
   type Paper,
   stepToJson,
   type Sequence,
+  type ViewFrame,
   DEFAULT_BACK,
   DEFAULT_FRONT,
   DEFAULT_PAPER,
@@ -364,6 +366,8 @@ export function createApp(root: HTMLElement): App {
     : 'unfolded';
   /** How the 3D view is turned; dragging on it changes this. */
   let orbit: Orbit = DEFAULT_ORBIT;
+  /** How the loaded model stands, for the fixed views; undefined means the sheet's axes. */
+  let viewFrame: ViewFrame | undefined;
   const rememberedTab = remembered(TAB_KEY);
   let activeTab: ViewTab = VIEW_TABS.some((t) => t.id === rememberedTab)
     ? (rememberedTab as ViewTab)
@@ -769,15 +773,24 @@ export function createApp(root: HTMLElement): App {
     { type: 'button', class: 'btn', title: 'Turn the model back to the default view' },
     [icon(FULL_ICON), el('span', { class: 'btn-label' }, ['Reset'])],
   );
-  // Named views, for a model whose spine runs along the sheet's diagonal (the crane).
-  const viewButtons = NAMED_VIEWS.map((view) =>
+  // The fixed views, from how the loaded sequence says its model stands.
+  let fixedViews: NamedView[] = namedViews(viewFrame);
+  const viewButtons = fixedViews.map((view) =>
     el(
       'button',
       {
         type: 'button',
         'aria-pressed': 'false',
         'data-view': view.id,
-        title: `${view.label} view`,
+        title: `${view.label}: ${
+          view.id === 'front'
+            ? 'looking at the face'
+            : view.id === 'side'
+              ? 'the profile'
+              : view.id === 'top'
+                ? 'from above'
+                : 'the side view turned 45°'
+        }`,
       },
       [view.label],
     ),
@@ -1748,6 +1761,7 @@ export function createApp(root: HTMLElement): App {
       timeline.load(sequence.steps);
       selected = null;
       setName(sequence.name);
+      setViewFrame(sequence.view);
       timelineMessage = '';
       phase = { kind: 'idle' };
       // Sequences start from the flat sheet, so show all of it like Reset does.
@@ -1788,6 +1802,7 @@ export function createApp(root: HTMLElement): App {
   const exportSequence = (): Sequence => ({
     name: sequenceName.trim() || 'My sequence',
     paper,
+    ...(viewFrame ? { view: viewFrame } : {}),
     steps: [...timeline.steps],
   });
 
@@ -2261,18 +2276,33 @@ export function createApp(root: HTMLElement): App {
   const setOrbit = (next: Orbit): void => {
     // Any turn is allowed, including looking from underneath; angles stay bounded.
     orbit = {
+      ...(next.basis ? { basis: next.basis } : {}),
       yaw: wrapAngle(next.yaw),
       pitch: wrapAngle(next.pitch),
       roll: wrapAngle(next.roll),
       zoom: Math.max(MIN_ORBIT_ZOOM, Math.min(MAX_ORBIT_ZOOM, next.zoom)),
     };
     const same = (a: number, b: number): boolean => Math.abs(wrapAngle(a - b)) < 1e-6;
+    const sameBasis = (a: Orbit['basis'], b: Orbit['basis']): boolean =>
+      a === b ||
+      (a !== undefined &&
+        b !== undefined &&
+        a.every((row, i) => {
+          const other = b[i];
+          return (
+            other !== undefined &&
+            Math.abs(row.x - other.x) < 1e-9 &&
+            Math.abs(row.y - other.y) < 1e-9 &&
+            Math.abs(row.z - other.z) < 1e-9
+          );
+        }));
     viewButtons.forEach((button, i) => {
-      const view = NAMED_VIEWS[i]?.orbit;
+      const view = fixedViews[i]?.orbit;
       button.setAttribute(
         'aria-pressed',
         String(
           view !== undefined &&
+            sameBasis(view.basis, orbit.basis) &&
             same(view.yaw, orbit.yaw) &&
             same(view.pitch, orbit.pitch) &&
             same(view.roll, orbit.roll),
@@ -2281,9 +2311,15 @@ export function createApp(root: HTMLElement): App {
     });
     render();
   };
+  /** Recompute the fixed views for the loaded model's frame. */
+  const setViewFrame = (frame: ViewFrame | undefined): void => {
+    viewFrame = frame;
+    fixedViews = namedViews(viewFrame);
+    setOrbit(DEFAULT_ORBIT);
+  };
   viewButtons.forEach((button, i) =>
     button.addEventListener('click', () => {
-      const view = NAMED_VIEWS[i];
+      const view = fixedViews[i];
       if (view) setOrbit({ ...view.orbit, zoom: orbit.zoom });
     }),
   );
@@ -2402,6 +2438,7 @@ export function createApp(root: HTMLElement): App {
     timeline.clear();
     selected = null;
     setName('My sequence');
+    setViewFrame(undefined);
     timelineMessage = '';
     phase = { kind: 'idle' };
     camera = defaultCamera(timeline.state.width, timeline.state.height);

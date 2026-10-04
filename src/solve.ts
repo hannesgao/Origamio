@@ -8,7 +8,14 @@
  */
 import { type Vec, centroid, distance } from './geometry';
 import { type Facet, type PaperState } from './paper';
-import { type Hinge, type Panel, type PoseOptions, type Vec3, placePanels } from './rigid';
+import {
+  type Hinge,
+  type Panel,
+  type PoseOptions,
+  type Vec3,
+  anchorFacet,
+  placePanels,
+} from './rigid';
 
 export interface SolveOptions extends PoseOptions {
   /** Gauss-Seidel sweeps over all constraints. */
@@ -19,6 +26,12 @@ export interface SolveOptions extends PoseOptions {
   readonly bendStiffness?: number;
   /** Vertex positions to start from (a previous solution), by facet id and vertex index. */
   readonly warm?: ReadonlyMap<number, readonly Vec3[]>;
+  /**
+   * Keep the root facet (the one the rigid walk started from) exactly where
+   * the walk put it, so the sheet does not drift or turn while it settles.
+   * On by default.
+   */
+  readonly anchor?: boolean;
 }
 
 export interface Solved {
@@ -207,6 +220,12 @@ export function solveSheet(
   // Initial positions: the rigid walk, averaged where welded vertices disagree.
   const start = placePanels(state, hinges, options);
   const byId = new Map(start.map((p) => [p.facet.id, p]));
+  // The anchored facet: the walk's root, or the lowest largest facet it chose.
+  const rootId = options.rootId ?? anchorFacet(state)?.id;
+  const pinned = new Set<number>();
+  if (options.anchor !== false && rootId !== undefined) {
+    for (const vi of mesh.index.get(rootId) ?? []) pinned.add(vi);
+  }
   const pos: Vec3[] = Array.from({ length: mesh.count }, () => ({ x: 0, y: 0, z: 0 }));
   const weight = new Array<number>(mesh.count).fill(0);
   for (const [id, poly] of mesh.polys) {
@@ -236,14 +255,20 @@ export function solveSheet(
       const d = sub3(b, a);
       const l = len3(d);
       if (l < 1e-12) continue;
-      const corr = mul3(d, ((l - c.rest) / l) * 0.5);
-      pos[c.i] = add3(a, corr);
-      pos[c.j] = sub3(b, corr);
+      const wa = pinned.has(c.i) ? 0 : 1;
+      const wb = pinned.has(c.j) ? 0 : 1;
+      if (wa + wb === 0) continue;
+      const corr = mul3(d, (l - c.rest) / l / (wa + wb));
+      pos[c.i] = add3(a, mul3(corr, wa));
+      pos[c.j] = sub3(b, mul3(corr, wb));
       moved = Math.max(moved, len3(corr));
     }
     for (const c of mesh.bends) {
       const target = Math.PI - Math.abs(angleOf(c.hinge));
-      moved = Math.max(moved, bendConstraint(pos, c.i, c.j, c.k, c.l, target, bendStiffness));
+      moved = Math.max(
+        moved,
+        bendConstraint(pos, c.i, c.j, c.k, c.l, target, bendStiffness, pinned),
+      );
     }
     residual = moved;
     if (moved < tolerance) break;
@@ -310,6 +335,7 @@ function bendConstraint(
   l: number,
   target: number,
   stiffness: number,
+  pinned: ReadonlySet<number>,
 ): number {
   const p1 = pos[i] as Vec3;
   const p2 = sub3(pos[j] as Vec3, p1);
@@ -330,7 +356,8 @@ function bendConstraint(
     mul3(add3(cross3(p4, n1), mul3(cross3(n2, p4), d)), -1 / l2),
   );
   const q1 = mul3(add3(add3(q2, q3), q4), -1);
-  const sum = dot3(q1, q1) + dot3(q2, q2) + dot3(q3, q3) + dot3(q4, q4);
+  const w = [i, j, k, l].map((v) => (pinned.has(v) ? 0 : 1)) as [number, number, number, number];
+  const sum = w[0] * dot3(q1, q1) + w[1] * dot3(q2, q2) + w[2] * dot3(q3, q3) + w[3] * dot3(q4, q4);
   if (sum < 1e-12) return 0;
   const sinD = Math.sqrt(Math.max(0, 1 - d * d));
   if (sinD < 1e-9) {
@@ -338,15 +365,16 @@ function bendConstraint(
     const want = Math.cos(target);
     if (Math.abs(want - d) < 1e-6) return 0;
     const push = mul3(n1, (want > d ? -1 : 1) * 1e-3 * stiffness);
+    if (pinned.has(l)) return 0;
     pos[l] = add3(pos[l] as Vec3, push);
     return len3(push);
   }
   const scale = (-(Math.acos(d) - target) * sinD) / sum;
   const s = stiffness * scale;
-  pos[i] = add3(pos[i] as Vec3, mul3(q1, s));
-  pos[j] = add3(pos[j] as Vec3, mul3(q2, s));
-  pos[k] = add3(pos[k] as Vec3, mul3(q3, s));
-  pos[l] = add3(pos[l] as Vec3, mul3(q4, s));
+  pos[i] = add3(pos[i] as Vec3, mul3(q1, s * w[0]));
+  pos[j] = add3(pos[j] as Vec3, mul3(q2, s * w[1]));
+  pos[k] = add3(pos[k] as Vec3, mul3(q3, s * w[2]));
+  pos[l] = add3(pos[l] as Vec3, mul3(q4, s * w[3]));
   return Math.abs(s) * Math.sqrt(sum);
 }
 

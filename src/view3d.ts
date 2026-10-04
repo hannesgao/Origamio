@@ -1,40 +1,88 @@
 import { type PaperState, foldedPoints } from './paper';
+import { type ViewFrame } from './sequence';
 import { BACK_COLOR, FRONT_COLOR } from './render';
-import { type Hinge, type StepAnimation, type Vec3, hinges, placePanels, stepPose } from './rigid';
+import { type Hinge, type StepAnimation, type Vec3, hinges, stepPose } from './rigid';
+import { solveSheet } from './solve';
 
 export type { StepAnimation } from './rigid';
 
 /** How the 3D view is turned: yaw spins the sheet on the table, pitch tilts it. Radians. */
 export interface Orbit {
+  /**
+   * Optional fixed turn applied first: rows are the model-space directions
+   * that map to screen right, screen up and towards the viewer. Named views
+   * set it; dragging then adds yaw and pitch on top.
+   */
+  readonly basis?: readonly [Vec3, Vec3, Vec3];
   readonly yaw: number;
   readonly pitch: number;
-  /** Turn of the picture about the line of sight; the named views use it. */
+  /** Turn of the picture about the line of sight. */
   readonly roll: number;
   readonly zoom: number;
 }
 
 export const DEFAULT_ORBIT: Orbit = { yaw: -0.55, pitch: 0.95, roll: 0, zoom: 1 };
 
-/**
- * Fixed views, named for a model whose spine runs along the sheet's
- * diagonal, like the crane: the side view looks at the sheet face-on with
- * the spine level, the top view looks across the spine along the sheet
- * (wings spread, body edge-on), the front view looks along the spine with
- * the picture turned so the body stands upright.
- */
-export const NAMED_VIEWS: readonly {
-  readonly id: string;
+/** The sheet's own axes, used when a sequence says nothing about how it stands. */
+export const DEFAULT_FRAME: ViewFrame = { front: { x: 1, y: 0 }, top: { x: 0, y: 1 } };
+
+export interface NamedView {
+  readonly id: 'front' | 'side' | 'top' | 'isometric';
   readonly label: string;
   readonly orbit: Orbit;
-}[] = [
-  {
-    id: 'front',
-    label: 'Front',
-    orbit: { yaw: Math.PI / 4, pitch: Math.PI / 2, roll: Math.PI / 2, zoom: 1 },
-  },
-  { id: 'side', label: 'Side', orbit: { yaw: -Math.PI / 4, pitch: 0, roll: 0, zoom: 1 } },
-  { id: 'top', label: 'Top', orbit: { yaw: -Math.PI / 4, pitch: Math.PI / 2, roll: 0, zoom: 1 } },
-];
+}
+
+const unit3 = (a: Vec3): Vec3 => {
+  const l = Math.hypot(a.x, a.y, a.z) || 1;
+  return { x: a.x / l, y: a.y / l, z: a.z / l };
+};
+const cross3 = (a: Vec3, b: Vec3): Vec3 => ({
+  x: a.y * b.z - a.z * b.y,
+  y: a.z * b.x - a.x * b.z,
+  z: a.x * b.y - a.y * b.x,
+});
+const mix3 = (a: Vec3, sa: number, b: Vec3, sb: number): Vec3 => ({
+  x: a.x * sa + b.x * sb,
+  y: a.y * sa + b.y * sb,
+  z: a.z * sa + b.z * sb,
+});
+
+/**
+ * The fixed views of a model, from how it stands: `front` points out of its
+ * face, `top` up its back, both in the folded sheet's plane. The front view
+ * looks at the face with the back up; the side view shows the profile with
+ * the face to the left; the top view looks down the back with the face at
+ * the top of the picture; the isometric view is the side view turned 45°
+ * about the vertical.
+ */
+export function namedViews(frame: ViewFrame = DEFAULT_FRAME): NamedView[] {
+  const f = unit3({ x: frame.front.x, y: frame.front.y, z: 0 });
+  const tRaw = { x: frame.top.x, y: frame.top.y, z: 0 };
+  const along = tRaw.x * f.x + tRaw.y * f.y;
+  const t = unit3({ x: tRaw.x - f.x * along, y: tRaw.y - f.y * along, z: 0 });
+  const n = cross3(f, t);
+  const view = (
+    id: NamedView['id'],
+    label: string,
+    right: Vec3,
+    up: Vec3,
+    toward: Vec3,
+  ): NamedView => ({
+    id,
+    label,
+    orbit: { basis: [right, up, toward], yaw: 0, pitch: 0, roll: 0, zoom: 1 },
+  });
+  const minus = (a: Vec3): Vec3 => ({ x: -a.x, y: -a.y, z: -a.z });
+  const side = view('side', 'Side view', minus(f), t, minus(n));
+  const c = Math.SQRT1_2;
+  return [
+    view('front', 'Front view', minus(n), t, f),
+    side,
+    view('top', 'Top view', n, f, t),
+    view('isometric', 'Isometric', mix3(minus(f), c, minus(n), c), t, mix3(minus(n), c, f, c)),
+  ];
+}
+
 export const MIN_ORBIT_ZOOM = 0.5;
 export const MAX_ORBIT_ZOOM = 4;
 
@@ -74,10 +122,19 @@ const norm3 = (a: Vec3): Vec3 => {
 };
 
 function rotate(orbit: Orbit, centre: Vec3, p: Vec3): Vec3 {
-  // Spin about the vertical (sheet normal), then tilt about the screen's x axis.
-  const x = p.x - centre.x;
-  const y = p.y - centre.y;
-  const z = p.z - centre.z;
+  // A named view's basis first, then spin about the vertical and tilt about the screen's x axis.
+  let x = p.x - centre.x;
+  let y = p.y - centre.y;
+  let z = p.z - centre.z;
+  if (orbit.basis) {
+    const [r, u, d] = orbit.basis;
+    const bx = r.x * x + r.y * y + r.z * z;
+    const by = u.x * x + u.y * y + u.z * z;
+    const bz = d.x * x + d.y * y + d.z * z;
+    x = bx;
+    y = by;
+    z = bz;
+  }
   const cy = Math.cos(orbit.yaw);
   const sy = Math.sin(orbit.yaw);
   const x1 = x * cy - y * sy;
@@ -145,7 +202,9 @@ export function render3d(state: PaperState, options: View3dOptions): View3d {
   const size = state.size;
   const all = hinges(state);
   const pose = stepPose(state, options.opening, options.animation);
-  const panels = placePanels(state, all, pose);
+  // Solved from the rigid walk every time: a few milliseconds for a crane,
+  // and a flat warm start would stall the crease constraints.
+  const panels = solveSheet(state, all, { ...pose, iterations: 80 }).panels;
   const animation = options.animation;
   // Hinges by facet, to tell a real fold from a flat seam between facets.
   const byFacet = new Map<number, Hinge[]>();
@@ -215,9 +274,15 @@ export function render3d(state: PaperState, options: View3dOptions): View3d {
     if (segments.length > 0) parts.push(`<path class="solid-edge" d="${segments.join('')}" />`);
   }
   parts.push('</g>');
-  // Fit the sheet's diagonal, whatever the turn, so the view does not jump.
-  const diagonal = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-  const span = Math.max(size * 0.6, diagonal) * 1.15;
+  // Fit the solved sheet: its reach from the centre, so a model whose wings
+  // stand out still fits, whatever the turn, and the view does not jump.
+  let reach = size * 0.3;
+  for (const panel of panels) {
+    for (const p of panel.points) {
+      reach = Math.max(reach, Math.hypot(p.x - centre.x, p.y - centre.y, p.z - centre.z));
+    }
+  }
+  const span = reach * 2 * 1.08;
   const zoom = Math.max(MIN_ORBIT_ZOOM, Math.min(MAX_ORBIT_ZOOM, options.orbit.zoom));
   const h = span / 2 / zoom;
   const aspect = options.aspect ?? 1;

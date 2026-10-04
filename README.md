@@ -49,19 +49,23 @@ reflections and convex polygon clipping.
   into the bird base, narrow both points, close the model along its centre
   line, reverse fold the neck, the tail and the head, and spread the wings,
   which the last step keeps open at 150° so the crane stands up in the 3D
-  view (the last step keeps the wing crease open at 100°). Every step leaves
-  the sheet in a state real paper can take: the tests check that no
-  neighbouring facets are ever pulled apart.
+  view (the last step swings each wing up over its own side of the body and
+  keeps the creases open at 100°). Every step leaves the sheet in a state
+  real paper can take: the tests check that no neighbouring facets are ever
+  pulled apart.
 - **3D view with real creases.** A third card shows the sheet as rigid panels
-  joined at their creases: every crease is opened a few degrees from flat (the
-  _Open_ chips offer 0° to 30°, and the box beside them takes any value up to
-  90°); a crease on the outside of the stack opens by that much and one buried
-  under many layers barely at all, so the paper reads as pressed rather than
-  fanned out. It is lit from one side with the front and back colours on the
-  right faces. Drag to turn it any way round, including from underneath,
-  scroll to zoom, and use the _Front_, _Side_ and _Top_ buttons for fixed
-  views of a model whose spine runs along the diagonal (the crane stands
-  upright in them); _Reset_ returns to the default angle. While a step plays, its creases swing from flat to folded in three
+  joined at their creases, solved as paper: every crease is pulled towards
+  its angle (flat creases opened a few degrees, the _Open_ chips offer 0° to
+  30° and the box beside them takes any value up to 90°, less where many
+  layers are stacked; creases folded to a chosen angle keep it) while each
+  panel keeps its shape and panels joined at a crease stay joined. Where the
+  angles contradict each other, as the wings and body of a crane do, the
+  sheet settles on a compromise the way paper gives, so a crane stands with
+  its wings on both sides and a slightly puffed body. It is lit from one side
+  with the front and back colours on the right faces. Drag to turn it any way
+  round, scroll to zoom, and use _Front view_, _Side view_, _Top view_ and
+  _Isometric_ for the fixed views of the model (a sequence can say how its
+  model stands; the crane does), _Reset_ returns to the default angle. While a step plays, its creases swing from flat to folded in three
   dimensions, and a step saved with a fold `angle` below 180° stays open at
   that angle. Pointing at a facet in any view outlines the same facet in the
   others, and pointing at the folded sheet outlines every facet under the
@@ -174,7 +178,10 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    imports such a file onto a fresh sheet and clears everything with _New_.
 8. **See it in space.** The 3D card shows the folded sheet with every crease
    opened by the _Open_ setting (0° shows it flat, as the model really is;
-   pick a chip or type a value): drag to turn it and scroll to zoom. Move the pointer over a facet in the
+   pick a chip or type a value): drag to turn it and scroll to zoom. The four
+   fixed views follow the loaded sequence's `view` frame (the crane's face
+   points up the diagonal, its back towards the other diagonal); a sequence
+   without one gets views along the sheet's own axes. Move the pointer over a facet in the
    Unfolded or 3D view to see where it sits in the folded sheet, or over the
    folded sheet to see all facets stacked under the cursor.
 9. **Look closer.** The folded sheet gets small quickly, so the Folded card has
@@ -342,18 +349,24 @@ Every step is one call of `fold` on the sheet as it is at that moment:
 }
 ```
 
-| Field       | Meaning                                                                                                                                   |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `line`      | Two points on the fold line, in the **folded** coordinates of that step (unit sheet, origin bottom left).                                 |
-| `side`      | `1` or `-1`: the half-plane to the left or to the right of the directed line flips over.                                                  |
-| `layers`    | `"all"` (default), `{ "top": k }` or `{ "bottom": k }`.                                                                                   |
-| `region`    | Optional convex polygon in **unfolded** coordinates; only facets inside it take part.                                                     |
-| `window`    | Optional convex polygon in **folded** coordinates; only facets inside it take part.                                                       |
-| `placement` | `"top"` (default), `"bottom"` or `"inside"`, see above.                                                                                   |
-| `angle`     | Optional fold angle in degrees, `(0, 180]`; below 180 the 3D view keeps the crease open at that angle.                                    |
-| `attached`  | Optional `true`: facets attached to the selected ones across any edge other than the fold line are taken along, so the paper never tears. |
-| `also`      | Optional list of further folds (`line`, `side`, `layers`, `region`, `window`, `placement`, `attached`) made in the same step, in order.   |
-| `label`     | Optional name shown on the timeline.                                                                                                      |
+| Field       | Meaning                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `line`      | Two points on the fold line, in the **folded** coordinates of that step (unit sheet, origin bottom left).                                  |
+| `side`      | `1` or `-1`: the half-plane to the left or to the right of the directed line flips over.                                                   |
+| `layers`    | `"all"` (default), `{ "top": k }` or `{ "bottom": k }`.                                                                                    |
+| `region`    | Optional convex polygon in **unfolded** coordinates; only facets inside it take part.                                                      |
+| `window`    | Optional convex polygon in **folded** coordinates; only facets inside it take part.                                                        |
+| `placement` | `"top"` (default), `"bottom"` or `"inside"`, see above.                                                                                    |
+| `angle`     | Optional fold angle in degrees, `(0, 180]`; below 180 the 3D view keeps the crease open at that angle. Allowed on the folds of `also` too. |
+| `attached`  | Optional `true`: facets attached to the selected ones across any edge other than the fold line are taken along, so the paper never tears.  |
+| `also`      | Optional list of further folds (`line`, `side`, `layers`, `region`, `window`, `placement`, `attached`) made in the same step, in order.    |
+| `label`     | Optional name shown on the timeline.                                                                                                       |
+
+A sequence may also carry `"view": { "front": [x, y], "top": [x, y] }`: two
+directions in the folded coordinates of the final state, `front` pointing
+out of the model's face and `top` up its back, which define the fixed views
+of the 3D card (front, side, top and isometric). Without it the views follow
+the sheet's own axes.
 
 `src/sequence.ts` parses and validates files (errors name the offending field)
 and serialises them with points kept on one line. The preset files are
@@ -369,7 +382,9 @@ rewrites them and `npm test` fails when they are out of date.
 | `src/geometry.ts` | Vectors, lines, affine transforms, reflections, convex clipping and intersection |
 | `src/paper.ts`    | Facet model, `fold`, layer selection, statistics, undo history                   |
 | `src/render.ts`   | SVG markup for the flat views, the fold animation and the folded-view camera     |
-| `src/view3d.ts`   | The 3D view: layers in space, the flap mid-flip, orbit, lighting, depth order    |
+| `src/rigid.ts`    | Hinges with fold angles, attachment, the rigid walk that places the facets       |
+| `src/solve.ts`    | Position-based solver: rigid facets, welded creases, crease angles with loops    |
+| `src/view3d.ts`   | The 3D view: solved sheet, orbit and named views, lighting, edges, depth order   |
 | `src/snap.ts`     | Snap targets of the folded sheet: corners, crossings, midpoints, edges           |
 | `src/sequence.ts` | The JSON sequence format: parse, validate, serialise                             |
 | `src/presets.ts`  | Geometry of the shipped sequences, including the crane; source of `presets/`     |
