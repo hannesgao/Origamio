@@ -5,22 +5,18 @@
  */
 import {
   type Line,
-  type Mat,
   type Polygon,
   type Side,
   type Vec,
   add,
-  applyToPolygon,
   area,
   bounds,
   clipPolygon,
-  compose,
   lineDirection,
-  partialFlip,
-  reflection,
   scale,
 } from './geometry';
 import { type Facet, type PaperState, currentPolygon, isFlipped } from './paper';
+import { type StepAnimation, hinges, placePanels, stepPose } from './rigid';
 
 /** Pixel size of the drawing area for one sheet unit. */
 export const VIEW_SIZE = 400;
@@ -37,13 +33,7 @@ export const LINE_COLOR = '#1f6feb';
  * An in-flight fold animation. `progress` goes from 0 (nothing moved yet) to
  * 1 (fully folded, identical to the plain state).
  */
-export interface FoldAnimation {
-  readonly movedIds: ReadonlySet<number>;
-  readonly line: Line;
-  readonly progress: number;
-  /** The flap swings under the sheet (a fold made on the back) instead of over it. */
-  readonly under?: boolean;
-}
+export type FoldAnimation = StepAnimation;
 
 export interface FoldPreview {
   readonly line: Line;
@@ -210,32 +200,18 @@ function drawnFacets(state: PaperState, animation?: FoldAnimation): DrawnFacet[]
       moving: false,
     }));
   }
-  // Moved facets already carry their final transform R ∘ T. To show them part
-  // way through the flip we draw them with M(θ) ∘ R ∘ (R ∘ T) = M(θ) ∘ T.
-  const angle = animation.progress * Math.PI;
-  const undo = reflection(animation.line);
-  const lift: Mat = compose(partialFlip(animation.line, angle), undo);
-  const liftDet = lift.a * lift.d - lift.b * lift.c;
-  const stationary: DrawnFacet[] = [];
-  const moving: DrawnFacet[] = [];
-  for (const facet of state.facets) {
-    if (animation.movedIds.has(facet.id)) {
-      const poly = applyToPolygon(lift, currentPolygon(facet));
-      moving.push({ facet, poly, flipped: isFlipped(facet) !== liftDet < 0, moving: true });
-    } else {
-      stationary.push({
-        facet,
-        poly: currentPolygon(facet),
-        flipped: isFlipped(facet),
-        moving: false,
-      });
-    }
-  }
-  // While the flap is still rising its original layer order is visible from
-  // above; once it passes the vertical the order is reversed.
-  if (animation.progress < 0.5) moving.reverse();
-  // A flap folded on the back passes beneath the sheet, so it is drawn first.
-  return animation.under ? [...moving, ...stationary] : [...stationary, ...moving];
+  // Mid-step the sheet is the rigid model with the step's creases part way
+  // round, seen from straight above: nearer panels are drawn later.
+  const panels = placePanels(state, hinges(state), stepPose(state, 0, animation));
+  return panels
+    .map((panel) => ({
+      facet: panel.facet,
+      poly: panel.points.map((p) => ({ x: p.x, y: p.y })),
+      flipped: panel.normal.z < 0,
+      moving: animation.movedIds.has(panel.facet.id),
+      height: panel.points.reduce((sum, p) => sum + p.z, 0) / panel.points.length,
+    }))
+    .sort((a, b) => a.height - b.height || a.facet.z - b.facet.z);
 }
 
 /** Markup for the folded sheet, bottom layer first. */

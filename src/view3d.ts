@@ -1,6 +1,8 @@
 import { type PaperState, foldedPoints } from './paper';
 import { BACK_COLOR, FRONT_COLOR } from './render';
-import { type Hinge, type Vec3, hinges, placePanels } from './rigid';
+import { type StepAnimation, type Vec3, hinges, placePanels, stepPose } from './rigid';
+
+export type { StepAnimation } from './rigid';
 
 /** How the 3D view is turned: yaw spins the sheet on the table, pitch tilts it. Radians. */
 export interface Orbit {
@@ -14,16 +16,6 @@ export const MIN_PITCH = 0;
 export const MAX_PITCH = Math.PI / 2;
 export const MIN_ORBIT_ZOOM = 0.5;
 export const MAX_ORBIT_ZOOM = 4;
-
-/** A step in progress, for the 3D view: the creases it makes swing from their old angle to the new. */
-export interface StepAnimation {
-  /** The sheet before the step. */
-  readonly previous: PaperState;
-  /** Facets (of the current sheet) that the step moved. */
-  readonly movedIds: ReadonlySet<number>;
-  /** 0 at the start of the step, 1 at its end. */
-  readonly progress: number;
-}
 
 export interface View3dOptions {
   readonly orbit: Orbit;
@@ -45,28 +37,6 @@ const norm3 = (a: Vec3): Vec3 => {
   const l = Math.hypot(a.x, a.y, a.z) || 1;
   return { x: a.x / l, y: a.y / l, z: a.z / l };
 };
-
-/** A folded crease opened by `opening`, keeping its direction; a flat crease stays flat. */
-const opened = (angle: number, opening: number): number =>
-  angle === 0 ? 0 : Math.sign(angle) * Math.max(0, Math.abs(angle) - opening);
-
-/**
- * The angle a hinge had before the current step. A hinge crossing the fold
- * line (one facet moved, the other not) is new, or was folded flat before an
- * unfold; every other hinge kept its angle.
- */
-function angleBefore(hinge: Hinge, animation: StepAnimation): number {
-  const crosses = animation.movedIds.has(hinge.p) !== animation.movedIds.has(hinge.q);
-  if (!crosses) return hinge.shown;
-  if (hinge.angle !== 0) return 0;
-  // Folded and now unfolded: it came from whichever side it lay on before.
-  const before = animation.previous.facets;
-  const p = before.find((f) => f.id === hinge.p);
-  const q = before.find((f) => f.id === hinge.q);
-  if (!p || !q) return 0;
-  const flippedP = p.transform.a * p.transform.d - p.transform.b * p.transform.c < 0;
-  return q.z > p.z === !flippedP ? Math.PI : -Math.PI;
-}
 
 function rotate(orbit: Orbit, centre: Vec3, p: Vec3): Vec3 {
   // Spin about the vertical (sheet normal), then tilt about the screen's x axis.
@@ -100,23 +70,12 @@ function shade(hex: string, factor: number): string {
  */
 export function render3d(state: PaperState, options: View3dOptions): View3d {
   const size = state.size;
-  const all = hinges(state);
+  const panels = placePanels(
+    state,
+    hinges(state),
+    stepPose(state, options.opening, options.animation),
+  );
   const animation = options.animation;
-  const t = animation ? Math.min(1, Math.max(0, animation.progress)) : 1;
-  const angleOf = (h: Hinge): number => {
-    const target = opened(h.shown, options.opening);
-    if (!animation || t >= 1) return target;
-    const from = opened(angleBefore(h, animation), options.opening);
-    return from + (target - from) * t;
-  };
-  // While a step plays the sheet that stays put anchors the walk.
-  const anchor = animation
-    ? [...state.facets].filter((f) => !animation.movedIds.has(f.id)).sort((f, g) => f.z - g.z)[0]
-    : undefined;
-  const panels = placePanels(state, all, {
-    angleOf,
-    ...(anchor ? { rootId: anchor.id } : {}),
-  });
 
   const extent = foldedPoints(state);
   const xs = extent.map((p) => p.x);
