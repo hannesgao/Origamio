@@ -122,6 +122,9 @@ describe('cameraFrame', () => {
     expect(distance * Math.tan((FOV * Math.PI) / 360)).toBeCloseTo(half);
     expect(cameraFrame(2, 2).half).toBeCloseTo(1.15);
     expect(cameraFrame(2, 100).half).toBe(cameraFrame(2, 4).half);
+    // A portrait canvas frames by its width; a landscape one by its height.
+    expect(cameraFrame(2, 1, 0.5).half).toBeCloseTo(4.6);
+    expect(cameraFrame(2, 1, 2).half).toBeCloseTo(2.3);
   });
 });
 
