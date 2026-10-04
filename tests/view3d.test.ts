@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { FoldHistory, createPaper } from '../src/paper';
-import { DEFAULT_ORBIT, type StepAnimation, render3d } from '../src/view3d';
-import { hingeOpening, hinges } from '../src/rigid';
+import { type StepAnimation, type Vec3, hingeOpening, hinges } from '../src/rigid';
+import { buildMesh } from '../src/scene3d';
 import { buildStamp } from '../src/ui';
+import { solvedScene, viewRotation } from '../src/view3d';
 import { foldLeftRight, foldLeftRightAgain, foldTopBottom, run } from './presets';
 
-const polygons = (markup: string): string[] => markup.match(/<polygon[^>]*>/g) ?? [];
-const ys = (polygon: string): number[] =>
-  [...polygon.matchAll(/,(-?[\d.]+)/g)].map((m) => Number(m[1]));
-const edgeOn = { yaw: 0, pitch: Math.PI / 2, roll: 0, zoom: 1 };
+const zs = (points: readonly Vec3[]): number[] => points.map((p) => p.z);
+const height = (points: readonly Vec3[]): number =>
+  Math.max(...zs(points)) - Math.min(...zs(points));
 
 /** A sheet folded in half once, with the animation of that step at `progress`. */
 const halfFold = (progress: number, placement?: 'bottom'): [FoldHistory, StepAnimation] => {
@@ -21,95 +21,100 @@ const halfFold = (progress: number, placement?: 'bottom'): [FoldHistory, StepAni
   return [history, { previous, movedIds: new Set(result.movedIds), progress }];
 };
 
-describe('render3d', () => {
-  it('draws one polygon per facet with the front colour when seen from above', () => {
-    const view = render3d(createPaper(), {
-      orbit: { yaw: 0, pitch: 0, roll: 0, zoom: 1 },
-      opening: 0,
-    });
-    const polys = polygons(view.markup);
-    expect(polys).toHaveLength(1);
-    expect(polys[0]).toContain('solid-front');
-    expect(view.viewBox.split(' ')).toHaveLength(4);
+describe('solvedScene', () => {
+  it('places one panel per facet, flat, with only the sheet boundary as edges', () => {
+    const scene = solvedScene(createPaper(), { opening: 0 });
+    expect(scene.panels).toHaveLength(1);
+    expect(height(scene.panels[0]?.points ?? [])).toBeLessThan(1e-9);
+    expect(scene.edges).toHaveLength(4);
+    expect(scene.reach).toBeGreaterThan(0.5);
   });
 
-  it('shows the flap on top from above and the base from below', () => {
+  it('opens the creases so the flap leaves the plane, and draws the crease once', () => {
     const history = new FoldHistory(createPaper());
     run(history, [foldLeftRight()]);
-    const above = polygons(render3d(history.state, { orbit: DEFAULT_ORBIT, opening: 0 }).markup);
-    expect(above).toHaveLength(2);
-    // The nearer panel is drawn last: from above that is the flipped flap, back up.
-    expect(above[1]).toContain('solid-back');
-    const below = polygons(
-      render3d(history.state, { orbit: { yaw: 0, pitch: Math.PI, roll: 0, zoom: 1 }, opening: 0 })
-        .markup,
-    );
-    // From behind the base is nearer, and its back is what we see.
-    expect(below[1]).toContain('solid-back');
-    expect(below[0]).toContain('solid-front');
-  });
-
-  it('opens the creases so the flap leaves the plane', () => {
-    const history = new FoldHistory(createPaper());
-    run(history, [foldLeftRight()]);
-    const flat = polygons(render3d(history.state, { orbit: edgeOn, opening: 0 }).markup);
-    const open = polygons(render3d(history.state, { orbit: edgeOn, opening: 0.3 }).markup);
-    const height = (p: string): number => Math.max(...ys(p)) - Math.min(...ys(p));
-    expect(height(flat[1] ?? '')).toBeLessThan(1e-3);
-    expect(height(open[1] ?? '')).toBeGreaterThan(0.1);
+    const flat = solvedScene(history.state, { opening: 0 });
+    const open = solvedScene(history.state, { opening: 0.3 });
+    const flap = (s: typeof flat) => s.panels.find((p) => p.facet.z === 1);
+    expect(height(flap(flat)?.points ?? [])).toBeLessThan(1e-3);
+    expect(height(flap(open)?.points ?? [])).toBeGreaterThan(0.1);
+    // Boundary: 3 outer edges of each half plus the crease, drawn once: 7.
+    expect(open.edges).toHaveLength(7);
   });
 
   it('swings the new crease from flat to folded while a step plays', () => {
     const [history, animation] = halfFold(0.5);
-    const polys = polygons(
-      render3d(history.state, { orbit: edgeOn, opening: 0, animation }).markup,
-    );
-    const moving = polys.find((p) => p.includes('facet-moving')) ?? '';
-    // Half way through, the flap stands up: edge-on it spans its full width.
-    expect(Math.max(...ys(moving)) - Math.min(...ys(moving))).toBeGreaterThan(0.4);
+    const mid = solvedScene(history.state, { opening: 0, animation });
+    const moving = mid.panels.find((p) => animation.movedIds.has(p.facet.id));
+    // Half way through, the flap stands up: its height is its full width.
+    expect(height(moving?.points ?? [])).toBeGreaterThan(0.4);
     const [done, finished] = halfFold(1);
-    const flat = polygons(
-      render3d(done.state, { orbit: edgeOn, opening: 0, animation: finished }).markup,
-    );
-    expect(flat.every((p) => Math.max(...ys(p)) - Math.min(...ys(p)) < 1e-3)).toBe(true);
+    const flat = solvedScene(done.state, { opening: 0, animation: finished });
+    expect(flat.panels.every((p) => height(p.points) < 1e-3)).toBe(true);
   });
 
   it('swings a flap folded on the back under the sheet', () => {
     const [over, overAnimation] = halfFold(0.5);
     const [under, underAnimation] = halfFold(0.5, 'bottom');
-    const top = (history: FoldHistory, animation: StepAnimation): number =>
-      Math.min(
-        ...ys(
-          polygons(render3d(history.state, { orbit: edgeOn, opening: 0, animation }).markup).find(
-            (p) => p.includes('facet-moving'),
-          ) ?? '',
-        ),
-      );
-    // Screen y grows downward: the flap going over reaches a smaller y than the one going under.
-    expect(top(over, overAnimation)).toBeLessThan(top(under, underAnimation));
+    const top = (s: ReturnType<typeof solvedScene>, a: StepAnimation): number =>
+      Math.max(...zs(s.panels.find((p) => a.movedIds.has(p.facet.id))?.points ?? []));
+    expect(
+      top(solvedScene(over.state, { opening: 0, animation: overAnimation }), overAnimation),
+    ).toBeGreaterThan(0.3);
+    expect(
+      top(solvedScene(under.state, { opening: 0, animation: underAnimation }), underAnimation),
+    ).toBeLessThan(1e-3);
   });
 });
 
-describe('named views, cover and the build stamp', () => {
-  it('rolls the picture without changing what is seen', () => {
-    const history = new FoldHistory(createPaper());
-    run(history, [foldLeftRight()]);
-    const plain = render3d(history.state, { orbit: { ...edgeOn, roll: 0 }, opening: 0.3 });
-    const rolled = render3d(history.state, {
-      orbit: { ...edgeOn, roll: Math.PI / 2 },
-      opening: 0.3,
-    });
-    // A quarter roll turns the flap's height into width.
-    const span = (markup: string, axis: 0 | 1): number => {
-      const nums = [...markup.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => Number(m[axis + 1]));
-      return Math.max(...nums) - Math.min(...nums);
-    };
-    const flapPlain = polygons(plain.markup)[1] ?? '';
-    const flapRolled = polygons(rolled.markup)[1] ?? '';
-    expect(span(flapRolled, 0)).toBeCloseTo(span(flapPlain, 1), 3);
-    expect(span(flapRolled, 1)).toBeCloseTo(span(flapPlain, 0), 3);
+describe('viewRotation', () => {
+  it('gives orthonormal rows and turns the picture with roll', () => {
+    const plain = viewRotation({ yaw: 0.3, pitch: 0.7, roll: 0, zoom: 1 });
+    const dot = (a: Vec3, b: Vec3): number => a.x * b.x + a.y * b.y + a.z * b.z;
+    for (const row of plain) expect(Math.hypot(row.x, row.y, row.z)).toBeCloseTo(1);
+    expect(dot(plain[0], plain[1])).toBeCloseTo(0);
+    expect(dot(plain[1], plain[2])).toBeCloseTo(0);
+    // A quarter roll: what was screen right becomes screen up.
+    const rolled = viewRotation({ yaw: 0.3, pitch: 0.7, roll: Math.PI / 2, zoom: 1 });
+    expect(rolled[1].x).toBeCloseTo(plain[0].x);
+    expect(rolled[1].y).toBeCloseTo(plain[0].y);
+    expect(rolled[1].z).toBeCloseTo(plain[0].z);
+    // Pitch 0 looks straight down at the sheet.
+    const down = viewRotation({ yaw: 0, pitch: 0, roll: 0, zoom: 1 });
+    expect(down[2]).toEqual({ x: 0, y: 0, z: 1 });
+  });
+});
+
+describe('buildMesh', () => {
+  const style = {
+    front: '#e8923a',
+    back: '#7a3f12',
+    ink: '#000000',
+    thickness: 0.01,
+    shadow: true,
+  };
+
+  it('extrudes every facet into top, bottom and side triangles with its colours', () => {
+    const scene = solvedScene(createPaper(), { opening: 0 });
+    const built = buildMesh(scene, style, new Set());
+    // A quad: 2 top + 2 bottom + 4 sides x 2 = 12 triangles.
+    expect(built.triangleFacet).toHaveLength(12);
+    expect(built.positions).toHaveLength(12 * 9);
+    const topColour = [built.colours[0], built.colours[1], built.colours[2]];
+    expect(topColour[0]).toBeGreaterThan(topColour[2] as number);
+    const flat = buildMesh(scene, { ...style, thickness: 0 }, new Set());
+    expect(flat.triangleFacet).toHaveLength(4);
   });
 
+  it('lifts the colour of a highlighted facet', () => {
+    const scene = solvedScene(createPaper(), { opening: 0 });
+    const plain = buildMesh(scene, style, new Set());
+    const lit = buildMesh(scene, style, new Set([0]));
+    expect(lit.colours[0]).toBeGreaterThan(plain.colours[0] as number);
+  });
+});
+
+describe('cover and the build stamp', () => {
   it('opens a crease in a thick stack less than one in a thin fold', () => {
     const thin = new FoldHistory(createPaper());
     run(thin, [foldLeftRight()]);
@@ -126,9 +131,7 @@ describe('named views, cover and the build stamp', () => {
   });
 
   it('stamps the build time in German local time to the minute', () => {
-    // 21:03 UTC in October is 23:03 in Berlin (summer time).
     expect(buildStamp('2026-10-03T21:03:45.000Z')).toBe('03.10.2026 23:03');
-    // 10:30 UTC in January is 11:30 in Berlin.
     expect(buildStamp('2026-01-15T10:30:00.000Z')).toBe('15.01.2026 11:30');
     expect(buildStamp('nonsense')).toBe('');
   });
