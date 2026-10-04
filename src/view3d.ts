@@ -1,4 +1,5 @@
-import { type PaperState, foldedPoints } from './paper';
+import { area, centroid } from './geometry';
+import { type PaperState, currentPolygon, foldedPoints } from './paper';
 import { type ViewFrame } from './sequence';
 import { type Hinge, type Panel, type StepAnimation, type Vec3, hinges, stepPose } from './rigid';
 import { solveSheet } from './solve';
@@ -24,6 +25,50 @@ export const DEFAULT_ORBIT: Orbit = { yaw: -0.55, pitch: 0.95, roll: 0, zoom: 1 
 
 /** The sheet's own axes, used when a sequence says nothing about how it stands. */
 export const DEFAULT_FRAME: ViewFrame = { front: { x: 1, y: 0 }, top: { x: 0, y: 1 } };
+
+/**
+ * A frame for a model that says nothing about how it stands, from its
+ * shape: the long axis of the folded sheet is taken as its front-to-back
+ * direction and the axis across it as up. A shape with no long axis (a
+ * square, a circle) keeps the sheet's own axes.
+ */
+export function autoFrame(state: PaperState): ViewFrame {
+  // Second moments of the folded sheet, every facet weighted by its area.
+  let total = 0;
+  let cx = 0;
+  let cy = 0;
+  const parts = state.facets.map((f) => {
+    const poly = currentPolygon(f);
+    const a = area(poly);
+    const c = centroid(poly);
+    total += a;
+    cx += c.x * a;
+    cy += c.y * a;
+    return { poly, a, c };
+  });
+  if (total < 1e-12) return DEFAULT_FRAME;
+  cx /= total;
+  cy /= total;
+  let sxx = 0;
+  let sxy = 0;
+  let syy = 0;
+  for (const { poly, a } of parts) {
+    for (const p of poly) {
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      const w = a / poly.length;
+      sxx += dx * dx * w;
+      sxy += dx * dy * w;
+      syy += dy * dy * w;
+    }
+  }
+  const spread = Math.hypot(sxx - syy, 2 * sxy);
+  // Nearly isotropic: no direction to prefer.
+  if (spread < 0.05 * (sxx + syy)) return DEFAULT_FRAME;
+  const angle = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const front = { x: Math.cos(angle), y: Math.sin(angle) };
+  return { front, top: { x: -front.y, y: front.x } };
+}
 
 export interface NamedView {
   readonly id: 'front' | 'side' | 'top' | 'isometric';

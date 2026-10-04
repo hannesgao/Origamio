@@ -80,7 +80,8 @@ note and the other views work as before.
   one, where the fixed views become true drawings with no foreshortening.
   Drag to turn it any way round, scroll to zoom, and use _Front_, _Side_,
   _Top_ and _Iso_ for the fixed front, side, top and isometric views of the
-  model (a sequence can say how its model stands; the crane does); _Reset_
+  model (a sequence can say how its model stands; the crane does, and a
+  model that does not is framed by its shape, long axis front to back); _Reset_
   returns to the default angle. While a step plays, its creases swing from
   flat to folded in three dimensions; the moving paper is held off the paper
   it comes near, on the side it set off from, so a flap pushes layers aside
