@@ -132,13 +132,126 @@ export interface SceneEdge {
   readonly b: Vec3;
 }
 
+/**
+ * How buried each corner of a facet is, per face: 0 in the open, 1 deep in
+ * a stack. The renderer darkens the paper by it, which is what ambient
+ * occlusion would do inside the folds if the paper were not too thin for
+ * a screen-space method to see.
+ */
+export interface FacetShade {
+  /** Shade at each corner, front face and back face. */
+  readonly top: number[];
+  readonly bottom: number[];
+  /**
+   * An inner ring of points, one per corner, a short way in towards the
+   * centre (`inner[i]` is how far along, 0 at the corner, 1 at the centre),
+   * with their own shade: the darkening stays near the creases instead of
+   * spreading across a whole wing.
+   */
+  readonly inner: number[];
+  readonly innerTop: number[];
+  readonly innerBottom: number[];
+}
+
 export interface SolvedScene {
   readonly panels: Panel[];
   readonly edges: SceneEdge[];
+  /** Shade of every facet's corners, by facet id. */
+  readonly shade: Record<number, FacetShade>;
   /** Centre of the sheet's extent (in the sheet's plane) that views turn about. */
   readonly centre: Vec3;
   /** Farthest any solved point lies from the centre. */
   readonly reach: number;
+}
+
+/** How far from a facet another layer still darkens it, as a share of the sheet. */
+const SHADE_REACH = 0.05;
+/** How far in from a corner the inner ring sits, as a share of the sheet. */
+const RING_REACH = 0.07;
+
+const dot3 = (a: Vec3, b: Vec3): number => a.x * b.x + a.y * b.y + a.z * b.z;
+const sub3 = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+const add3 = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
+const mul3 = (a: Vec3, s: number): Vec3 => ({ x: a.x * s, y: a.y * s, z: a.z * s });
+
+/** Whether `q`, lying in the panel's plane, is inside its polygon. */
+function insidePanel(panel: Panel, q: Vec3): boolean {
+  const n = panel.normal;
+  const pts = panel.points;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i] as Vec3;
+    const b = pts[(i + 1) % pts.length] as Vec3;
+    if (dot3(cross3(sub3(b, a), sub3(q, a)), n) < -1e-9) return false;
+  }
+  return true;
+}
+
+/**
+ * How buried every facet is, from the solved sheet itself: at each corner
+ * and each point of an inner ring, how close other layers lie over the
+ * front face and over the back face (a layer touching counts fully, one
+ * at the reach not at all). Light cannot get into the slit between two
+ * layers, which is what screen-space occlusion would show if paper were
+ * not too thin for it.
+ */
+function occlusionShade(panels: readonly Panel[], size: number): Record<number, FacetShade> {
+  const reach = SHADE_REACH * size;
+  const bodies = panels.map((panel) => {
+    let centre: Vec3 = { x: 0, y: 0, z: 0 };
+    for (const p of panel.points) centre = add3(centre, p);
+    centre = mul3(centre, 1 / Math.max(1, panel.points.length));
+    let radius = 0;
+    for (const p of panel.points) {
+      radius = Math.max(radius, Math.hypot(p.x - centre.x, p.y - centre.y, p.z - centre.z));
+    }
+    return { panel, centre, radius, normal: unit3(panel.normal) };
+  });
+  const result: Record<number, FacetShade> = {};
+  for (const a of bodies) {
+    const near = bodies.filter(
+      (b) =>
+        b !== a &&
+        Math.hypot(b.centre.x - a.centre.x, b.centre.y - a.centre.y, b.centre.z - a.centre.z) <=
+          a.radius + b.radius + reach,
+    );
+    // Layers over the front (+) and back (−) of the point, weighted by closeness.
+    const cover = (p: Vec3): [number, number] => {
+      let front = 0;
+      let back = 0;
+      for (const b of near) {
+        const along = dot3(a.normal, b.normal);
+        if (Math.abs(along) < 1e-6) continue;
+        const s = dot3(sub3(b.panel.points[0] as Vec3, p), b.normal) / along;
+        if (Math.abs(s) < 1e-7 || Math.abs(s) > reach) continue;
+        if (!insidePanel(b.panel, add3(p, mul3(a.normal, s)))) continue;
+        const weight = 1 - Math.abs(s) / reach;
+        if (s > 0) front += weight;
+        else back += weight;
+      }
+      return [Math.min(1, front), Math.min(1, back)];
+    };
+    const top: number[] = [];
+    const bottom: number[] = [];
+    const inner: number[] = [];
+    const innerTop: number[] = [];
+    const innerBottom: number[] = [];
+    const ringReach = RING_REACH * size;
+    for (const corner of a.panel.points) {
+      const toCentre = sub3(a.centre, corner);
+      const away = Math.hypot(toCentre.x, toCentre.y, toCentre.z);
+      // A corner on a crease lies in its neighbour's plane; look just inside it.
+      const [t, b] = cover(add3(corner, mul3(toCentre, away < 1e-9 ? 0 : 1e-3 / away)));
+      top.push(t);
+      bottom.push(b);
+      const k = away < 1e-9 ? 1 : Math.min(1, ringReach / away);
+      inner.push(k);
+      const [it, ib] = cover(add3(corner, mul3(toCentre, k)));
+      innerTop.push(it);
+      innerBottom.push(ib);
+    }
+    result[a.panel.facet.id] = { top, bottom, inner, innerTop, innerBottom };
+  }
+  return result;
 }
 
 /** The hinge along a facet's edge, if the edge lies on one. */
@@ -220,7 +333,7 @@ export function solvedScene(state: PaperState, options: SceneOptions): SolvedSce
       reach = Math.max(reach, Math.hypot(p.x - centre.x, p.y - centre.y, p.z - centre.z));
     }
   }
-  return { panels, edges, centre, reach };
+  return { panels, edges, shade: occlusionShade(panels, state.size), centre, reach };
 }
 
 /**

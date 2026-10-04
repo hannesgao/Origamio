@@ -71,7 +71,11 @@ note and the other views work as before.
   of wings and body allows). It is drawn with WebGL (three.js): the paper has
   a thickness (_Paper_ chips from 0 to 0.2 mm for a 15 cm sheet, or any value
   typed), a soft key light, a ground shadow under the model (hidden in the
-  top view) and crease lines only where the sheet bends or ends.
+  top view), crease lines only where the sheet bends or ends, and the paper
+  darkens where another layer lies close over it, so the slits inside a body
+  read as pockets while open wings stay bright (worked out from the solved
+  sheet, since screen-space occlusion cannot see into a slit as thin as
+  paper).
   _Perspective_ switches between a perspective picture and an orthographic
   one, where the fixed views become true drawings with no foreshortening.
   Drag to turn it any way round, scroll to zoom, and use _Front_, _Side_,

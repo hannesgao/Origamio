@@ -98,13 +98,13 @@ describe('buildMesh', () => {
   it('extrudes every facet into top, bottom and side triangles with its colours', () => {
     const scene = solvedScene(createPaper(), { opening: 0 });
     const built = buildMesh(scene, style, new Set());
-    // A quad: 2 top + 2 bottom + 4 sides x 2 = 12 triangles.
-    expect(built.triangleFacet).toHaveLength(12);
-    expect(built.positions).toHaveLength(12 * 9);
+    // A quad: a band of 4 quads and a fan of 2 on each face (20), plus 4 sides x 2.
+    expect(built.triangleFacet).toHaveLength(28);
+    expect(built.positions).toHaveLength(28 * 9);
     const topColour = [built.colours[0], built.colours[1], built.colours[2]];
     expect(topColour[0]).toBeGreaterThan(topColour[2] as number);
     const flat = buildMesh(scene, { ...style, thickness: 0 }, new Set());
-    expect(flat.triangleFacet).toHaveLength(4);
+    expect(flat.triangleFacet).toHaveLength(20);
   });
 
   it('lifts the colour of a highlighted facet', () => {
