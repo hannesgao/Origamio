@@ -1350,11 +1350,13 @@ export function createApp(root: HTMLElement): App {
     renderStepPanel();
     creaseCount.textContent = `${state.creases.length} crease${state.creases.length === 1 ? '' : 's'}`;
     // The 3D view: the sheet solved as paper, the step in progress swinging its creases.
+    const style = sceneStyle();
     const solid = solvedScene(state, {
       opening: (opening * Math.PI) / 180,
+      thickness: style.thickness,
       ...(phase.kind === 'animating' ? { animation: phase.animation } : {}),
     });
-    scene.update(solid, sceneStyle(), orbit, viewFrame, highlighted);
+    scene.update(solid, style, orbit, viewFrame, highlighted);
     applyHighlight();
     if (statsFor !== state) {
       statsFor = state;

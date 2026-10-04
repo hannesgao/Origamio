@@ -122,6 +122,8 @@ export interface SceneOptions {
   /** How far every folded crease is opened from flat, in radians. */
   readonly opening: number;
   readonly animation?: StepAnimation;
+  /** Thickness of the paper, in sheet units; layers are kept this far apart. */
+  readonly thickness?: number;
 }
 
 /** A line to draw: the sheet's boundary or a crease that is bent in the current pose. */
@@ -169,7 +171,11 @@ export function solvedScene(state: PaperState, options: SceneOptions): SolvedSce
   const pose = stepPose(state, options.opening, options.animation);
   // Solved from the rigid walk every time: a few milliseconds for a crane,
   // and a flat warm start would stall the crease constraints.
-  const panels = solveSheet(state, all, { ...pose, iterations: 80 }).panels;
+  const panels = solveSheet(state, all, {
+    ...pose,
+    iterations: 80,
+    thickness: options.thickness ?? 0,
+  }).panels;
   const animation = options.animation;
   const byFacet = new Map<number, Hinge[]>();
   for (const h of all) {

@@ -63,11 +63,14 @@ that model as a sheet of paper and draws it with WebGL; without WebGL the
   panel keeps its shape and panels joined at a crease stay joined. Where the
   angles contradict each other, as the wings and body of a crane do, the
   sheet settles on a compromise the way paper gives, so a crane stands with
-  its wings on both sides and a slightly puffed body. It is drawn with WebGL
-  (three.js): the paper has a thickness (_Paper_ chips from 0 to 0.2 mm for a
-  15 cm sheet, or any value typed), a soft key light, a ground shadow under
-  the model (hidden in the top view) and crease lines only where the sheet
-  bends or ends. _Perspective_ switches between a perspective picture and an
+  its wings on both sides and a slightly puffed body. Layers that lie on one
+  another in the flat model stay in that order, each kept a paper's
+  thickness above the one beneath it, so a stack of twelve layers is twelve
+  papers thick and no layer passes through another (to within what the loop
+  of wings and body allows). It is drawn with WebGL (three.js): the paper has
+  a thickness (_Paper_ chips from 0 to 0.2 mm for a 15 cm sheet, or any value
+  typed), a soft key light, a ground shadow under the model (hidden in the
+  top view) and crease lines only where the sheet bends or ends. _Perspective_ switches between a perspective picture and an
   orthographic one, where the fixed views become true drawings with no
   foreshortening. Drag to turn it any way round, scroll to zoom, and use
   _Front_, _Side_, _Top_ and _Iso_ for the fixed front, side, top and
