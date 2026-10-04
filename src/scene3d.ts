@@ -17,7 +17,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   OrthographicCamera,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
   Raycaster,
@@ -244,7 +244,7 @@ export class Scene3d implements SheetScene {
     });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = PCFSoftShadowMap;
+    this.renderer.shadowMap.type = PCFShadowMap;
     this.canvas = this.renderer.domElement;
     this.canvas.className = 'view solid-view';
     container.append(this.canvas);

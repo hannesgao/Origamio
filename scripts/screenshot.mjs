@@ -4,7 +4,7 @@
  *
  *   node scripts/screenshot.mjs --out shots [--url http://localhost:5173/]
  *        [--scenario scripts/scenarios/preset.mjs] [--width 1600] [--height 950]
- *        [--dark] [--full-page] [--name page] [--browser auto|wsl|windows]
+ *        [--dark] [--full-page] [--name page] [--browser auto|wsl|linux|windows]
  *
  * Backends
  *   wsl      Playwright's own Chromium inside WSL (headless). Needs, once:
@@ -17,6 +17,7 @@
  *            and nothing is ever ended by process name: if close() fails, only
  *            the chrome.exe processes whose command line contains this run's
  *            unique profile directory are stopped.
+ *   linux    The same as wsl, for a Linux machine or CI (WebGL through SwiftShader).
  *   auto     Try wsl first, fall back to windows when Chromium cannot launch.
  *
  * A scenario is an ES module whose default export receives the Playwright
@@ -49,7 +50,7 @@ const { values: args } = parseArgs({
 
 if (args.help) {
   console.log(
-    'node scripts/screenshot.mjs --out DIR [--url URL] [--scenario FILE] [--width N] [--height N] [--dark] [--full-page] [--name NAME] [--browser auto|wsl|windows]',
+    'node scripts/screenshot.mjs --out DIR [--url URL] [--scenario FILE] [--width N] [--height N] [--dark] [--full-page] [--name NAME] [--browser auto|wsl|linux|windows]',
   );
   process.exit(0);
 }
@@ -142,6 +143,9 @@ async function run() {
       new Promise((done) => setTimeout(() => done(false), 15000)),
     ]);
     if (!closed && userDataDir) stopOwnChrome(userDataDir);
+    // Headless Chromium on Linux sometimes never answers close(); it is our
+    // own child process, so it is ended by its handle, never by name.
+    if (!closed && browser) browser.process()?.kill('SIGKILL');
     if (userDataDir) {
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
@@ -177,7 +181,11 @@ async function run() {
       });
       page = context.pages()[0] ?? (await context.newPage());
     } else {
-      browser = await chromium.launch({ headless: true });
+      browser = await chromium.launch({
+        headless: true,
+        // Software WebGL, so the 3D view draws the same on any machine without a GPU.
+        args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+      });
       context = await browser.newContext({ viewport, colorScheme, acceptDownloads: true });
       page = await context.newPage();
     }
@@ -204,7 +212,7 @@ async function run() {
 
 async function main() {
   if (!onWindows && args.browser === 'windows') return reexecOnWindows();
-  if (onWindows || args.browser === 'wsl') return run();
+  if (onWindows || args.browser === 'wsl' || args.browser === 'linux') return run();
   // auto: Playwright's Chromium in WSL first, Windows Chrome as the fallback.
   try {
     await run();
@@ -218,7 +226,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('[screenshot]', error);
-  process.exit(1);
-});
+main().then(
+  // Nothing is left to do; do not wait for a browser that is slow to go.
+  () => process.exit(0),
+  (error) => {
+    console.error('[screenshot]', error);
+    process.exit(1);
+  },
+);
