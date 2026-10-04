@@ -74,6 +74,8 @@ interface Mesh {
   readonly lengths: { i: number; j: number; rest: number }[];
   /** Crease constraints: edge (i, j), one off-edge vertex on each side. */
   readonly bends: { i: number; j: number; k: number; l: number; hinge: Hinge }[];
+  /** Flatness constraints across the diagonals of each facet's triangles. */
+  readonly flats: { i: number; j: number; k: number; l: number }[];
   /** Layer constraints: where one facet lies directly on another in the flat model. */
   readonly overlaps: Overlap[];
   readonly count: number;
@@ -202,6 +204,10 @@ function findOverlaps(state: PaperState, mesh: Omit<Mesh, 'overlaps'>): Overlap[
 
 /** How much softer a crease folded flat pulls than one folded to a given angle. */
 const FLAT_CREASE_GIVE = 0.3;
+/** How hard a facet pulls itself flat across its diagonals: paper bends a little, before a crease gives. */
+const FACET_STIFFNESS = 0.6;
+/** Triangles thinner than this share of their facet get no flatness constraint. */
+const THIN_TRIANGLE = 1e-3;
 /** Sweeps at the end with the creases free, so that facets are rigid and layers in order. */
 const SETTLE_SWEEPS = 12;
 /** How close (as a share of the sheet) a vertex must come to a facet to be held off it. */
@@ -338,15 +344,63 @@ function buildMeshUncached(state: PaperState, hinges: readonly Hinge[]): Mesh {
       ids[i] = c;
     }
   }
+  // Each facet is a fan of triangles from one corner: the triangles' edges
+  // keep their lengths (so each triangle is rigid and the sheet does not
+  // stretch), the facet may bend a little across the diagonals, and every
+  // run of vertices along one straight edge keeps all its distances so the
+  // edge stays straight.
   const lengths: Mesh['lengths'] = [];
+  const flats: Mesh['flats'] = [];
+  const seen = new Set<string>();
+  const addLength = (a: number, b: number, rest: number): void => {
+    if (a === b) return;
+    const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    lengths.push({ i: a, j: b, rest });
+  };
+  const facetById = new Map(state.facets.map((f) => [f.id, f]));
   for (const [id, poly] of polys) {
     const ids = index.get(id) as number[];
-    for (let i = 0; i < poly.length; i++) {
-      for (let j = i + 1; j < poly.length; j++) {
-        const a = ids[i] as number;
-        const b = ids[j] as number;
-        if (a === b) continue;
-        lengths.push({ i: a, j: b, rest: distance(poly[i] as Vec, poly[j] as Vec) });
+    const facet = facetById.get(id);
+    const corners = facet ? facet.poly : poly;
+    // Straight edges of the original facet, with every mesh vertex on them.
+    for (let e = 0; e < corners.length; e++) {
+      const a = corners[e] as Vec;
+      const b = corners[(e + 1) % corners.length] as Vec;
+      const len = distance(a, b);
+      if (len < tolerance) continue;
+      const on = poly
+        .map((v, i) => ({ v, i }))
+        .filter(({ v }) => {
+          const t = ((v.x - a.x) * (b.x - a.x) + (v.y - a.y) * (b.y - a.y)) / (len * len);
+          if (t < -1e-9 || t > 1 + 1e-9) return false;
+          const foot = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+          return distance(foot, v) < tolerance;
+        });
+      for (let m = 0; m < on.length; m++) {
+        for (let n = m + 1; n < on.length; n++) {
+          const p = on[m] as { v: Vec; i: number };
+          const q = on[n] as { v: Vec; i: number };
+          addLength(ids[p.i] as number, ids[q.i] as number, distance(p.v, q.v));
+        }
+      }
+    }
+    const area2 = (a: Vec, b: Vec, c: Vec): number => Math.abs(cross(sub(b, a), sub(c, a)));
+    let facetArea = 0;
+    for (let k = 1; k + 1 < poly.length; k++) {
+      facetArea += area2(poly[0] as Vec, poly[k] as Vec, poly[k + 1] as Vec);
+    }
+    const thin = (k: number): boolean =>
+      area2(poly[0] as Vec, poly[k] as Vec, poly[k + 1] as Vec) < THIN_TRIANGLE * facetArea;
+    for (let k = 1; k + 1 < poly.length; k++) {
+      const [a, b, c] = [ids[0] as number, ids[k] as number, ids[k + 1] as number];
+      addLength(a, b, distance(poly[0] as Vec, poly[k] as Vec));
+      addLength(b, c, distance(poly[k] as Vec, poly[k + 1] as Vec));
+      addLength(a, c, distance(poly[0] as Vec, poly[k + 1] as Vec));
+      // Across the diagonal (0, k+1) to the next triangle of the fan.
+      if (k + 2 < poly.length && !thin(k) && !thin(k + 1)) {
+        flats.push({ i: a, j: c, k: b, l: ids[k + 2] as number });
       }
     }
   }
@@ -375,7 +429,7 @@ function buildMeshUncached(state: PaperState, hinges: readonly Hinge[]): Mesh {
     if (i < 0 || j < 0 || k < 0 || l < 0 || i === j) continue;
     bends.push({ i, j, k, l, hinge: h });
   }
-  const partial = { polys, index, lengths, bends, count: compact.size };
+  const partial = { polys, index, lengths, bends, flats, count: compact.size };
   return { ...partial, overlaps: findOverlaps(state, partial) };
 }
 
@@ -688,6 +742,12 @@ export function solveSheet(
       const firm = Math.abs(c.hinge.shown) < Math.PI - 1e-9;
       const stiffness = firm ? bendStiffness : bendStiffness * FLAT_CREASE_GIVE;
       moved = Math.max(moved, bendConstraint(pos, c.i, c.j, c.k, c.l, target, stiffness, pinned));
+    }
+    for (const c of mesh.flats) {
+      moved = Math.max(
+        moved,
+        bendConstraint(pos, c.i, c.j, c.k, c.l, Math.PI, FACET_STIFFNESS, pinned),
+      );
     }
     moved = Math.max(moved, separationSweep());
     if (moved < tolerance) break;

@@ -116,20 +116,30 @@ export function buildMesh(
     a: Vec3,
     b: Vec3,
     c: Vec3,
-    n: Vec3,
+    [na, nb, nc]: readonly [Vec3, Vec3, Vec3],
     ca: Color,
     cb: Color,
     cc: Color,
     facet: number,
   ): void => {
     positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-    normals.push(n.x, n.y, n.z, n.x, n.y, n.z, n.x, n.y, n.z);
+    normals.push(na.x, na.y, na.z, nb.x, nb.y, nb.z, nc.x, nc.y, nc.z);
     colours.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
     triangleFacet.push(facet);
   };
   for (const panel of scene.panels) {
     const id = panel.facet.id;
     const n = unit(panel.normal);
+    // A facet may bend a little: each corner takes the normal of its own
+    // corner triangle, and the ring blends towards the facet's mean.
+    const count0 = panel.points.length;
+    const cornerNormal = panel.points.map((p, i) => {
+      const prev = panel.points[(i + count0 - 1) % count0] as Vec3;
+      const next = panel.points[(i + 1) % count0] as Vec3;
+      const local = cross(sub(next, p), sub(prev, p));
+      const l = Math.hypot(local.x, local.y, local.z);
+      return l < 1e-12 ? n : unit(local);
+    });
     const hit = highlighted.has(id);
     const top = hit ? lift(front) : front;
     const bottom = hit ? lift(back) : back;
@@ -141,8 +151,8 @@ export function buildMesh(
     const innerBottomAt = (i: number): Color => shaded(bottom, shade?.innerBottom[i] ?? 0);
     const rimAt = (i: number): Color =>
       shaded(rim, ((shade?.top[i] ?? 0) + (shade?.bottom[i] ?? 0)) / 2);
-    const up = panel.points.map((p) => add(p, mul(n, t)));
-    const down = panel.points.map((p) => sub(p, mul(n, t)));
+    const up = panel.points.map((p, i) => add(p, mul(cornerNormal[i] as Vec3, t)));
+    const down = panel.points.map((p, i) => sub(p, mul(cornerNormal[i] as Vec3, t)));
     const count = panel.points.length;
     // The inner ring sits where the shade says, between each corner and the centre.
     const centre = mul(
@@ -150,30 +160,63 @@ export function buildMesh(
       1 / count,
     );
     const ring = panel.points.map((p, i) => add(p, mul(sub(centre, p), shade?.inner[i] ?? 0)));
-    const ringUp = ring.map((p) => add(p, mul(n, t)));
-    const ringDown = ring.map((p) => sub(p, mul(n, t)));
-    const dn = mul(n, -1);
+    const ringNormal = ring.map((_, i) => {
+      const k = shade?.inner[i] ?? 0;
+      return unit(add(mul(cornerNormal[i] as Vec3, 1 - k), mul(n, k)));
+    });
+    const ringUp = ring.map((p, i) => add(p, mul(ringNormal[i] as Vec3, t)));
+    const ringDown = ring.map((p, i) => sub(p, mul(ringNormal[i] as Vec3, t)));
+    const flip = (v: Vec3): Vec3 => mul(v, -1);
     // A band of quads from the corners to the ring, then a fan over the ring:
     // front face up, back face down.
     for (let i = 0; i < count; i++) {
       const j = (i + 1) % count;
       const [a, b, c, e] = [up[i] as Vec3, up[j] as Vec3, ringUp[j] as Vec3, ringUp[i] as Vec3];
-      push(a, b, c, n, topAt(i), topAt(j), innerTopAt(j), id);
-      push(a, c, e, n, topAt(i), innerTopAt(j), innerTopAt(i), id);
+      const [na, nb, nc] = [
+        cornerNormal[i] as Vec3,
+        cornerNormal[j] as Vec3,
+        ringNormal[j] as Vec3,
+      ];
+      const ne = ringNormal[i] as Vec3;
+      push(a, b, c, [na, nb, nc], topAt(i), topAt(j), innerTopAt(j), id);
+      push(a, c, e, [na, nc, ne], topAt(i), innerTopAt(j), innerTopAt(i), id);
       const [f, g, h, k] = [
         down[i] as Vec3,
         down[j] as Vec3,
         ringDown[j] as Vec3,
         ringDown[i] as Vec3,
       ];
-      push(f, h, g, dn, bottomAt(i), innerBottomAt(j), bottomAt(j), id);
-      push(f, k, h, dn, bottomAt(i), innerBottomAt(i), innerBottomAt(j), id);
+      push(f, h, g, [flip(na), flip(nc), flip(nb)], bottomAt(i), innerBottomAt(j), bottomAt(j), id);
+      push(
+        f,
+        k,
+        h,
+        [flip(na), flip(ne), flip(nc)],
+        bottomAt(i),
+        innerBottomAt(i),
+        innerBottomAt(j),
+        id,
+      );
     }
     for (let i = 1; i + 1 < count; i++) {
       const [a, b, c] = [ringUp[0] as Vec3, ringUp[i] as Vec3, ringUp[i + 1] as Vec3];
-      push(a, b, c, n, innerTopAt(0), innerTopAt(i), innerTopAt(i + 1), id);
+      const [n0, ni, nj] = [
+        ringNormal[0] as Vec3,
+        ringNormal[i] as Vec3,
+        ringNormal[i + 1] as Vec3,
+      ];
+      push(a, b, c, [n0, ni, nj], innerTopAt(0), innerTopAt(i), innerTopAt(i + 1), id);
       const [f, g, h] = [ringDown[0] as Vec3, ringDown[i + 1] as Vec3, ringDown[i] as Vec3];
-      push(f, g, h, dn, innerBottomAt(0), innerBottomAt(i + 1), innerBottomAt(i), id);
+      push(
+        f,
+        g,
+        h,
+        [flip(n0), flip(nj), flip(ni)],
+        innerBottomAt(0),
+        innerBottomAt(i + 1),
+        innerBottomAt(i),
+        id,
+      );
     }
     if (t > 0) {
       for (let i = 0; i < count; i++) {
@@ -183,8 +226,8 @@ export function buildMesh(
         const c = down[j] as Vec3;
         const d = down[i] as Vec3;
         const sn = unit(cross(sub(b, a), sub(d, a)));
-        push(a, b, c, sn, rimAt(i), rimAt(j), rimAt(j), id);
-        push(a, c, d, sn, rimAt(i), rimAt(j), rimAt(i), id);
+        push(a, b, c, [sn, sn, sn], rimAt(i), rimAt(j), rimAt(j), id);
+        push(a, c, d, [sn, sn, sn], rimAt(i), rimAt(j), rimAt(i), id);
       }
     }
   }
@@ -308,7 +351,7 @@ export class Scene3d implements SheetScene {
 
     const material = new MeshStandardMaterial({
       vertexColors: true,
-      flatShading: true,
+      flatShading: false,
       roughness: 0.92,
       metalness: 0,
       // Faces sit a touch behind the lines drawn on them, so the two never flicker.

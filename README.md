@@ -61,10 +61,11 @@ note and the other views work as before.
   its angle (flat creases opened a few degrees, the _Open_ chips offer 0° to
   30° and the box beside them takes any value up to 90°, less where many
   layers are stacked; creases folded to a chosen angle keep it) while each
-  panel keeps its shape and panels joined at a crease stay joined. Where the
+  panel keeps its size and panels joined at a crease stay joined. Where the
   angles contradict each other, as the wings and body of a crane do, the
-  sheet settles on a compromise the way paper gives, so a crane stands with
-  its wings on both sides and a slightly puffed body. Layers that lie on one
+  sheet settles on a compromise the way paper gives: a panel may bend a
+  little across its diagonals before a crease yields, so a crane stands with
+  its wings on both sides, gently curved, and a slightly puffed body. Layers that lie on one
   another in the flat model stay in that order, each kept a paper's
   thickness above the one beneath it, so a stack of twelve layers is twelve
   papers thick and no layer passes through another (to within what the loop
