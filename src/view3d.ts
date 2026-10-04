@@ -1,6 +1,6 @@
 import { type PaperState, foldedPoints } from './paper';
 import { BACK_COLOR, FRONT_COLOR } from './render';
-import { type StepAnimation, type Vec3, hinges, placePanels, stepPose } from './rigid';
+import { type Hinge, type StepAnimation, type Vec3, hinges, placePanels, stepPose } from './rigid';
 
 export type { StepAnimation } from './rigid';
 
@@ -109,14 +109,54 @@ function shade(hex: string, factor: number): string {
  * crease opened a little so the paper reads as folded rather than stacked,
  * seen from the orbit.
  */
+/** The hinge along a facet's edge, if the edge lies on one. */
+function hingeAlong(
+  byFacet: Map<number, Hinge[]>,
+  facetId: number,
+  a: Vec3,
+  b: Vec3,
+): Hinge | null {
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  for (const h of byFacet.get(facetId) ?? []) {
+    const dx = h.b.x - h.a.x;
+    const dy = h.b.y - h.a.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-9) continue;
+    const off = Math.abs((dx * (mid.y - h.a.y) - dy * (mid.x - h.a.x)) / len);
+    const along = (dx * (mid.x - h.a.x) + dy * (mid.y - h.a.y)) / len;
+    if (off < 1e-6 && along > -1e-6 && along < len + 1e-6) return h;
+  }
+  return null;
+}
+
+/** Paper grain and a soft edge, defined once per drawing. */
+const DEFS =
+  '<defs>' +
+  '<filter id="paper-grain" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">' +
+  '<feTurbulence type="fractalNoise" baseFrequency="700" numOctaves="2" seed="7" result="noise" />' +
+  // Grey noise at low opacity, kept to the paper itself.
+  '<feColorMatrix in="noise" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.12 0" result="grey" />' +
+  '<feComposite in="grey" in2="SourceAlpha" operator="in" result="grain" />' +
+  '<feBlend in="SourceGraphic" in2="grain" mode="multiply" />' +
+  '</filter>' +
+  '</defs>';
+
 export function render3d(state: PaperState, options: View3dOptions): View3d {
   const size = state.size;
-  const panels = placePanels(
-    state,
-    hinges(state),
-    stepPose(state, options.opening, options.animation),
-  );
+  const all = hinges(state);
+  const pose = stepPose(state, options.opening, options.animation);
+  const panels = placePanels(state, all, pose);
   const animation = options.animation;
+  // Hinges by facet, to tell a real fold from a flat seam between facets.
+  const byFacet = new Map<number, Hinge[]>();
+  for (const h of all) {
+    for (const id of [h.p, h.q]) {
+      const list = byFacet.get(id);
+      if (list) list.push(h);
+      else byFacet.set(id, [h]);
+    }
+  }
+  const angleOf = pose.angleOf ?? ((h: Hinge): number => h.shown);
 
   // While a step plays the sheet may reach further than its end state does.
   const extent = animation
@@ -130,6 +170,9 @@ export function render3d(state: PaperState, options: View3dOptions): View3d {
     z: 0,
   };
   const light = norm3({ x: -0.35, y: 0.45, z: 0.82 });
+  // An edge is drawn only where the paper actually bends or ends; seams
+  // between facets lying flat against each other stay invisible.
+  const BEND = (2 * Math.PI) / 180;
   // Coincident panels are ordered by layer: higher layers are nearer when the
   // sheet is seen from the front, lower ones when it is seen from behind.
   const fromFront = rotate(options.orbit, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }).z >= 0;
@@ -145,17 +188,33 @@ export function render3d(state: PaperState, options: View3dOptions): View3d {
     .sort(
       (a, b) => a.depth - b.depth || (fromFront ? a.facet.z - b.facet.z : b.facet.z - a.facet.z),
     );
-  const parts: string[] = [];
+  const parts: string[] = [DEFS, '<g filter="url(#paper-grain)">'];
   for (const d of drawn) {
     // The front face is seen when its normal points at the viewer.
     const seesFront = d.normal.z >= 0;
     const base = seesFront ? FRONT_COLOR : BACK_COLOR;
-    const lit = 0.62 + 0.38 * Math.abs(dot3(d.normal, light));
+    // Mostly ambient light with a soft key light, so facets read as one sheet.
+    const lit = 0.74 + 0.26 * Math.abs(dot3(d.normal, light));
     const fill = shade(base, lit);
     const pts = d.points.map((p) => `${fmt(p.x)},${fmt(-p.y)}`).join(' ');
     const cls = `solid-facet ${seesFront ? 'solid-front' : 'solid-back'}${d.moving ? ' facet-moving' : ''}`;
     parts.push(`<polygon class="${cls}" data-id="${d.facet.id}" points="${pts}" fill="${fill}" />`);
+    // Edges: the sheet's boundary, and creases that are bent in this pose.
+    const poly = d.facet.poly;
+    const segments: string[] = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i] as { x: number; y: number };
+      const b = poly[(i + 1) % poly.length] as { x: number; y: number };
+      const hinge = hingeAlong(byFacet, d.facet.id, { ...a, z: 0 }, { ...b, z: 0 });
+      // A seam between facets lying in one plane is not drawn; a fold is.
+      if (hinge !== null && Math.abs(angleOf(hinge)) < BEND) continue;
+      const pa = d.points[i] as Vec3;
+      const pb = d.points[(i + 1) % poly.length] as Vec3;
+      segments.push(`M${fmt(pa.x)},${fmt(-pa.y)}L${fmt(pb.x)},${fmt(-pb.y)}`);
+    }
+    if (segments.length > 0) parts.push(`<path class="solid-edge" d="${segments.join('')}" />`);
   }
+  parts.push('</g>');
   // Fit the sheet's diagonal, whatever the turn, so the view does not jump.
   const diagonal = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
   const span = Math.max(size * 0.6, diagonal) * 1.15;

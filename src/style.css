@@ -1577,10 +1577,18 @@ a.credit:hover {
 }
 
 .solid-facet {
-  stroke: rgba(42, 33, 26, 0.55);
-  stroke-width: 1px;
+  stroke: none;
+}
+
+/* Only edges where the paper bends or ends are drawn, thin and soft. */
+.solid-edge {
+  fill: none;
+  stroke: rgba(42, 33, 26, 0.5);
+  stroke-width: 0.8px;
+  stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+  pointer-events: none;
 }
 
 .solid-facet.facet-hit {
