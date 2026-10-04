@@ -16,7 +16,7 @@ import {
   vec,
 } from './geometry';
 import { LIBRARY } from './library';
-import { Scene3d, type SceneStyle } from './scene3d';
+import { type SceneStyle, createScene } from './scene3d';
 import { type Snap, type SnapTargets, snapTargets, snapTo } from './snap';
 import {
   type Orbit,
@@ -929,7 +929,7 @@ export function createApp(root: HTMLElement): App {
   const unfoldedFrame = el('div', { class: 'view-frame' }, [unfoldedSvg]);
   const solidFrame = el('div', { class: 'view-frame' });
   // The 3D card draws with WebGL into a canvas inside its frame.
-  const scene = new Scene3d(solidFrame);
+  const scene = createScene(solidFrame);
   const solidCanvas = scene.canvas;
   const foldedCard = card('Folded', viewTools, foldedFrame, [statusBar, statsRow], 'folded-card');
   const unfoldedCard = card(

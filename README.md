@@ -10,7 +10,8 @@ Origamio is a pure front-end application (Vite + TypeScript, no framework;
 the one runtime dependency is three.js, used only by the 3D card). The flat
 views are rendered as SVG from a small, immutable geometric model, so every
 fold is exact: reflections and convex polygon clipping. The 3D card solves
-that model as a sheet of paper and draws it with WebGL.
+that model as a sheet of paper and draws it with WebGL; without WebGL the
+3D card shows a note and the other views work as before.
 
 ## Features
 

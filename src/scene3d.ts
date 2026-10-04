@@ -156,7 +156,72 @@ export function buildMesh(
   };
 }
 
-export class Scene3d {
+/** What the 3D card needs from its renderer; `createScene` picks the one that works here. */
+export interface SheetScene {
+  readonly canvas: HTMLCanvasElement;
+  resize(): void;
+  update(
+    solved: SolvedScene,
+    style: SceneStyle,
+    orbit: Orbit,
+    frame: ViewFrame | undefined,
+    highlighted: ReadonlySet<number>,
+  ): void;
+  highlight(highlighted: ReadonlySet<number>): void;
+  reorbit(orbit: Orbit, frame: ViewFrame | undefined): void;
+  pick(clientX: number, clientY: number): number | null;
+  dispose(): void;
+}
+
+/**
+ * The 3D card without WebGL: a note in the frame instead of a picture, and
+ * a canvas that is never shown so the card's pointer handlers have
+ * something harmless to listen to.
+ */
+export class SceneUnavailable implements SheetScene {
+  readonly canvas = document.createElement('canvas');
+
+  constructor(container: HTMLElement, reason: string) {
+    const note = document.createElement('p');
+    note.className = 'view-note';
+    note.textContent = reason;
+    container.append(note);
+  }
+
+  // Nothing to draw, so every call is a no-op.
+  resize(): void {
+    return;
+  }
+  update(): void {
+    return;
+  }
+  highlight(): void {
+    return;
+  }
+  reorbit(): void {
+    return;
+  }
+  pick(): number | null {
+    return null;
+  }
+  dispose(): void {
+    return;
+  }
+}
+
+/** The WebGL renderer, or the note if this browser cannot give us a WebGL context. */
+export function createScene(container: HTMLElement): SheetScene {
+  try {
+    return new Scene3d(container);
+  } catch {
+    return new SceneUnavailable(
+      container,
+      'The 3D view needs WebGL, which this browser does not provide. The other views still work.',
+    );
+  }
+}
+
+export class Scene3d implements SheetScene {
   private readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
   private readonly perspectiveCamera = new PerspectiveCamera(FOV, 1, 0.01, 100);
@@ -183,6 +248,10 @@ export class Scene3d {
     this.canvas = this.renderer.domElement;
     this.canvas.className = 'view solid-view';
     container.append(this.canvas);
+    // A lost context (GPU reset, too many contexts) comes back on its own if
+    // the default is prevented; then the last picture is drawn again.
+    this.canvas.addEventListener('webglcontextlost', (event) => event.preventDefault());
+    this.canvas.addEventListener('webglcontextrestored', () => this.draw());
 
     this.scene.add(new AmbientLight(0xffffff, 0.55));
     const sky = new HemisphereLight(0xfff4e6, 0x8a6a4a, 0.5);
