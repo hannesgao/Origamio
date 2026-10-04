@@ -34,36 +34,6 @@ const cornerAt = (state: PaperState, corner: Vec): Vec => {
   return apply(facet.transform, corner);
 };
 
-describe('dog preset', () => {
-  it('stands on its belly with its head down in front and its tail up behind', () => {
-    const state = run('dog');
-    const box = bounds(foldedPoints(state));
-    expect(box.minY).toBeCloseTo(0);
-    expect(box.maxY).toBeLessThanOrEqual(0.5 + 0.35);
-    // The front point became the head: below the spine, ahead of the body.
-    const head = cornerAt(state, vec(0, 0.5));
-    expect(head.y).toBeLessThan(0.45);
-    expect(head.x).toBeLessThan(0.5);
-    // The back point became the tail: above the spine, leaning back over the body.
-    const tail = cornerAt(state, vec(1.5, 0.5));
-    expect(tail.y).toBeGreaterThan(0.6);
-    expect(tail.x).toBeLessThan(1.3);
-  });
-});
-
-describe('rabbit preset', () => {
-  it('sits with its ears up and leaning back over its body', () => {
-    const state = run('rabbit');
-    const box = bounds(foldedPoints(state));
-    expect(box.minY).toBeCloseTo(0);
-    const ear = cornerAt(state, vec(1.5, 0.5));
-    expect(ear.y).toBeGreaterThan(0.6);
-    // Leaning back: the ear tip lies over the body, not beyond the pointed end.
-    expect(ear.x).toBeLessThan(1.2);
-    expect(ear.x).toBeGreaterThan(0.5);
-  });
-});
-
 describe('jumping frog preset', () => {
   it('has a waterbomb head with its legs out, sides in and a pleated spring', () => {
     const sequence = preset('frog');

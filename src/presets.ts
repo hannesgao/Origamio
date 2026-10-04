@@ -302,105 +302,6 @@ function craneSteps(): PresetStep[] {
   ];
 }
 
-// --- Animals on a 3:2 sheet ----------------------------------------------
-//
-// The sheet is 1.5 wide and 1 high, x along its length, the centre line at
-// y = 0.5. Each corner folds to the middle of its end, which points both
-// ends; folded in half along the centre line the body stands on its belly
-// edge with a wedge at each end: the front wedge becomes a head or ears,
-// the back wedge a tail, by inside reverse folds about a point on the spine.
-
-const LONG: Paper = { width: 1.5, height: 1, front: '#e8923a', back: '#7a3f12' };
-const SPINE_LEFT = vec(0, 0.5);
-const SPINE_RIGHT = vec(1.5, 0.5);
-/** The two halves of the front end square, in unfolded coordinates: each is one layer of the front wedge. */
-const FRONT_TOP: Polygon = [vec(0, 0.5), vec(0, 1), vec(0.5, 1), vec(0.5, 0.5)];
-const FRONT_BOTTOM: Polygon = [vec(0, 0), vec(0.5, 0), vec(0.5, 0.5), vec(0, 0.5)];
-
-/** A point `distance` from `origin` in the direction `angle` (radians, 0 along +x). */
-const along = (origin: Vec, angle: number, distance: number): Vec =>
-  vec(origin.x + Math.cos(angle) * distance, origin.y + Math.sin(angle) * distance);
-
-const pointedBody = (): PresetStep[] => [
-  crease(vec(0.75, 1), vec(0.75, 0)),
-  group(
-    'Corners to the middles',
-    bring(vec(0, 1), vec(0.5, 0.5)),
-    bring(vec(0, 0), vec(0.5, 0.5)),
-    bring(vec(1.5, 1), vec(1, 0.5)),
-    bring(vec(1.5, 0), vec(1, 0.5)),
-  ),
-  bring(vec(0.75, 1), vec(0.75, 0), { label: 'Fold in half' }),
-];
-
-/** Inside reverse fold of the wedge ending at `tip` about the spine point at `x`, to `angle`. */
-const wedge = (tip: Vec, x: number, angle: number, label: string): PresetStep =>
-  bring(tip, along(vec(x, 0.5), angle, Math.abs(tip.x - x)), {
-    placement: 'inside',
-    attached: true,
-    label,
-  });
-
-/** The view of a model standing on its belly with its head to the left. */
-const LONG_VIEW: ViewFrame = { front: vec(-1, 0), top: vec(0, 1) };
-
-function dogSteps(): PresetStep[] {
-  const headPivot = 0.38;
-  const headAngle = deg(230);
-  const headTip = along(vec(headPivot, 0.5), headAngle, headPivot);
-  return [
-    ...pointedBody(),
-    // Head: the front wedge swings down and forward.
-    wedge(SPINE_LEFT, headPivot, headAngle, 'Reverse fold head'),
-    // Muzzle: the tip of the head turns forward.
-    bring(headTip, along(along(vec(headPivot, 0.5), headAngle, 0.2), deg(180), headPivot - 0.2), {
-      placement: 'inside',
-      // Only the tip of the head, which hangs ahead of x = 0.3.
-      window: [vec(-1, -1), vec(0.3, -1), vec(0.3, 1), vec(-1, 1)],
-      label: 'Reverse fold muzzle',
-    }),
-    // Ears: the free corner of each layer at the back of the head folds out.
-    group(
-      'Ears out',
-      bring(vec(0.5, 0.5), vec(0.4, 0.4), { region: FRONT_TOP, angle: 110 }),
-      bring(vec(0.5, 0.5), vec(0.4, 0.4), {
-        region: FRONT_BOTTOM,
-        angle: 110,
-        placement: 'bottom',
-      }),
-    ),
-    // Tail: the back wedge swings up and back. (A reverse fold's crease is
-    // the perpendicular bisector of tip and target, so an end wedge can only
-    // swing well back before the crease would run into the body.)
-    wedge(SPINE_RIGHT, 1.2, deg(145), 'Reverse fold tail'),
-  ];
-}
-
-/** The back end pointed, the front left square: a body that sits up at the front. */
-const pointedBack = (): PresetStep[] => [
-  crease(vec(0.75, 1), vec(0.75, 0)),
-  group(
-    'Back corners to the middle',
-    bring(vec(1.5, 1), vec(1, 0.5)),
-    bring(vec(1.5, 0), vec(1, 0.5)),
-  ),
-  bring(vec(0.75, 1), vec(0.75, 0), { label: 'Fold in half' }),
-];
-
-function rabbitSteps(): PresetStep[] {
-  return [
-    ...pointedBack(),
-    // Ears: the pointed end swings up and leans back over the body.
-    wedge(SPINE_RIGHT, 1.2, deg(140), 'Reverse fold ears'),
-    // Rump: the square end's corners tuck in, top and bottom, so the back is rounded.
-    group(
-      'Round the rump',
-      bring(vec(0, 0.5), vec(0.35, 0.15), { placement: 'inside' }),
-      bring(vec(0, 0), vec(0.25, 0.25), { placement: 'inside' }),
-    ),
-  ];
-}
-
 // --- Jumping frog on a 1:2 sheet --------------------------------------------
 //
 // The sheet is 1 wide and 2 high, the head at the top. The top square
@@ -516,23 +417,6 @@ export const PRESETS: readonly Preset[] = [
     // points up the diagonal, its back towards the other diagonal.
     view: DIAGONAL_VIEW,
     steps: craneSteps(),
-  },
-  {
-    id: 'dog',
-    label: 'Dog',
-    title: 'Pointed body folded in half, head down with a muzzle and ears, tail up',
-    paper: LONG,
-    view: LONG_VIEW,
-    steps: dogSteps(),
-  },
-  {
-    id: 'rabbit',
-    label: 'Rabbit',
-    title:
-      'Body pointed at one end and folded in half, the point up as ears, the other end rounded',
-    paper: LONG,
-    view: { front: vec(1, 0), top: vec(0, 1) },
-    steps: rabbitSteps(),
   },
   {
     id: 'frog',
