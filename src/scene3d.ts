@@ -16,6 +16,7 @@ import {
   LineSegments,
   Mesh,
   MeshStandardMaterial,
+  OrthographicCamera,
   PCFSoftShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
@@ -48,9 +49,24 @@ export interface SceneStyle {
   readonly thickness: number;
   /** Whether to draw the ground shadow. */
   readonly shadow: boolean;
+  /** Perspective (near things larger) or orthographic (true lengths, as in a drawing). */
+  readonly perspective: boolean;
 }
 
-const FOV = 20;
+/** Vertical field of view of the perspective camera, in degrees. */
+export const FOV = 20;
+
+/**
+ * Where the camera stands and what it frames, for a model of the given reach
+ * at the given zoom: the distance from the centre along the line of sight,
+ * and the half-height of the picture at the centre. Both cameras use the
+ * same values, so switching projection keeps the model the same size.
+ */
+export function cameraFrame(reach: number, zoom: number): { distance: number; half: number } {
+  const z = Math.max(MIN_ORBIT_ZOOM, Math.min(MAX_ORBIT_ZOOM, zoom));
+  const half = (reach * 1.15) / z;
+  return { distance: half / Math.tan((FOV * Math.PI) / 360), half };
+}
 
 /** Per-face colour and a flat normal for every triangle; no index buffer. */
 export interface Built {
@@ -143,7 +159,9 @@ export function buildMesh(
 export class Scene3d {
   private readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
-  private readonly camera = new PerspectiveCamera(FOV, 1, 0.01, 100);
+  private readonly perspectiveCamera = new PerspectiveCamera(FOV, 1, 0.01, 100);
+  private readonly orthographicCamera = new OrthographicCamera(-1, 1, 1, -1, 0.01, 100);
+  private aspect = 1;
   private readonly key = new DirectionalLight(0xffffff, 1.6);
   private readonly mesh: Mesh;
   private readonly lines: LineSegments;
@@ -205,8 +223,16 @@ export class Scene3d {
     const width = Math.max(1, parent.clientWidth);
     const height = Math.max(1, parent.clientHeight);
     this.renderer.setSize(width, height, false);
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
+    this.aspect = width / height;
+    this.perspectiveCamera.aspect = this.aspect;
+    this.perspectiveCamera.updateProjectionMatrix();
+  }
+
+  /** The camera the last style asked for. */
+  private get camera(): PerspectiveCamera | OrthographicCamera {
+    return this.last?.style.perspective === false
+      ? this.orthographicCamera
+      : this.perspectiveCamera;
   }
 
   /** Rebuild the sheet from a solved scene and draw it from the orbit. */
@@ -264,19 +290,25 @@ export class Scene3d {
 
   private placeCamera(solved: SolvedScene, orbit: Orbit): void {
     const [right, up, toward] = viewRotation(orbit);
-    const zoom = Math.max(MIN_ORBIT_ZOOM, Math.min(MAX_ORBIT_ZOOM, orbit.zoom));
-    const distance = (solved.reach * 1.15) / Math.tan((FOV * Math.PI) / 360) / zoom;
+    const { distance, half } = cameraFrame(solved.reach, orbit.zoom);
     const c = solved.centre;
-    this.camera.position.set(
+    const camera = this.camera;
+    camera.position.set(
       c.x + toward.x * distance,
       c.y + toward.y * distance,
       c.z + toward.z * distance,
     );
-    this.camera.up.set(up.x, up.y, up.z);
-    this.camera.lookAt(c.x, c.y, c.z);
-    this.camera.near = Math.max(0.001, distance - solved.reach * 2.5);
-    this.camera.far = distance + solved.reach * 4;
-    this.camera.updateProjectionMatrix();
+    camera.up.set(up.x, up.y, up.z);
+    camera.lookAt(c.x, c.y, c.z);
+    camera.near = Math.max(0.001, distance - solved.reach * 2.5);
+    camera.far = distance + solved.reach * 4;
+    if (camera instanceof OrthographicCamera) {
+      camera.left = -half * this.aspect;
+      camera.right = half * this.aspect;
+      camera.top = half;
+      camera.bottom = -half;
+    }
+    camera.updateProjectionMatrix();
     // The key light sits up and to the viewer's left, slightly in front.
     const lightDir = unit(add(add(mul(toward, 0.8), mul(up, 1.0)), mul(right, -0.6)));
     const span = solved.reach * 3;

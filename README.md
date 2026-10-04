@@ -66,15 +66,17 @@ that model as a sheet of paper and draws it with WebGL.
   (three.js): the paper has a thickness (_Paper_ chips from 0 to 0.2 mm for a
   15 cm sheet, or any value typed), a soft key light, a ground shadow under
   the model (hidden in the top view) and crease lines only where the sheet
-  bends or ends. Drag to turn it any way round, scroll to zoom, and use
-  _Front view_, _Side view_, _Top view_ and _Isometric_ for the fixed views
-  of the model (a sequence can say how its model stands; the crane does);
-  _Reset_ returns to the default angle. Pointing at a facet lights it up in
-  every view. While a step plays, its creases swing from flat to folded in three
-  dimensions, and a step saved with a fold `angle` below 180° stays open at
-  that angle. Pointing at a facet in any view outlines the same facet in the
-  others, and pointing at the folded sheet outlines every facet under the
-  cursor.
+  bends or ends. _Perspective_ switches between a perspective picture and an
+  orthographic one, where the fixed views become true drawings with no
+  foreshortening. Drag to turn it any way round, scroll to zoom, and use
+  _Front_, _Side_, _Top_ and _Iso_ for the fixed front, side, top and
+  isometric views of the model (a sequence can say how its model stands; the
+  crane does); _Reset_ returns to the default angle. Pointing at a facet
+  lights it up in every view. While a step plays, its creases swing from flat
+  to folded in three dimensions, and a step saved with a fold `angle` below
+  180° stays open at that angle. Pointing at a facet in any view outlines the
+  same facet in the others, and pointing at the folded sheet outlines every
+  facet under the cursor.
 - **Light and dark themes.** The interface follows the operating system's
   colour scheme.
 - **An editable timeline.** Every clip can be renamed (double-click or F2),

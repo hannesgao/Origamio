@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { FoldHistory, createPaper } from '../src/paper';
 import { type StepAnimation, type Vec3, hingeOpening, hinges } from '../src/rigid';
-import { buildMesh } from '../src/scene3d';
+import { FOV, buildMesh, cameraFrame } from '../src/scene3d';
 import { buildStamp } from '../src/ui';
 import { solvedScene, viewRotation } from '../src/view3d';
 import { foldLeftRight, foldLeftRightAgain, foldTopBottom, run } from './presets';
@@ -92,6 +92,7 @@ describe('buildMesh', () => {
     ink: '#000000',
     thickness: 0.01,
     shadow: true,
+    perspective: true,
   };
 
   it('extrudes every facet into top, bottom and side triangles with its colours', () => {
@@ -111,6 +112,16 @@ describe('buildMesh', () => {
     const plain = buildMesh(scene, style, new Set());
     const lit = buildMesh(scene, style, new Set([0]));
     expect(lit.colours[0]).toBeGreaterThan(plain.colours[0] as number);
+  });
+});
+
+describe('cameraFrame', () => {
+  it('frames the same height in both projections and clamps the zoom', () => {
+    const { distance, half } = cameraFrame(2, 1);
+    expect(half).toBeCloseTo(2.3);
+    expect(distance * Math.tan((FOV * Math.PI) / 360)).toBeCloseTo(half);
+    expect(cameraFrame(2, 2).half).toBeCloseTo(1.15);
+    expect(cameraFrame(2, 100).half).toBe(cameraFrame(2, 4).half);
   });
 });
 
