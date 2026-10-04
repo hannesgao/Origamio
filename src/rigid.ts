@@ -1,0 +1,279 @@
+/**
+ * Rigid origami on top of the flat-fold model: the facets are rigid panels
+ * joined along creases, each crease has a fold angle, and the position of
+ * every panel in space follows from walking the facet graph from a root.
+ *
+ * A flat-folded state is the special case where every crease is folded by
+ * ±π (or by 0, for a crease that was folded and unfolded again). Opening the
+ * creases a little from there shows the sheet as folded paper rather than as
+ * a stack of coincident layers; interpolating a step's new creases from 0 to
+ * ±π animates that step.
+ */
+import {
+  type Mat,
+  type Polygon,
+  type Vec,
+  EPS,
+  apply,
+  applyToLine,
+  centroid,
+  compose,
+  cross,
+  determinant,
+  distance,
+  dot,
+  line,
+  reflection,
+  sub,
+} from './geometry';
+import { type Facet, type PaperState, isFlipped } from './paper';
+
+export interface Vec3 {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+}
+
+/** A crease edge shared by two facets, in unfolded-sheet coordinates. */
+export interface Hinge {
+  readonly a: Vec;
+  readonly b: Vec;
+  /** Facet ids on either side of the crease. */
+  readonly p: number;
+  readonly q: number;
+  /**
+   * Fold angle in the flat-folded state: +π when `q` lies toward the front
+   * face of `p`, −π when it lies behind it, 0 when the two are coplanar
+   * (a crease that was folded and unfolded again).
+   */
+  readonly angle: number;
+}
+
+/** A rigid transform in space: `rotate` is a row-major 3×3 rotation, then `move`. */
+export interface Pose {
+  readonly rotate: readonly [Vec3, Vec3, Vec3];
+  readonly move: Vec3;
+}
+
+/** A facet placed in space. */
+export interface Panel {
+  readonly facet: Facet;
+  readonly points: readonly Vec3[];
+  /** Unit normal of the facet's front face. */
+  readonly normal: Vec3;
+}
+
+export const applyPose = (pose: Pose, p: Vec3): Vec3 => {
+  const [r0, r1, r2] = pose.rotate;
+  return {
+    x: r0.x * p.x + r0.y * p.y + r0.z * p.z + pose.move.x,
+    y: r1.x * p.x + r1.y * p.y + r1.z * p.z + pose.move.y,
+    z: r2.x * p.x + r2.y * p.y + r2.z * p.z + pose.move.z,
+  };
+};
+
+const rotateVec = (pose: Pose, v: Vec3): Vec3 => {
+  const [r0, r1, r2] = pose.rotate;
+  return {
+    x: r0.x * v.x + r0.y * v.y + r0.z * v.z,
+    y: r1.x * v.x + r1.y * v.y + r1.z * v.z,
+    z: r2.x * v.x + r2.y * v.y + r2.z * v.z,
+  };
+};
+
+/** `composePose(outer, inner)` applies `inner` first. */
+export function composePose(outer: Pose, inner: Pose): Pose {
+  const [i0, i1, i2] = inner.rotate;
+  // Columns of the inner rotation, each rotated by the outer one.
+  const c0 = rotateVec(outer, { x: i0.x, y: i1.x, z: i2.x });
+  const c1 = rotateVec(outer, { x: i0.y, y: i1.y, z: i2.y });
+  const c2 = rotateVec(outer, { x: i0.z, y: i1.z, z: i2.z });
+  const rotate: [Vec3, Vec3, Vec3] = [
+    { x: c0.x, y: c1.x, z: c2.x },
+    { x: c0.y, y: c1.y, z: c2.y },
+    { x: c0.z, y: c1.z, z: c2.z },
+  ];
+  return { rotate, move: applyPose(outer, inner.move) };
+}
+
+/** Rotation by `angle` about the axis through `a` towards `b` lying in the plane z = 0 (right-hand rule). */
+export function rotationAbout(a: Vec, b: Vec, angle: number): Pose {
+  const len = distance(a, b);
+  const ux = (b.x - a.x) / len;
+  const uy = (b.y - a.y) / len;
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const t = 1 - c;
+  // Rodrigues' formula for a unit axis (ux, uy, 0).
+  const rotate: [Vec3, Vec3, Vec3] = [
+    { x: c + ux * ux * t, y: ux * uy * t, z: uy * s },
+    { x: ux * uy * t, y: c + uy * uy * t, z: -ux * s },
+    { x: -uy * s, y: ux * s, z: c },
+  ];
+  // Rotate about a point of the axis rather than the origin.
+  const origin: Vec3 = { x: a.x, y: a.y, z: 0 };
+  const turned = applyPose({ rotate, move: { x: 0, y: 0, z: 0 } }, origin);
+  return { rotate, move: sub3(origin, turned) };
+}
+
+const sub3 = (p: Vec3, q: Vec3): Vec3 => ({ x: p.x - q.x, y: p.y - q.y, z: p.z - q.z });
+
+/**
+ * A flat transform of the sheet as a pose in space: a reflection is a half
+ * turn about its line, so z flips with the determinant and the result is
+ * always a proper rotation.
+ */
+export function embedFlat(m: Mat): Pose {
+  const det = determinant(m) < 0 ? -1 : 1;
+  return {
+    rotate: [
+      { x: m.a, y: m.c, z: 0 },
+      { x: m.b, y: m.d, z: 0 },
+      { x: 0, y: 0, z: det },
+    ],
+    move: { x: m.e, y: m.f, z: 0 },
+  };
+}
+
+/** The part of segment ab that segment cd covers, if the two are collinear and overlap. */
+function sharedSegment(a: Vec, b: Vec, c: Vec, d: Vec, tolerance: number): [Vec, Vec] | null {
+  const ab = sub(b, a);
+  const len = Math.hypot(ab.x, ab.y);
+  if (len < tolerance) return null;
+  const dir = { x: ab.x / len, y: ab.y / len };
+  if (Math.abs(cross(dir, sub(c, a))) > tolerance || Math.abs(cross(dir, sub(d, a))) > tolerance) {
+    return null;
+  }
+  const tc = dot(dir, sub(c, a));
+  const td = dot(dir, sub(d, a));
+  const lo = Math.max(0, Math.min(tc, td));
+  const hi = Math.min(len, Math.max(tc, td));
+  if (hi - lo < tolerance) return null;
+  return [
+    { x: a.x + dir.x * lo, y: a.y + dir.y * lo },
+    { x: a.x + dir.x * hi, y: a.y + dir.y * hi },
+  ];
+}
+
+/** Whether two flat transforms move the sheet the same way. */
+const sameTransform = (m: Mat, n: Mat, tolerance: number): boolean =>
+  distance(apply(m, { x: 0.37, y: 0.61 }), apply(n, { x: 0.37, y: 0.61 })) < tolerance &&
+  distance(apply(m, { x: 0.83, y: 0.29 }), apply(n, { x: 0.83, y: 0.29 })) < tolerance;
+
+/**
+ * The creases between neighbouring facets with their fold angles in the
+ * current flat-folded state. Facets are neighbours when their unfolded
+ * polygons share part of an edge and the fold model kept them attached:
+ * one lies where the other is, or where its reflection across the shared
+ * edge is. A fold limited to a region can move a facet away from a
+ * neighbour it is attached to (real paper would tear there); such pairs are
+ * no hinge, and the panels on either side are placed by the flat model.
+ */
+export function hinges(state: PaperState): Hinge[] {
+  const tolerance = EPS * 1e3 * state.size;
+  const result: Hinge[] = [];
+  const facets = state.facets;
+  for (let i = 0; i < facets.length; i++) {
+    const p = facets[i] as Facet;
+    for (let j = i + 1; j < facets.length; j++) {
+      const q = facets[j] as Facet;
+      const shared = sharedEdge(p.poly, q.poly, tolerance);
+      if (!shared) continue;
+      let angle: number;
+      if (sameTransform(p.transform, q.transform, tolerance)) {
+        angle = 0;
+      } else {
+        const folded = compose(
+          reflection(applyToLine(p.transform, line(shared[0], shared[1]))),
+          p.transform,
+        );
+        if (!sameTransform(folded, q.transform, tolerance)) continue;
+        angle = q.z > p.z === !isFlipped(p) ? Math.PI : -Math.PI;
+      }
+      result.push({ a: shared[0], b: shared[1], p: p.id, q: q.id, angle });
+    }
+  }
+  return result;
+}
+
+function sharedEdge(p: Polygon, q: Polygon, tolerance: number): [Vec, Vec] | null {
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i] as Vec;
+    const b = p[(i + 1) % p.length] as Vec;
+    for (let j = 0; j < q.length; j++) {
+      const c = q[j] as Vec;
+      const d = q[(j + 1) % q.length] as Vec;
+      const s = sharedSegment(a, b, c, d, tolerance);
+      if (s) return s;
+    }
+  }
+  return null;
+}
+
+export interface PoseOptions {
+  /**
+   * Fold angle to use for each hinge; defaults to the hinge's flat-folded
+   * angle. Lets a caller open creases or animate them.
+   */
+  readonly angleOf?: (hinge: Hinge) => number;
+  /** Facet to place first; defaults to the lowest layer with the largest area. */
+  readonly rootId?: number;
+}
+
+/**
+ * Every facet placed in space by walking the hinges from the root. With the
+ * flat-folded angles this reproduces the folded sheet (z = 0 everywhere);
+ * with other angles the panels swing about their creases.
+ */
+export function placePanels(
+  state: PaperState,
+  all: readonly Hinge[],
+  options: PoseOptions = {},
+): Panel[] {
+  const byId = new Map(state.facets.map((f) => [f.id, f]));
+  if (byId.size === 0) return [];
+  const chosen = options.rootId !== undefined ? byId.get(options.rootId) : undefined;
+  const root =
+    chosen ??
+    [...state.facets].sort((f, g) => f.z - g.z || polygonArea(g.poly) - polygonArea(f.poly))[0];
+  if (!root) return [];
+  const angleOf = options.angleOf ?? ((h: Hinge): number => h.angle);
+  // The root sits where the flat model puts it, so the two agree.
+  const poses = new Map<number, Pose>([[root.id, embedFlat(root.transform)]]);
+  const queue = [root.id];
+  while (queue.length > 0) {
+    const id = queue.shift() as number;
+    const pose = poses.get(id) as Pose;
+    for (const h of all) {
+      const other = h.p === id ? h.q : h.q === id ? h.p : null;
+      if (other === null || poses.has(other)) continue;
+      const neighbour = byId.get(other);
+      if (!neighbour) continue;
+      // Orient the axis so that the neighbour lies on its left in the sheet:
+      // a positive angle then lifts it toward the front of this facet.
+      const c = centroid(neighbour.poly);
+      const [a, b] = cross(sub(h.b, h.a), sub(c, h.a)) >= 0 ? [h.a, h.b] : [h.b, h.a];
+      const angle = h.p === id ? angleOf(h) : -angleOf(h);
+      poses.set(other, composePose(pose, rotationAbout(a, b, angle)));
+      queue.push(other);
+    }
+  }
+  return state.facets.map((facet) => {
+    const pose = poses.get(facet.id) ?? embedFlat(facet.transform);
+    return {
+      facet,
+      points: facet.poly.map((p) => applyPose(pose, { x: p.x, y: p.y, z: 0 })),
+      normal: rotateVec(pose, { x: 0, y: 0, z: 1 }),
+    };
+  });
+}
+
+const polygonArea = (poly: Polygon): number => {
+  let sum = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i] as Vec;
+    const q = poly[(i + 1) % poly.length] as Vec;
+    sum += p.x * q.y - q.x * p.y;
+  }
+  return Math.abs(sum) / 2;
+};
