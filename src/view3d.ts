@@ -62,14 +62,17 @@ const norm3 = (a: Vec3): Vec3 => {
   return { x: a.x / l, y: a.y / l, z: a.z / l };
 };
 
-/** Point `p` of the flat sheet at height `h`, rotated by `angle` about `axis` (which lies at z = 0). */
-function liftAbout(axis: Line, p: Vec, h: number, angle: number): Vec3 {
+/**
+ * Point `p` of the flat sheet at height `h`, rotated by `angle` about `axis`
+ * (which lies at z = 0). `n` is the in-sheet unit normal pointing to the
+ * flap's side, so a positive angle lifts the flap off the table.
+ */
+function liftAbout(axis: Line, n: Vec, p: Vec, h: number, angle: number): Vec3 {
   const foot = projectOnto(axis, p);
-  const s = signedDistance(axis, p);
-  const n = lineNormal(axis);
+  const s = signedDistance(axis, p) * (n.x * lineNormal(axis).x + n.y * lineNormal(axis).y);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  // In the plane spanned by the in-sheet normal n and the vertical: (s, h) rotates by angle.
+  // In the plane spanned by n and the vertical: (s, h) rotates by angle.
   const s2 = s * cos - h * sin;
   const z2 = s * sin + h * cos;
   return { x: foot.x + n.x * s2, y: foot.y + n.y * s2, z: z2 };
@@ -78,8 +81,22 @@ function liftAbout(axis: Line, p: Vec, h: number, angle: number): Vec3 {
 /** Every facet as a polygon in space: layers stacked by `thickness`, the moving flap mid-flip. */
 function solids(state: PaperState, thickness: number, animation?: FoldAnimation): Solid[] {
   const animating = animation !== undefined && animation.progress < 1;
-  const angle = animating ? animation.progress * Math.PI : 0;
+  // Negative angles swing the flap down under the sheet.
+  const angle = animating ? animation.progress * Math.PI * (animation.under ? -1 : 1) : 0;
   const undo = animating ? reflection(animation.line) : null;
+  // The flap's side of the fold line, so that it lifts rather than dives.
+  let flapNormal: Vec = { x: 0, y: 0 };
+  if (animating && undo && animation) {
+    const n = lineNormal(animation.line);
+    let sum = 0;
+    for (const facet of state.facets) {
+      if (!animation.movedIds.has(facet.id)) continue;
+      for (const p of applyToPolygon(undo, currentPolygon(facet))) {
+        sum += signedDistance(animation.line, p);
+      }
+    }
+    flapNormal = sum < 0 ? { x: -n.x, y: -n.y } : n;
+  }
   const result: Solid[] = [];
   for (const facet of state.facets) {
     const h = facet.z * thickness;
@@ -89,12 +106,11 @@ function solids(state: PaperState, thickness: number, animation?: FoldAnimation)
       // position about the fold line instead, by the current angle.
       const before: Polygon = applyToPolygon(undo, currentPolygon(facet));
       const axis = animation.line;
-      const points = before.map((p) => liftAbout(axis, p, h, angle));
-      const n = lineNormal(axis);
-      // The +z face of a flap rotated by `angle` tilts toward -n.
+      const points = before.map((p) => liftAbout(axis, flapNormal, p, h, angle));
+      // The +z face of a flap rotated by `angle` tilts away from the flap's side.
       const normal: Vec3 = {
-        x: -n.x * Math.sin(angle),
-        y: -n.y * Math.sin(angle),
+        x: -flapNormal.x * Math.sin(angle),
+        y: -flapNormal.y * Math.sin(angle),
         z: Math.cos(angle),
       };
       // The flap keeps its own face up until it has turned past the vertical.
@@ -102,7 +118,7 @@ function solids(state: PaperState, thickness: number, animation?: FoldAnimation)
         facet,
         points,
         normal,
-        flipped: isFlipped(facet) !== angle > Math.PI / 2,
+        flipped: isFlipped(facet) !== Math.abs(angle) > Math.PI / 2,
         moving,
       });
     } else {

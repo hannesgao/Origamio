@@ -56,3 +56,24 @@ describe('render3d', () => {
     expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(0.4);
   });
 });
+
+describe('a fold made on the back', () => {
+  it('swings the flap under the sheet', () => {
+    const history = new FoldHistory(createPaper());
+    const step = foldLeftRight();
+    const result = history.fold(step.line, step.side, step.layers);
+    if (!result) throw new Error('fold moved nothing');
+    const base = { movedIds: new Set(result.movedIds), line: result.line, progress: 0.5 };
+    const edgeOn = { orbit: { yaw: 0, pitch: Math.PI / 2, zoom: 1 }, thickness: 0 };
+    const over = polygons(render3d(history.state, { ...edgeOn, animation: base }).markup);
+    const under = polygons(
+      render3d(history.state, { ...edgeOn, animation: { ...base, under: true } }).markup,
+    );
+    const top = (markup: string): number =>
+      Math.min(...[...markup.matchAll(/,(-?[\d.]+)/g)].map((m) => Number(m[1])));
+    // Screen y grows downward: the flap over the sheet reaches a smaller y than the one under it.
+    expect(top(over.find((p) => p.includes('facet-moving')) ?? '')).toBeLessThan(
+      top(under.find((p) => p.includes('facet-moving')) ?? ''),
+    );
+  });
+});

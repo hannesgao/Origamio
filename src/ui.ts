@@ -1603,12 +1603,14 @@ export function createApp(root: HTMLElement): App {
   const animate = (result: FoldResult): Promise<void> =>
     new Promise((resolve) => {
       const movedIds = new Set(result.movedIds);
+      // The step just applied sits before the playhead; its placement says which way the flap swings.
+      const under = timeline.steps[timeline.position - 1]?.options?.placement === 'bottom';
       const start = performance.now();
       const tick = (now: number): void => {
         const progress = Math.min(1, ((now - start) * speed) / ANIMATION_MS);
         phase = {
           kind: 'animating',
-          animation: { movedIds, line: result.line, progress },
+          animation: { movedIds, line: result.line, progress, ...(under ? { under } : {}) },
           start,
         };
         render();
