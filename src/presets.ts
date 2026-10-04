@@ -252,12 +252,13 @@ function craneSteps(): PresetStep[] {
       attached: true,
       label: 'Reverse fold head',
     }),
-    // Wings: the wing corner swings from the centre line down, and stays spread
-    // at 150° so the crane stands in the 3D view.
+    // Wings: the wing corner swings from the centre line down, and the crease
+    // stays open at 100°, so in the 3D view the wings stand nearly square to
+    // the body like a finished crane's.
     bring(A, alongUv(wingPivot, deg(-90), 0.5), {
       window: wingWindow,
       attached: true,
-      angle: 150,
+      angle: 100,
       label: 'Spread wings',
     }),
   ];

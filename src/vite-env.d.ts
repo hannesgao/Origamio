@@ -2,3 +2,5 @@
 
 /** The package version, injected at build time by vite.config.ts. */
 declare const __APP_VERSION__: string;
+/** ISO timestamp of the build. */
+declare const __BUILD_TIME__: string;

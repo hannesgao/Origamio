@@ -49,15 +49,19 @@ reflections and convex polygon clipping.
   into the bird base, narrow both points, close the model along its centre
   line, reverse fold the neck, the tail and the head, and spread the wings,
   which the last step keeps open at 150° so the crane stands up in the 3D
-  view. Every step leaves the sheet in a state real paper can take: the
-  tests check that no neighbouring facets are ever pulled apart.
+  view (the last step keeps the wing crease open at 100°). Every step leaves
+  the sheet in a state real paper can take: the tests check that no
+  neighbouring facets are ever pulled apart.
 - **3D view with real creases.** A third card shows the sheet as rigid panels
   joined at their creases: every crease is opened a few degrees from flat (the
   _Open_ chips offer 0° to 30°, and the box beside them takes any value up to
-  90°), so the paper reads as folded rather than as a stack of layers, lit from
-  one side with the front and back colours on the right faces. Drag to turn it
-  any way round, including from underneath, scroll to zoom, double-click or
-  _Reset view_ to go back. While a step plays, its creases swing from flat to folded in three
+  90°); a crease on the outside of the stack opens by that much and one buried
+  under many layers barely at all, so the paper reads as pressed rather than
+  fanned out. It is lit from one side with the front and back colours on the
+  right faces. Drag to turn it any way round, including from underneath,
+  scroll to zoom, and use the _Front_, _Side_ and _Top_ buttons for fixed
+  views of a model whose spine runs along the diagonal (the crane stands
+  upright in them); _Reset_ returns to the default angle. While a step plays, its creases swing from flat to folded in three
   dimensions, and a step saved with a fold `angle` below 180° stays open at
   that angle. Pointing at a facet in any view outlines the same facet in the
   others, and pointing at the folded sheet outlines every facet under the
@@ -111,7 +115,8 @@ import, export, new) and Shortcuts panels, the workspace with the three view
 cards and the timeline card under them, and a status bar along the bottom
 that shows the sheet with its two colours, the position on the timeline and
 the latest message (what was loaded, what a fold did, why a file was
-rejected), with the credits and version on its right. Every view card has
+rejected), with the credits, the version and the build time (German time, to
+the minute, so a deployment can be told apart) on its right. Every view card has
 the same anatomy: a head with the title and one row of tools, the canvas, and
 two lines underneath (status and statistics for the folded sheet; legend and
 crease count for the crease pattern; a note and the gap slider for the layer
