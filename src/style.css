@@ -688,7 +688,7 @@ kbd {
 
 .views {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space);
   align-items: start;
 }
@@ -992,7 +992,11 @@ kbd {
 
 /* One secondary view at a time, chosen with the tab strip in its head. */
 #app[data-layout='folded-large'][data-secondary='unfolded'] .layers-card,
-#app[data-layout='folded-large'][data-secondary='layers'] .unfolded-card {
+#app[data-layout='folded-large'][data-secondary='unfolded'] .solid-card,
+#app[data-layout='folded-large'][data-secondary='layers'] .unfolded-card,
+#app[data-layout='folded-large'][data-secondary='layers'] .solid-card,
+#app[data-layout='folded-large'][data-secondary='solid'] .unfolded-card,
+#app[data-layout='folded-large'][data-secondary='solid'] .layers-card {
   display: none;
 }
 
@@ -1049,7 +1053,8 @@ kbd {
 
 #app[data-layout='focus'][data-tab='folded'] .folded-card,
 #app[data-layout='focus'][data-tab='unfolded'] .unfolded-card,
-#app[data-layout='focus'][data-tab='layers'] .layers-card {
+#app[data-layout='focus'][data-tab='layers'] .layers-card,
+#app[data-layout='focus'][data-tab='solid'] .solid-card {
   display: block;
 }
 
@@ -1531,6 +1536,28 @@ a.credit:hover {
   pointer-events: none;
 }
 
+/* The 3D view: facets carry their own shaded fill; edges are drawn in ink. */
+.solid-view {
+  cursor: grab;
+  touch-action: none;
+}
+
+.solid-view.is-turning {
+  cursor: grabbing;
+}
+
+.solid-facet {
+  stroke: rgba(42, 33, 26, 0.55);
+  stroke-width: 1px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.solid-facet.facet-hit {
+  stroke: var(--accent);
+  stroke-width: 2px;
+}
+
 .snap-active {
   fill: none;
   stroke: var(--accent);
@@ -1581,14 +1608,25 @@ a.credit:hover {
     width: 100%;
   }
 
-  #app[data-tab='folded'] .folded-card,
-  #app[data-tab='unfolded'] .unfolded-card,
-  #app[data-tab='layers'] .layers-card {
+  /* Stronger than the folded-large rules that hide the other secondary cards. */
+  #app[data-layout][data-tab='folded'] .folded-card,
+  #app[data-layout][data-tab='unfolded'] .unfolded-card,
+  #app[data-layout][data-tab='layers'] .layers-card,
+  #app[data-layout][data-tab='solid'] .solid-card {
     display: block;
   }
 
   #app[data-layout] .layers-card .view-frame-wide {
     aspect-ratio: 2 / 1;
+  }
+
+  /* One view at a time already; the in-card tab strip would only repeat the tabs above. */
+  #app[data-layout] .secondary-tabs {
+    display: none;
+  }
+
+  #app[data-layout] .card-tools .caption {
+    display: inline;
   }
 
   .layout-switch .btn-label {

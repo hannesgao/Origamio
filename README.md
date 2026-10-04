@@ -51,8 +51,13 @@ reflections and convex polygon clipping.
 - **Layer view.** A third card shows the folded stack obliquely with every
   layer lifted a little, so the stacking order is visible at a glance; a slider
   sets the gap. While a flap is folding it rises out of the plane. Pointing at
-  a facet in any view outlines the same facet in the other two, and pointing
+  a facet in any view outlines the same facet in the others, and pointing
   at the folded sheet outlines every facet under the cursor.
+- **3D view.** A fourth card shows the stack in space: each layer is a thin
+  sheet at its own height, lit from one side, with the front and back colours
+  on the right faces. Drag to turn it, scroll to zoom, double-click or _Reset
+  view_ to go back; a slider sets the thickness of a layer. While a step
+  plays, the flap swings up around the fold line in three dimensions.
 - **Light and dark themes.** The interface follows the operating system's
   colour scheme.
 - **An editable timeline.** Every clip can be renamed (double-click or F2),
@@ -80,12 +85,12 @@ reflections and convex polygon clipping.
   format.
 - **Three layouts.** The header switches between _Folded large_ (the
   default: the folded view fills most of the workspace and a second card
-  beside it shows either the crease pattern or the layers, chosen with a tab
-  strip in its head), _Side by side_ (all three views in a row) and _Focus_
-  (one view at a time, chosen with a tab strip over the workspace). The folded
-  canvas is as big as its card allows, whatever the window's aspect; the other
-  two canvases stay square. All of these choices are remembered in the
-  browser.
+  beside it shows the crease pattern, the layers or the 3D view, chosen with
+  a tab strip in its head), _Side by side_ (all four views in a row) and
+  _Focus_ (one view at a time, chosen with a tab strip over the workspace).
+  The folded canvas is as big as its card allows, whatever the window's
+  aspect; the other canvases stay square. All of these choices are remembered
+  in the browser.
 - **Made for wide screens.** Header, rail and status bar are fixed and the views
   are sized to the remaining space, so nothing scrolls on a 16:9 display.
   Windows narrower than 1340 px show one view at a time behind Folded /
@@ -98,7 +103,7 @@ The page is a workbench that fills the window and never scrolls as a whole: a
 fixed header with the sequence name (edit it in place) and the layout switch,
 an icon rail on the left whose buttons open the Library (presets, in groups),
 Paper (size and colours), Step (the selected step's parameters), File (name,
-import, export, new) and Shortcuts panels, the workspace with the three view
+import, export, new) and Shortcuts panels, the workspace with the four view
 cards and the timeline card under them, and a status bar along the bottom
 that shows the sheet with its two colours, the position on the timeline and
 the latest message (what was loaded, what a fold did, why a file was
@@ -158,9 +163,11 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    imports such a file onto a fresh sheet and clears everything with _New_.
 8. **Read the stack.** The Layers card draws the folded sheet from the front
    with each layer lifted by the _Gap_ slider; set it to zero for a plain side
-   view. Move the pointer over a facet in the Unfolded or Layers view to see
-   where it sits in the folded sheet, or over the folded sheet to see all
-   facets stacked under the cursor.
+   view. The 3D card shows the same stack in space: drag to turn it, scroll to
+   zoom, and set the _Thickness_ of a layer with its slider. Move the pointer
+   over a facet in the Unfolded, Layers or 3D view to see where it sits in the
+   folded sheet, or over the folded sheet to see all facets stacked under the
+   cursor.
 9. **Look closer.** The folded sheet gets small quickly, so the Folded card has
    its own navigation: _Fit_ frames the folded sheet, _Full_ shows the whole
    square again, the mouse wheel zooms around the pointer, and the _Move_ tool
@@ -349,14 +356,16 @@ rewrites them and `npm test` fails when they are out of date.
 | `src/main.ts`     | Entry point: loads the stylesheet and creates the app                            |
 | `src/geometry.ts` | Vectors, lines, affine transforms, reflections, convex clipping and intersection |
 | `src/paper.ts`    | Facet model, `fold`, layer selection, statistics, undo history                   |
-| `src/render.ts`   | SVG markup for the three views, the fold animation and the folded-view camera    |
+| `src/render.ts`   | SVG markup for the flat views, the fold animation and the folded-view camera     |
+| `src/view3d.ts`   | The 3D view: layers in space, the flap mid-flip, orbit, lighting, depth order    |
+| `src/snap.ts`     | Snap targets of the folded sheet: corners, crossings, midpoints, edges           |
 | `src/sequence.ts` | The JSON sequence format: parse, validate, serialise                             |
 | `src/presets.ts`  | Geometry of the shipped sequences, including the crane; source of `presets/`     |
 | `src/library.ts`  | Loads `presets/*.json` for the app                                               |
 | `src/ui.ts`       | Page layout, toolbar, pointer interaction, animation loop, shortcuts             |
 | `src/style.css`   | Theme tokens (light and dark), layout, controls and SVG styling                  |
 | `presets/`        | The shipped sequences as JSON, generated from `src/presets.ts`                   |
-| `tests/`          | Vitest specs for geometry, paper, camera, layer view, sequences and the presets  |
+| `tests/`          | Vitest specs for geometry, paper, camera, views, snapping, sequences and presets |
 
 ## Contributing
 
