@@ -12,10 +12,22 @@ export interface Orbit {
 }
 
 export const DEFAULT_ORBIT: Orbit = { yaw: -0.55, pitch: 0.95, zoom: 1 };
-export const MIN_PITCH = 0;
-export const MAX_PITCH = Math.PI / 2;
 export const MIN_ORBIT_ZOOM = 0.5;
 export const MAX_ORBIT_ZOOM = 4;
+
+/** Crease openings offered as presets, in degrees; any other value can be typed. */
+export const OPENING_STEPS: readonly number[] = [0, 3, 6, 10, 15, 30];
+export const DEFAULT_OPENING = 6;
+export const MAX_OPENING = 90;
+
+/** An angle brought back into (-π, π]. */
+export const wrapAngle = (a: number): number => {
+  const twoPi = 2 * Math.PI;
+  let r = a % twoPi;
+  if (r <= -Math.PI) r += twoPi;
+  if (r > Math.PI) r -= twoPi;
+  return r;
+};
 
 export interface View3dOptions {
   readonly orbit: Orbit;
