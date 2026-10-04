@@ -36,6 +36,20 @@ describe('the solver service', () => {
   });
 });
 
+describe('the solver keeps its anchor', () => {
+  it('holds the same facet still across sheets as long as it exists and stays put', () => {
+    const core = new SolveCore();
+    const half = fold(createPaper(), { a: vec(0.5, 0), b: vec(0.5, 1) }, 1).state;
+    const first = core.solve({ stateId: 'a', state: half, opening: 0.1, thickness: 0 });
+    expect(first.anchorId).toBeDefined();
+    const quarter = fold(half, { a: vec(0.25, 0), b: vec(0.25, 1) }, -1);
+    const second = core.solve({ stateId: 'b', state: quarter.state, opening: 0.1, thickness: 0 });
+    const survives = quarter.state.facets.some((f) => f.id === first.anchorId);
+    if (survives) expect(second.anchorId).toBe(first.anchorId);
+    else expect(second.anchorId).not.toBe(first.anchorId);
+  });
+});
+
 describe('opening across a step', () => {
   it('starts from the cover a crease had before the step', () => {
     const half = fold(createPaper(), { a: vec(0.5, 0), b: vec(0.5, 1) }, 1).state;

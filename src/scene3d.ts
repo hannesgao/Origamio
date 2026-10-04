@@ -29,6 +29,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 
+import { isFlipped } from './paper';
 import { type Vec3 } from './rigid';
 import { type ViewFrame } from './sequence';
 import {
@@ -60,6 +61,14 @@ export const FOV = 20;
 const LINE_WIDTH_PX = 1.4;
 /** How much darker a corner buried in the stack is drawn than one in the open. */
 const BURIED_DARKENING = 0.38;
+/**
+ * Depth pushed per layer of rank, in clip space, so that layers the solver
+ * leaves almost coincident are drawn in the order of the flat model instead
+ * of fighting for the same depth: the layer nearer the viewer wins.
+ */
+const RANK_BIAS = 1.5e-4;
+/** How far the camera moves towards its target framing on each update (1 is at once). */
+const CAMERA_EASE = 0.3;
 
 /**
  * Where the camera stands and what it frames, for a model of the given reach
@@ -83,6 +92,9 @@ export interface Built {
   readonly positions: Float32Array;
   readonly normals: Float32Array;
   readonly colours: Float32Array;
+  /** Per vertex: the facet's rank in its stack, and the stack's up direction. */
+  readonly ranks: Float32Array;
+  readonly ups: Float32Array;
   /** Facet id of every triangle, by triangle index. */
   readonly triangleFacet: number[];
 }
@@ -112,7 +124,11 @@ export function buildMesh(
   const positions: number[] = [];
   const normals: number[] = [];
   const colours: number[] = [];
+  const ranks: number[] = [];
+  const ups: number[] = [];
   const triangleFacet: number[] = [];
+  let rank = 0;
+  let stackUpDir: Vec3 = { x: 0, y: 0, z: 1 };
   const t = style.thickness / 2;
   // Each corner carries its own colour: the base darkened by how buried it is.
   const shaded = (colour: Color, shade: number): Color =>
@@ -130,11 +146,17 @@ export function buildMesh(
     positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
     normals.push(na.x, na.y, na.z, nb.x, nb.y, nb.z, nc.x, nc.y, nc.z);
     colours.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
+    ranks.push(rank, rank, rank);
+    const u = stackUpDir;
+    ups.push(u.x, u.y, u.z, u.x, u.y, u.z, u.x, u.y, u.z);
     triangleFacet.push(facet);
   };
   for (const panel of scene.panels) {
     const id = panel.facet.id;
     const n = unit(panel.normal);
+    rank = scene.rank[id] ?? 0;
+    // The stack grows along the sheet's front normal, or against it for a flipped facet.
+    stackUpDir = isFlipped(panel.facet) ? mul(n, -1) : n;
     // A facet may bend a little: each corner takes the normal of its own
     // corner triangle, and the ring blends towards the facet's mean.
     const count0 = panel.points.length;
@@ -240,6 +262,8 @@ export function buildMesh(
     positions: new Float32Array(positions),
     normals: new Float32Array(normals),
     colours: new Float32Array(colours),
+    ranks: new Float32Array(ranks),
+    ups: new Float32Array(ups),
     triangleFacet,
   };
 }
@@ -334,6 +358,10 @@ export class Scene3d implements SheetScene {
     orbit: Orbit;
     frame: ViewFrame | undefined;
   } | null = null;
+  /** What the camera frames: the last settled pose, held still while a step plays. */
+  private steady: { centre: Vec3; reach: number } | null = null;
+  private easing = 0;
+  private groundPlaced = false;
   readonly canvas: HTMLCanvasElement;
 
   constructor(container: HTMLElement) {
@@ -374,6 +402,24 @@ export class Scene3d implements SheetScene {
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
     });
+    // Layers nearly coincident are ordered by their rank in the stack: the
+    // vertex shader pushes each vertex away from the viewer by its rank when
+    // the stack's top faces away, and towards the viewer when it faces them.
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms['rankBias'] = { value: RANK_BIAS };
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nattribute float stackRank;\nattribute vec3 stackUp;\nuniform float rankBias;',
+        )
+        .replace(
+          '#include <project_vertex>',
+          '#include <project_vertex>\n' +
+            'vec3 upView = normalize(normalMatrix * stackUp);\n' +
+            'float facing = dot(upView, normalize(-mvPosition.xyz));\n' +
+            'gl_Position.z += (facing > 0.0 ? -1.0 : 1.0) * stackRank * rankBias * gl_Position.w;',
+        );
+    };
     this.mesh = new Mesh(new BufferGeometry(), material);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
@@ -430,6 +476,8 @@ export class Scene3d implements SheetScene {
     geometry.setAttribute('position', new BufferAttribute(built.positions, 3));
     geometry.setAttribute('normal', new BufferAttribute(built.normals, 3));
     geometry.setAttribute('color', new BufferAttribute(built.colours, 3));
+    geometry.setAttribute('stackRank', new BufferAttribute(built.ranks, 1));
+    geometry.setAttribute('stackUp', new BufferAttribute(built.ups, 3));
     this.mesh.geometry.dispose();
     this.mesh.geometry = geometry;
 
@@ -478,8 +526,42 @@ export class Scene3d implements SheetScene {
 
   private placeCamera(solved: SolvedScene, orbit: Orbit): void {
     const [right, up, toward] = viewRotation(orbit);
-    const { distance, half } = cameraFrame(solved.reach, orbit.zoom, this.aspect);
-    const c = solved.centre;
+    // The camera frames the settled pose and eases towards it; while a step
+    // plays it keeps the centre and backs off only as far as the swinging
+    // paper needs, so the picture never jumps.
+    const target = solved.settled
+      ? { centre: solved.centre, reach: solved.reach }
+      : {
+          centre: this.steady?.centre ?? solved.centre,
+          reach: Math.max(this.steady?.reach ?? 0, solved.reach),
+        };
+    if (!this.steady) {
+      this.steady = target;
+    } else {
+      const k = CAMERA_EASE;
+      const gap = Math.hypot(
+        target.centre.x - this.steady.centre.x,
+        target.centre.y - this.steady.centre.y,
+        target.centre.z - this.steady.centre.z,
+        target.reach - this.steady.reach,
+      );
+      if (gap < 1e-3 * target.reach) {
+        this.steady = target;
+      } else {
+        this.steady = {
+          centre: {
+            x: this.steady.centre.x + (target.centre.x - this.steady.centre.x) * k,
+            y: this.steady.centre.y + (target.centre.y - this.steady.centre.y) * k,
+            z: this.steady.centre.z + (target.centre.z - this.steady.centre.z) * k,
+          },
+          reach: this.steady.reach + (target.reach - this.steady.reach) * k,
+        };
+        // Keep easing on the next frame, until the camera has arrived.
+        this.easeOn();
+      }
+    }
+    const { distance, half } = cameraFrame(this.steady.reach, orbit.zoom, this.aspect);
+    const c = this.steady.centre;
     const camera = this.camera;
     camera.position.set(
       c.x + toward.x * distance,
@@ -499,7 +581,8 @@ export class Scene3d implements SheetScene {
     camera.updateProjectionMatrix();
     // The key light sits up and to the viewer's left, slightly in front.
     const lightDir = unit(add(add(mul(toward, 0.8), mul(up, 1.0)), mul(right, -0.6)));
-    const span = solved.reach * 3;
+    const reach = this.steady.reach;
+    const span = reach * 3;
     this.key.position.set(
       c.x + lightDir.x * span,
       c.y + lightDir.y * span,
@@ -507,12 +590,12 @@ export class Scene3d implements SheetScene {
     );
     this.key.target.position.set(c.x, c.y, c.z);
     const shadowCamera = this.key.shadow.camera;
-    shadowCamera.left = -solved.reach * 1.6;
-    shadowCamera.right = solved.reach * 1.6;
-    shadowCamera.top = solved.reach * 1.6;
-    shadowCamera.bottom = -solved.reach * 1.6;
-    shadowCamera.near = span - solved.reach * 2;
-    shadowCamera.far = span + solved.reach * 2;
+    shadowCamera.left = -reach * 1.6;
+    shadowCamera.right = reach * 1.6;
+    shadowCamera.top = reach * 1.6;
+    shadowCamera.bottom = -reach * 1.6;
+    shadowCamera.near = span - reach * 2;
+    shadowCamera.far = span + reach * 2;
     shadowCamera.updateProjectionMatrix();
   }
 
@@ -527,6 +610,9 @@ export class Scene3d implements SheetScene {
     orbit: Orbit,
     shadow: boolean,
   ): void {
+    // The ground stays where the settled pose put it while a step plays.
+    if (!solved.settled && this.groundPlaced) return;
+    this.groundPlaced = true;
     const f = frame ?? DEFAULT_FRAME;
     const topDir = unit({ x: f.top.x, y: f.top.y, z: 0 });
     let lowest = Infinity;
@@ -551,6 +637,15 @@ export class Scene3d implements SheetScene {
     this.ground.visible = shadow && alongTop < 0.85;
   }
 
+  /** Another frame of camera easing, unless one is already due. */
+  private easeOn(): void {
+    if (this.easing) return;
+    this.easing = requestAnimationFrame(() => {
+      this.easing = 0;
+      if (this.last) this.reorbit(this.last.orbit, this.last.frame);
+    });
+  }
+
   private draw(): void {
     this.renderer.render(this.scene, this.camera);
   }
@@ -572,6 +667,7 @@ export class Scene3d implements SheetScene {
   }
 
   dispose(): void {
+    cancelAnimationFrame(this.easing);
     this.mesh.geometry.dispose();
     this.lines.geometry.dispose();
     this.renderer.dispose();
