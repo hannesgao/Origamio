@@ -1,79 +1,85 @@
 import { describe, expect, it } from 'vitest';
 
 import { FoldHistory, createPaper } from '../src/paper';
-import { DEFAULT_ORBIT, render3d } from '../src/view3d';
+import { DEFAULT_ORBIT, type StepAnimation, render3d } from '../src/view3d';
 import { foldLeftRight, run } from './presets';
 
 const polygons = (markup: string): string[] => markup.match(/<polygon[^>]*>/g) ?? [];
+const ys = (polygon: string): number[] =>
+  [...polygon.matchAll(/,(-?[\d.]+)/g)].map((m) => Number(m[1]));
+const edgeOn = { yaw: 0, pitch: Math.PI / 2, zoom: 1 };
+
+/** A sheet folded in half once, with the animation of that step at `progress`. */
+const halfFold = (progress: number, placement?: 'bottom'): [FoldHistory, StepAnimation] => {
+  const history = new FoldHistory(createPaper());
+  const previous = history.state;
+  const step = foldLeftRight();
+  const result = history.fold(step.line, step.side, placement ? { placement } : step.layers);
+  if (!result) throw new Error('fold moved nothing');
+  return [history, { previous, movedIds: new Set(result.movedIds), progress }];
+};
 
 describe('render3d', () => {
   it('draws one polygon per facet with the front colour when seen from above', () => {
-    const view = render3d(createPaper(), { orbit: { yaw: 0, pitch: 0, zoom: 1 }, thickness: 0.01 });
+    const view = render3d(createPaper(), { orbit: { yaw: 0, pitch: 0, zoom: 1 }, opening: 0 });
     const polys = polygons(view.markup);
     expect(polys).toHaveLength(1);
     expect(polys[0]).toContain('solid-front');
     expect(view.viewBox.split(' ')).toHaveLength(4);
   });
 
-  it('shows the back of the paper from below and paints flipped layers as back', () => {
+  it('shows the flap on top from above and the base from below', () => {
     const history = new FoldHistory(createPaper());
     run(history, [foldLeftRight()]);
-    const fromAbove = render3d(history.state, { orbit: DEFAULT_ORBIT, thickness: 0.01 });
-    const above = polygons(fromAbove.markup);
+    const above = polygons(render3d(history.state, { orbit: DEFAULT_ORBIT, opening: 0 }).markup);
     expect(above).toHaveLength(2);
-    expect(above.filter((p) => p.includes('solid-back'))).toHaveLength(1);
-    // Turned past the horizon the stack is seen from below: faces swap.
-    const fromBelow = render3d(history.state, {
-      orbit: { yaw: 0, pitch: Math.PI, zoom: 1 },
-      thickness: 0.01,
-    });
-    const below = polygons(fromBelow.markup);
-    expect(below.filter((p) => p.includes('solid-back'))).toHaveLength(1);
-    // The nearer layer is drawn last: from above that is the flipped flap
-    // (its back up); from below it is the bottom layer, showing its back too.
+    // The nearer panel is drawn last: from above that is the flipped flap, back up.
     expect(above[1]).toContain('solid-back');
-    expect(below[0]).toContain('solid-front');
+    const below = polygons(
+      render3d(history.state, { orbit: { yaw: 0, pitch: Math.PI, zoom: 1 }, opening: 0 }).markup,
+    );
+    // From behind the base is nearer, and its back is what we see.
     expect(below[1]).toContain('solid-back');
+    expect(below[0]).toContain('solid-front');
   });
 
-  it('lifts the moving flap off the table mid-flip', () => {
+  it('opens the creases so the flap leaves the plane', () => {
     const history = new FoldHistory(createPaper());
-    const step = foldLeftRight();
-    const result = history.fold(step.line, step.side, step.layers);
-    expect(result).not.toBeNull();
-    if (!result) return;
-    const animation = { movedIds: new Set(result.movedIds), line: result.line, progress: 0.5 };
-    const view = render3d(history.state, {
-      orbit: { yaw: 0, pitch: Math.PI / 2, zoom: 1 },
-      thickness: 0.01,
-      animation,
-    });
-    const polys = polygons(view.markup);
-    expect(polys.some((p) => p.includes('facet-moving'))).toBe(true);
-    // Seen edge-on at pitch π/2, the flap standing up spans a visible height.
+    run(history, [foldLeftRight()]);
+    const flat = polygons(render3d(history.state, { orbit: edgeOn, opening: 0 }).markup);
+    const open = polygons(render3d(history.state, { orbit: edgeOn, opening: 0.3 }).markup);
+    const height = (p: string): number => Math.max(...ys(p)) - Math.min(...ys(p));
+    expect(height(flat[1] ?? '')).toBeLessThan(1e-3);
+    expect(height(open[1] ?? '')).toBeGreaterThan(0.1);
+  });
+
+  it('swings the new crease from flat to folded while a step plays', () => {
+    const [history, animation] = halfFold(0.5);
+    const polys = polygons(
+      render3d(history.state, { orbit: edgeOn, opening: 0, animation }).markup,
+    );
     const moving = polys.find((p) => p.includes('facet-moving')) ?? '';
-    const ys = [...moving.matchAll(/,(-?[\d.]+)/g)].map((m) => Number(m[1]));
-    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(0.4);
+    // Half way through, the flap stands up: edge-on it spans its full width.
+    expect(Math.max(...ys(moving)) - Math.min(...ys(moving))).toBeGreaterThan(0.4);
+    const [done, finished] = halfFold(1);
+    const flat = polygons(
+      render3d(done.state, { orbit: edgeOn, opening: 0, animation: finished }).markup,
+    );
+    expect(flat.every((p) => Math.max(...ys(p)) - Math.min(...ys(p)) < 1e-3)).toBe(true);
   });
-});
 
-describe('a fold made on the back', () => {
-  it('swings the flap under the sheet', () => {
-    const history = new FoldHistory(createPaper());
-    const step = foldLeftRight();
-    const result = history.fold(step.line, step.side, step.layers);
-    if (!result) throw new Error('fold moved nothing');
-    const base = { movedIds: new Set(result.movedIds), line: result.line, progress: 0.5 };
-    const edgeOn = { orbit: { yaw: 0, pitch: Math.PI / 2, zoom: 1 }, thickness: 0 };
-    const over = polygons(render3d(history.state, { ...edgeOn, animation: base }).markup);
-    const under = polygons(
-      render3d(history.state, { ...edgeOn, animation: { ...base, under: true } }).markup,
-    );
-    const top = (markup: string): number =>
-      Math.min(...[...markup.matchAll(/,(-?[\d.]+)/g)].map((m) => Number(m[1])));
-    // Screen y grows downward: the flap over the sheet reaches a smaller y than the one under it.
-    expect(top(over.find((p) => p.includes('facet-moving')) ?? '')).toBeLessThan(
-      top(under.find((p) => p.includes('facet-moving')) ?? ''),
-    );
+  it('swings a flap folded on the back under the sheet', () => {
+    const [over, overAnimation] = halfFold(0.5);
+    const [under, underAnimation] = halfFold(0.5, 'bottom');
+    const top = (history: FoldHistory, animation: StepAnimation): number =>
+      Math.min(
+        ...ys(
+          polygons(render3d(history.state, { orbit: edgeOn, opening: 0, animation }).markup).find(
+            (p) => p.includes('facet-moving'),
+          ) ?? '',
+        ),
+      );
+    // Screen y grows downward: the flap going over reaches a smaller y than the one going under.
+    expect(top(over, overAnimation)).toBeLessThan(top(under, underAnimation));
   });
 });

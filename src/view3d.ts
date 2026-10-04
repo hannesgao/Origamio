@@ -1,16 +1,6 @@
-import {
-  type Line,
-  type Polygon,
-  type Vec,
-  area,
-  applyToPolygon,
-  lineNormal,
-  projectOnto,
-  reflection,
-  signedDistance,
-} from './geometry';
-import { type Facet, type PaperState, currentPolygon, foldedPoints, isFlipped } from './paper';
-import { type FoldAnimation, BACK_COLOR, FRONT_COLOR } from './render';
+import { type PaperState, foldedPoints } from './paper';
+import { BACK_COLOR, FRONT_COLOR } from './render';
+import { type Hinge, type Vec3, hinges, placePanels } from './rigid';
 
 /** How the 3D view is turned: yaw spins the sheet on the table, pitch tilts it. Radians. */
 export interface Orbit {
@@ -25,11 +15,21 @@ export const MAX_PITCH = Math.PI / 2;
 export const MIN_ORBIT_ZOOM = 0.5;
 export const MAX_ORBIT_ZOOM = 4;
 
+/** A step in progress, for the 3D view: the creases it makes swing from their old angle to the new. */
+export interface StepAnimation {
+  /** The sheet before the step. */
+  readonly previous: PaperState;
+  /** Facets (of the current sheet) that the step moved. */
+  readonly movedIds: ReadonlySet<number>;
+  /** 0 at the start of the step, 1 at its end. */
+  readonly progress: number;
+}
+
 export interface View3dOptions {
   readonly orbit: Orbit;
-  /** Height of one layer, in sheet units. */
-  readonly thickness: number;
-  readonly animation?: FoldAnimation;
+  /** How far every folded crease is opened from flat, in radians. */
+  readonly opening: number;
+  readonly animation?: StepAnimation;
   /** Width / height of the frame; the view box takes the same shape. */
   readonly aspect?: number;
 }
@@ -39,22 +39,6 @@ export interface View3d {
   readonly markup: string;
 }
 
-interface Vec3 {
-  readonly x: number;
-  readonly y: number;
-  readonly z: number;
-}
-
-interface Solid {
-  readonly facet: Facet;
-  readonly points: readonly Vec3[];
-  /** Unit normal of the facet's +z face, after any flap rotation. */
-  readonly normal: Vec3;
-  /** Whether that +z face is the back of the paper. */
-  readonly flipped: boolean;
-  readonly moving: boolean;
-}
-
 const fmt = (n: number): string => (Math.abs(n) < 1e-9 ? '0' : n.toFixed(4));
 const dot3 = (a: Vec3, b: Vec3): number => a.x * b.x + a.y * b.y + a.z * b.z;
 const norm3 = (a: Vec3): Vec3 => {
@@ -62,78 +46,26 @@ const norm3 = (a: Vec3): Vec3 => {
   return { x: a.x / l, y: a.y / l, z: a.z / l };
 };
 
-/**
- * Point `p` of the flat sheet at height `h`, rotated by `angle` about `axis`
- * (which lies at z = 0). `n` is the in-sheet unit normal pointing to the
- * flap's side, so a positive angle lifts the flap off the table.
- */
-function liftAbout(axis: Line, n: Vec, p: Vec, h: number, angle: number): Vec3 {
-  const foot = projectOnto(axis, p);
-  const s = signedDistance(axis, p) * (n.x * lineNormal(axis).x + n.y * lineNormal(axis).y);
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  // In the plane spanned by n and the vertical: (s, h) rotates by angle.
-  const s2 = s * cos - h * sin;
-  const z2 = s * sin + h * cos;
-  return { x: foot.x + n.x * s2, y: foot.y + n.y * s2, z: z2 };
-}
+/** A folded crease opened by `opening`, keeping its direction; a flat crease stays flat. */
+const opened = (angle: number, opening: number): number =>
+  angle === 0 ? 0 : Math.sign(angle) * Math.max(0, Math.abs(angle) - opening);
 
-/** Every facet as a polygon in space: layers stacked by `thickness`, the moving flap mid-flip. */
-function solids(state: PaperState, thickness: number, animation?: FoldAnimation): Solid[] {
-  const animating = animation !== undefined && animation.progress < 1;
-  // Negative angles swing the flap down under the sheet.
-  const angle = animating ? animation.progress * Math.PI * (animation.under ? -1 : 1) : 0;
-  const undo = animating ? reflection(animation.line) : null;
-  // The flap's side of the fold line, so that it lifts rather than dives.
-  let flapNormal: Vec = { x: 0, y: 0 };
-  if (animating && undo && animation) {
-    const n = lineNormal(animation.line);
-    let sum = 0;
-    for (const facet of state.facets) {
-      if (!animation.movedIds.has(facet.id)) continue;
-      for (const p of applyToPolygon(undo, currentPolygon(facet))) {
-        sum += signedDistance(animation.line, p);
-      }
-    }
-    flapNormal = sum < 0 ? { x: -n.x, y: -n.y } : n;
-  }
-  const result: Solid[] = [];
-  for (const facet of state.facets) {
-    const h = facet.z * thickness;
-    const moving = animating && animation.movedIds.has(facet.id);
-    if (moving && undo && animation) {
-      // The facet already carries its final position; rotate its pre-fold
-      // position about the fold line instead, by the current angle.
-      const before: Polygon = applyToPolygon(undo, currentPolygon(facet));
-      const axis = animation.line;
-      const points = before.map((p) => liftAbout(axis, flapNormal, p, h, angle));
-      // The +z face of a flap rotated by `angle` tilts away from the flap's side.
-      const normal: Vec3 = {
-        x: -flapNormal.x * Math.sin(angle),
-        y: -flapNormal.y * Math.sin(angle),
-        z: Math.cos(angle),
-      };
-      // The flap keeps its own face up until it has turned past the vertical.
-      result.push({
-        facet,
-        points,
-        normal,
-        flipped: isFlipped(facet) !== Math.abs(angle) > Math.PI / 2,
-        moving,
-      });
-    } else {
-      const poly = currentPolygon(facet);
-      if (area(poly) <= 0) continue;
-      result.push({
-        facet,
-        points: poly.map((p) => ({ x: p.x, y: p.y, z: h })),
-        normal: { x: 0, y: 0, z: 1 },
-        flipped: isFlipped(facet),
-        moving: false,
-      });
-    }
-  }
-  return result;
+/**
+ * The angle a hinge had before the current step. A hinge crossing the fold
+ * line (one facet moved, the other not) is new, or was folded flat before an
+ * unfold; every other hinge kept its angle.
+ */
+function angleBefore(hinge: Hinge, animation: StepAnimation): number {
+  const crosses = animation.movedIds.has(hinge.p) !== animation.movedIds.has(hinge.q);
+  if (!crosses) return hinge.shown;
+  if (hinge.angle !== 0) return 0;
+  // Folded and now unfolded: it came from whichever side it lay on before.
+  const before = animation.previous.facets;
+  const p = before.find((f) => f.id === hinge.p);
+  const q = before.find((f) => f.id === hinge.q);
+  if (!p || !q) return 0;
+  const flippedP = p.transform.a * p.transform.d - p.transform.b * p.transform.c < 0;
+  return q.z > p.z === !flippedP ? Math.PI : -Math.PI;
 }
 
 function rotate(orbit: Orbit, centre: Vec3, p: Vec3): Vec3 {
@@ -161,42 +93,69 @@ function shade(hex: string, factor: number): string {
   return `#${channel((n >> 16) & 255)}${channel((n >> 8) & 255)}${channel(n & 255)}`;
 }
 
-/** Markup for the folded sheet as a stack of thin layers, seen from the orbit. */
+/**
+ * Markup for the folded sheet as rigid panels joined at their creases, each
+ * crease opened a little so the paper reads as folded rather than stacked,
+ * seen from the orbit.
+ */
 export function render3d(state: PaperState, options: View3dOptions): View3d {
   const size = state.size;
+  const all = hinges(state);
+  const animation = options.animation;
+  const t = animation ? Math.min(1, Math.max(0, animation.progress)) : 1;
+  const angleOf = (h: Hinge): number => {
+    const target = opened(h.shown, options.opening);
+    if (!animation || t >= 1) return target;
+    const from = opened(angleBefore(h, animation), options.opening);
+    return from + (target - from) * t;
+  };
+  // While a step plays the sheet that stays put anchors the walk.
+  const anchor = animation
+    ? [...state.facets].filter((f) => !animation.movedIds.has(f.id)).sort((f, g) => f.z - g.z)[0]
+    : undefined;
+  const panels = placePanels(state, all, {
+    angleOf,
+    ...(anchor ? { rootId: anchor.id } : {}),
+  });
+
   const extent = foldedPoints(state);
   const xs = extent.map((p) => p.x);
   const ys = extent.map((p) => p.y);
-  const layers = state.facets.reduce((m, f) => Math.max(m, f.z), 0);
   const centre: Vec3 = {
     x: (Math.min(...xs) + Math.max(...xs)) / 2,
     y: (Math.min(...ys) + Math.max(...ys)) / 2,
-    z: (layers * options.thickness) / 2,
+    z: 0,
   };
   const light = norm3({ x: -0.35, y: 0.45, z: 0.82 });
-  const drawn = solids(state, options.thickness, options.animation)
-    .map((s) => {
-      const points = s.points.map((p) => rotate(options.orbit, centre, p));
-      const normal = norm3(rotate(options.orbit, { x: 0, y: 0, z: 0 }, s.normal));
+  // Coincident panels are ordered by layer: higher layers are nearer when the
+  // sheet is seen from the front, lower ones when it is seen from behind.
+  const fromFront = rotate(options.orbit, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }).z >= 0;
+  const drawn = panels
+    .map((panel) => {
+      const points = panel.points.map((p) => rotate(options.orbit, centre, p));
+      const normal = norm3(rotate(options.orbit, { x: 0, y: 0, z: 0 }, panel.normal));
       const depth = points.reduce((sum, p) => sum + p.z, 0) / points.length;
-      return { ...s, points, normal, depth };
+      const moving = animation ? animation.movedIds.has(panel.facet.id) : false;
+      return { facet: panel.facet, points, normal, depth, moving };
     })
-    .sort((a, b) => a.depth - b.depth);
+    // Far panels first; coincident ones in layer order.
+    .sort(
+      (a, b) => a.depth - b.depth || (fromFront ? a.facet.z - b.facet.z : b.facet.z - a.facet.z),
+    );
   const parts: string[] = [];
   for (const d of drawn) {
-    // Which face we see depends on which way its +z face points after the turn.
-    const seesTop = d.normal.z >= 0;
-    const backShown = d.flipped === seesTop;
-    const base = backShown ? BACK_COLOR : FRONT_COLOR;
+    // The front face is seen when its normal points at the viewer.
+    const seesFront = d.normal.z >= 0;
+    const base = seesFront ? FRONT_COLOR : BACK_COLOR;
     const lit = 0.62 + 0.38 * Math.abs(dot3(d.normal, light));
     const fill = shade(base, lit);
     const pts = d.points.map((p) => `${fmt(p.x)},${fmt(-p.y)}`).join(' ');
-    const cls = `solid-facet ${backShown ? 'solid-back' : 'solid-front'}${d.moving ? ' facet-moving' : ''}`;
+    const cls = `solid-facet ${seesFront ? 'solid-front' : 'solid-back'}${d.moving ? ' facet-moving' : ''}`;
     parts.push(`<polygon class="${cls}" data-id="${d.facet.id}" points="${pts}" fill="${fill}" />`);
   }
   // Fit the sheet's diagonal, whatever the turn, so the view does not jump.
   const diagonal = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-  const span = Math.max(size * 0.6, diagonal) * 1.15 + layers * options.thickness;
+  const span = Math.max(size * 0.6, diagonal) * 1.15;
   const zoom = Math.max(MIN_ORBIT_ZOOM, Math.min(MAX_ORBIT_ZOOM, options.orbit.zoom));
   const h = span / 2 / zoom;
   const aspect = options.aspect ?? 1;
