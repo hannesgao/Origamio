@@ -42,6 +42,8 @@ export interface FoldAnimation {
   readonly movedIds: ReadonlySet<number>;
   readonly line: Line;
   readonly progress: number;
+  /** The flap swings under the sheet (a fold made on the back) instead of over it. */
+  readonly under?: boolean;
 }
 
 export interface FoldPreview {
@@ -233,7 +235,8 @@ function drawnFacets(state: PaperState, animation?: FoldAnimation): DrawnFacet[]
   // While the flap is still rising its original layer order is visible from
   // above; once it passes the vertical the order is reversed.
   if (animation.progress < 0.5) moving.reverse();
-  return [...stationary, ...moving];
+  // A flap folded on the back passes beneath the sheet, so it is drawn first.
+  return animation.under ? [...moving, ...stationary] : [...stationary, ...moving];
 }
 
 /** Markup for the folded sheet, bottom layer first. */
