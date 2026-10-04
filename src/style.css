@@ -249,6 +249,13 @@ select {
   cursor: default;
 }
 
+/* A button that stays switched on. */
+.btn[aria-pressed='true'] {
+  border-color: var(--border-strong);
+  background: var(--panel-2);
+  box-shadow: inset 0 1px 2px rgba(42, 33, 26, 0.12);
+}
+
 .btn svg,
 .rail-button svg,
 .layout-switch svg {
@@ -295,6 +302,7 @@ kbd {
   align-items: center;
   gap: 6px;
   padding: 0 10px;
+  white-space: nowrap;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -809,6 +817,21 @@ kbd {
 @container (max-width: 460px) {
   .stats-row .stat:nth-child(4),
   .help-more {
+    display: none;
+  }
+}
+
+/* The 3D card's head holds the four views and two buttons: tighter, and the hint goes first. */
+.solid-card .card-tools {
+  gap: 4px;
+}
+
+.solid-card .card-tools .tool-toggle button {
+  padding: 0 8px;
+}
+
+@container (max-width: 540px) {
+  .solid-card .card-tools .caption {
     display: none;
   }
 }

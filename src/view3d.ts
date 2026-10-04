@@ -27,7 +27,10 @@ export const DEFAULT_FRAME: ViewFrame = { front: { x: 1, y: 0 }, top: { x: 0, y:
 
 export interface NamedView {
   readonly id: 'front' | 'side' | 'top' | 'isometric';
+  /** The formal name of the view. */
   readonly label: string;
+  /** What fits on a button. */
+  readonly short: string;
   readonly orbit: Orbit;
 }
 
@@ -63,22 +66,31 @@ export function namedViews(frame: ViewFrame = DEFAULT_FRAME): NamedView[] {
   const view = (
     id: NamedView['id'],
     label: string,
+    short: string,
     right: Vec3,
     up: Vec3,
     toward: Vec3,
   ): NamedView => ({
     id,
     label,
+    short,
     orbit: { basis: [right, up, toward], yaw: 0, pitch: 0, roll: 0, zoom: 1 },
   });
   const minus = (a: Vec3): Vec3 => ({ x: -a.x, y: -a.y, z: -a.z });
-  const side = view('side', 'Side view', minus(f), t, minus(n));
+  const side = view('side', 'Side view', 'Side', minus(f), t, minus(n));
   const c = Math.SQRT1_2;
   return [
-    view('front', 'Front view', minus(n), t, f),
+    view('front', 'Front view', 'Front', minus(n), t, f),
     side,
-    view('top', 'Top view', n, f, t),
-    view('isometric', 'Isometric', mix3(minus(f), c, minus(n), c), t, mix3(minus(n), c, f, c)),
+    view('top', 'Top view', 'Top', n, f, t),
+    view(
+      'isometric',
+      'Isometric',
+      'Iso',
+      mix3(minus(f), c, minus(n), c),
+      t,
+      mix3(minus(n), c, f, c),
+    ),
   ];
 }
 

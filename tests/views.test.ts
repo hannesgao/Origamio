@@ -15,6 +15,7 @@ describe('named views', () => {
   it('builds four orthonormal, right-handed views from a frame', () => {
     const views = namedViews({ front: vec(1, 1), top: vec(-1, 1) });
     expect(views.map((v) => v.label)).toEqual(['Front view', 'Side view', 'Top view', 'Isometric']);
+    expect(views.map((v) => v.short)).toEqual(['Front', 'Side', 'Top', 'Iso']);
     for (const view of views) {
       const basis = view.orbit.basis;
       if (!basis) throw new Error('named views carry a basis');

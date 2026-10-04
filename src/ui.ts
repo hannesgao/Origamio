@@ -117,6 +117,8 @@ const FIT_ICON =
   '<path d="M3 7V4a1 1 0 0 1 1-1h3M13 3h3a1 1 0 0 1 1 1v3M17 13v3a1 1 0 0 1-1 1h-3M7 17H4a1 1 0 0 1-1-1v-3" />' +
   '<rect x="7" y="7" width="6" height="6" rx="1" />';
 const FULL_ICON = '<rect x="3" y="3" width="14" height="14" rx="2" />';
+/** A slab seen in perspective: the far edge shorter than the near one. */
+const PERSPECTIVE_ICON = '<path d="M7.5 4.5h5l3.5 11h-12Z" /><path d="M8.3 8.5h3.4" />';
 const LAYOUT_ICONS: Record<Layout, string> = {
   'side-by-side':
     '<rect x="2.5" y="4" width="4.5" height="12" rx="1" /><rect x="8.5" y="4" width="4.5" height="12" rx="1" /><rect x="14.5" y="4" width="3" height="12" rx="1" />',
@@ -278,6 +280,7 @@ const SECONDARY_TABS: readonly { readonly id: SecondaryTab; readonly label: stri
   { id: 'solid', label: '3D' },
 ];
 const SECONDARY_KEY = 'origamio.secondary';
+const PERSPECTIVE_KEY = 'origamio.perspective';
 
 /** Read a remembered preference; storage may be unavailable or blocked. */
 function remembered(key: string): string | null {
@@ -796,13 +799,26 @@ export function createApp(root: HTMLElement): App {
                 : 'the side view turned 45°'
         }`,
       },
-      [view.label],
+      [view.short],
     ),
+  );
+  // Perspective shows depth; off, the fixed views become true drawings.
+  let perspective = remembered(PERSPECTIVE_KEY) !== 'off';
+  const perspectiveButton = el(
+    'button',
+    {
+      type: 'button',
+      class: 'btn',
+      'aria-pressed': String(perspective),
+      title: 'Perspective: nearer parts drawn larger. Off, every view is an orthographic drawing',
+    },
+    [icon(PERSPECTIVE_ICON), el('span', { class: 'btn-label' }, ['Perspective'])],
   );
   const solidTools = el('div', { class: 'card-tools' }, [
     solidStrip,
     el('span', { class: 'caption' }, ['Drag to turn']),
     el('div', { class: 'tool-toggle', role: 'group', 'aria-label': 'Named views' }, viewButtons),
+    perspectiveButton,
     orbitReset,
   ]);
   // Paper thickness in millimetres for a 15 cm sheet: a few presets, or any value typed.
@@ -841,6 +857,7 @@ export function createApp(root: HTMLElement): App {
     ink: getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#2a211a',
     thickness: thicknessMm / SHEET_MM,
     shadow: true,
+    perspective,
   });
   // How far every crease is opened from flat, in degrees: a few presets, or any value typed.
   let opening = DEFAULT_OPENING;
@@ -2328,6 +2345,12 @@ export function createApp(root: HTMLElement): App {
   );
   thicknessInput.addEventListener('input', () => setThickness(Number(thicknessInput.value)));
   thicknessInput.addEventListener('change', () => setThickness(Number(thicknessInput.value)));
+  perspectiveButton.addEventListener('click', () => {
+    perspective = !perspective;
+    perspectiveButton.setAttribute('aria-pressed', String(perspective));
+    remember(PERSPECTIVE_KEY, perspective ? 'on' : 'off');
+    render();
+  });
 
   // Turning the 3D view: drag spins and tilts, the wheel zooms, a double click resets.
   let orbitDrag: { readonly pointerId: number; last: Vec } | null = null;
