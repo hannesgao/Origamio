@@ -76,8 +76,6 @@ jobs:
 
       - name: Take the pictures
         timeout-minutes: 5
-        env:
-          DEBUG: pw:browser
         run: npm run shot:ci
 
       - name: Compare with the baselines

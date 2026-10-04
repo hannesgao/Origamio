@@ -143,6 +143,9 @@ async function run() {
       new Promise((done) => setTimeout(() => done(false), 15000)),
     ]);
     if (!closed && userDataDir) stopOwnChrome(userDataDir);
+    // Headless Chromium on Linux sometimes never answers close(); it is our
+    // own child process, so it is ended by its handle, never by name.
+    if (!closed && browser) browser.process()?.kill('SIGKILL');
     if (userDataDir) {
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
@@ -223,7 +226,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('[screenshot]', error);
-  process.exit(1);
-});
+main().then(
+  // Nothing is left to do; do not wait for a browser that is slow to go.
+  () => process.exit(0),
+  (error) => {
+    console.error('[screenshot]', error);
+    process.exit(1);
+  },
+);
