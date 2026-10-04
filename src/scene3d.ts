@@ -12,8 +12,6 @@ import {
   Color,
   DirectionalLight,
   HemisphereLight,
-  LineBasicMaterial,
-  LineSegments,
   Mesh,
   MeshStandardMaterial,
   OrthographicCamera,
@@ -27,6 +25,9 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 
 import { type Vec3 } from './rigid';
 import { type ViewFrame } from './sequence';
@@ -55,6 +56,10 @@ export interface SceneStyle {
 
 /** Vertical field of view of the perspective camera, in degrees. */
 export const FOV = 20;
+/** Width of crease and edge lines on screen. */
+const LINE_WIDTH_PX = 1.4;
+/** How much darker a corner buried in the stack is drawn than one in the open. */
+const BURIED_DARKENING = 0.38;
 
 /**
  * Where the camera stands and what it frames, for a model of the given reach
@@ -104,20 +109,22 @@ export function buildMesh(
   const colours: number[] = [];
   const triangleFacet: number[] = [];
   const t = style.thickness / 2;
-  const push = (a: Vec3, b: Vec3, c: Vec3, n: Vec3, colour: Color, facet: number): void => {
+  // Each corner carries its own colour: the base darkened by how buried it is.
+  const shaded = (colour: Color, shade: number): Color =>
+    colour.clone().multiplyScalar(1 - BURIED_DARKENING * shade);
+  const push = (
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    n: Vec3,
+    ca: Color,
+    cb: Color,
+    cc: Color,
+    facet: number,
+  ): void => {
     positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
     normals.push(n.x, n.y, n.z, n.x, n.y, n.z, n.x, n.y, n.z);
-    colours.push(
-      colour.r,
-      colour.g,
-      colour.b,
-      colour.r,
-      colour.g,
-      colour.b,
-      colour.r,
-      colour.g,
-      colour.b,
-    );
+    colours.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
     triangleFacet.push(facet);
   };
   for (const panel of scene.panels) {
@@ -127,13 +134,46 @@ export function buildMesh(
     const top = hit ? lift(front) : front;
     const bottom = hit ? lift(back) : back;
     const rim = hit ? lift(side) : side;
+    const shade = scene.shade[id];
+    const topAt = (i: number): Color => shaded(top, shade?.top[i] ?? 0);
+    const bottomAt = (i: number): Color => shaded(bottom, shade?.bottom[i] ?? 0);
+    const innerTopAt = (i: number): Color => shaded(top, shade?.innerTop[i] ?? 0);
+    const innerBottomAt = (i: number): Color => shaded(bottom, shade?.innerBottom[i] ?? 0);
+    const rimAt = (i: number): Color =>
+      shaded(rim, ((shade?.top[i] ?? 0) + (shade?.bottom[i] ?? 0)) / 2);
     const up = panel.points.map((p) => add(p, mul(n, t)));
     const down = panel.points.map((p) => sub(p, mul(n, t)));
     const count = panel.points.length;
-    // Fan triangulation of the convex polygon, front face up, back face down.
+    // The inner ring sits where the shade says, between each corner and the centre.
+    const centre = mul(
+      panel.points.reduce((s, p) => add(s, p), { x: 0, y: 0, z: 0 }),
+      1 / count,
+    );
+    const ring = panel.points.map((p, i) => add(p, mul(sub(centre, p), shade?.inner[i] ?? 0)));
+    const ringUp = ring.map((p) => add(p, mul(n, t)));
+    const ringDown = ring.map((p) => sub(p, mul(n, t)));
+    const dn = mul(n, -1);
+    // A band of quads from the corners to the ring, then a fan over the ring:
+    // front face up, back face down.
+    for (let i = 0; i < count; i++) {
+      const j = (i + 1) % count;
+      const [a, b, c, e] = [up[i] as Vec3, up[j] as Vec3, ringUp[j] as Vec3, ringUp[i] as Vec3];
+      push(a, b, c, n, topAt(i), topAt(j), innerTopAt(j), id);
+      push(a, c, e, n, topAt(i), innerTopAt(j), innerTopAt(i), id);
+      const [f, g, h, k] = [
+        down[i] as Vec3,
+        down[j] as Vec3,
+        ringDown[j] as Vec3,
+        ringDown[i] as Vec3,
+      ];
+      push(f, h, g, dn, bottomAt(i), innerBottomAt(j), bottomAt(j), id);
+      push(f, k, h, dn, bottomAt(i), innerBottomAt(i), innerBottomAt(j), id);
+    }
     for (let i = 1; i + 1 < count; i++) {
-      push(up[0] as Vec3, up[i] as Vec3, up[i + 1] as Vec3, n, top, id);
-      push(down[0] as Vec3, down[i + 1] as Vec3, down[i] as Vec3, mul(n, -1), bottom, id);
+      const [a, b, c] = [ringUp[0] as Vec3, ringUp[i] as Vec3, ringUp[i + 1] as Vec3];
+      push(a, b, c, n, innerTopAt(0), innerTopAt(i), innerTopAt(i + 1), id);
+      const [f, g, h] = [ringDown[0] as Vec3, ringDown[i + 1] as Vec3, ringDown[i] as Vec3];
+      push(f, g, h, dn, innerBottomAt(0), innerBottomAt(i + 1), innerBottomAt(i), id);
     }
     if (t > 0) {
       for (let i = 0; i < count; i++) {
@@ -143,8 +183,8 @@ export function buildMesh(
         const c = down[j] as Vec3;
         const d = down[i] as Vec3;
         const sn = unit(cross(sub(b, a), sub(d, a)));
-        push(a, b, c, sn, rim, id);
-        push(a, c, d, sn, rim, id);
+        push(a, b, c, sn, rimAt(i), rimAt(j), rimAt(j), id);
+        push(a, c, d, sn, rimAt(i), rimAt(j), rimAt(i), id);
       }
     }
   }
@@ -229,8 +269,10 @@ export class Scene3d implements SheetScene {
   private aspect = 1;
   private readonly key = new DirectionalLight(0xffffff, 1.6);
   private readonly mesh: Mesh;
-  private readonly lines: LineSegments;
+  private readonly lines: LineSegments2;
+  private readonly lineMaterial: LineMaterial;
   private readonly ground: Mesh;
+  private pixelRatio = 1;
   private readonly raycaster = new Raycaster();
   private triangleFacet: number[] = [];
   private last: { scene: SolvedScene; style: SceneStyle } | null = null;
@@ -242,7 +284,8 @@ export class Scene3d implements SheetScene {
       alpha: true,
       preserveDrawingBuffer: true,
     });
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    this.pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+    this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
     this.canvas = this.renderer.domElement;
@@ -268,16 +311,25 @@ export class Scene3d implements SheetScene {
       flatShading: true,
       roughness: 0.92,
       metalness: 0,
+      // Faces sit a touch behind the lines drawn on them, so the two never flicker.
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     });
     this.mesh = new Mesh(new BufferGeometry(), material);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.scene.add(this.mesh);
 
-    this.lines = new LineSegments(
-      new BufferGeometry(),
-      new LineBasicMaterial({ color: 0x2a211a, transparent: true, opacity: 0.55 }),
-    );
+    // Lines with a width in pixels, the same on any screen.
+    this.lineMaterial = new LineMaterial({
+      color: 0x2a211a,
+      linewidth: LINE_WIDTH_PX,
+      transparent: true,
+      opacity: 0.6,
+      worldUnits: false,
+    });
+    this.lines = new LineSegments2(new LineSegmentsGeometry(), this.lineMaterial);
     this.scene.add(this.lines);
 
     this.ground = new Mesh(new PlaneGeometry(1, 1), new ShadowMaterial({ opacity: 0.22 }));
@@ -292,6 +344,7 @@ export class Scene3d implements SheetScene {
     const width = Math.max(1, parent.clientWidth);
     const height = Math.max(1, parent.clientHeight);
     this.renderer.setSize(width, height, false);
+    this.lineMaterial.resolution.set(width * this.pixelRatio, height * this.pixelRatio);
     this.aspect = width / height;
     this.perspectiveCamera.aspect = this.aspect;
     this.perspectiveCamera.updateProjectionMatrix();
@@ -322,15 +375,16 @@ export class Scene3d implements SheetScene {
     this.mesh.geometry.dispose();
     this.mesh.geometry = geometry;
 
-    const lineGeometry = new BufferGeometry();
     const linePositions = new Float32Array(solved.edges.length * 6);
     solved.edges.forEach((e, i) => {
       linePositions.set([e.a.x, e.a.y, e.a.z, e.b.x, e.b.y, e.b.z], i * 6);
     });
-    lineGeometry.setAttribute('position', new BufferAttribute(linePositions, 3));
+    const lineGeometry = new LineSegmentsGeometry();
+    if (solved.edges.length > 0) lineGeometry.setPositions(linePositions);
     this.lines.geometry.dispose();
     this.lines.geometry = lineGeometry;
-    (this.lines.material as LineBasicMaterial).color = new Color(style.ink);
+    this.lines.visible = solved.edges.length > 0;
+    this.lineMaterial.color = new Color(style.ink);
 
     this.placeCamera(solved, orbit);
     this.placeGround(solved, frame, orbit, style.shadow);
