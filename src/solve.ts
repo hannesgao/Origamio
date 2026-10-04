@@ -11,7 +11,9 @@ import {
   type Polygon,
   type Vec,
   apply,
+  applyToPolygon,
   centroid,
+  containsPoint,
   cross,
   distance,
   intersectConvex,
@@ -21,6 +23,7 @@ import {
 } from './geometry';
 import { type Facet, type PaperState, currentPolygon, isFlipped } from './paper';
 import {
+  type ContactMemory,
   type Hinge,
   type Panel,
   type PoseOptions,
@@ -201,6 +204,20 @@ function findOverlaps(state: PaperState, mesh: Omit<Mesh, 'overlaps'>): Overlap[
 const FLAT_CREASE_GIVE = 0.3;
 /** Sweeps at the end with the creases free, so that facets are rigid and layers in order. */
 const SETTLE_SWEEPS = 12;
+/** How close (as a share of the sheet) a vertex must come to a facet to be held off it. */
+const CONTACT_REACH = 0.25;
+
+/**
+ * A vertex of moving paper near a facet of still paper (or the other way
+ * round) in the frame being solved: the facet's triangle under it, where
+ * on that triangle, and the side it is to stay on.
+ */
+interface Contact {
+  readonly vertex: number;
+  readonly tri: readonly [number, number, number];
+  readonly w: readonly [number, number, number];
+  readonly side: 1 | -1;
+}
 
 const sub3 = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
 const add3 = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
@@ -362,6 +379,178 @@ function buildMeshUncached(state: PaperState, hinges: readonly Hinge[]): Mesh {
   return { ...partial, overlaps: findOverlaps(state, partial) };
 }
 
+/** The facet's current unit normal, from all its vertices (Newell's method). */
+function currentNormal(pos: readonly Vec3[], ids: readonly number[]): Vec3 {
+  let n: Vec3 = { x: 0, y: 0, z: 0 };
+  for (let i = 0; i < ids.length; i++) {
+    const a = pos[ids[i] as number] as Vec3;
+    const b = pos[ids[(i + 1) % ids.length] as number] as Vec3;
+    n = add3(n, cross3(a, b));
+  }
+  return norm3(n);
+}
+
+/**
+ * Where a point projects onto a facet in space, as weights on one of its fan
+ * triangles, if it lands inside the facet.
+ */
+function onFacet(
+  pos: readonly Vec3[],
+  ids: readonly number[],
+  normal: Vec3,
+  q: Vec3,
+): { tri: [number, number, number]; w: [number, number, number] } | null {
+  const o = pos[ids[0] as number] as Vec3;
+  for (let k = 1; k + 1 < ids.length; k++) {
+    const a = pos[ids[k] as number] as Vec3;
+    const b = pos[ids[k + 1] as number] as Vec3;
+    const area = dot3(cross3(sub3(a, o), sub3(b, o)), normal);
+    if (Math.abs(area) < 1e-12) continue;
+    const w1 = dot3(cross3(sub3(q, o), sub3(b, o)), normal) / area;
+    const w2 = dot3(cross3(sub3(a, o), sub3(q, o)), normal) / area;
+    const w0 = 1 - w1 - w2;
+    const slack = -1e-6;
+    if (w0 < slack || w1 < slack || w2 < slack) continue;
+    const clamp = (w: number): number => Math.max(0, w);
+    const sum = clamp(w0) + clamp(w1) + clamp(w2);
+    return {
+      tri: [ids[0] as number, ids[k] as number, ids[k + 1] as number],
+      w: [clamp(w0) / sum, clamp(w1) / sum, clamp(w2) / sum],
+    };
+  }
+  return null;
+}
+
+/**
+ * Before the step the moving paper lay flat in the stack, so geometry alone
+ * cannot say which side of a still facet it was on: the stack order of the
+ * sheet before the step says. Every pair of a moving and a still facet that
+ * lay on one another then is remembered that way, for the vertices of each
+ * against the other.
+ */
+function seedSides(
+  state: PaperState,
+  mesh: Mesh,
+  moving: ReadonlySet<number>,
+  memory: ContactMemory,
+): void {
+  memory.seeded = true;
+  const before = memory.before;
+  const parentOf = (f: Facet): Facet | undefined =>
+    before.facets.find((g) => containsPoint(g.poly, centroid(f.poly)));
+  const flying = state.facets.filter((f) => moving.has(f.id));
+  const still = state.facets.filter((f) => !moving.has(f.id));
+  for (const m of flying) {
+    const pm = parentOf(m);
+    if (!pm) continue;
+    const mThen = applyToPolygon(pm.transform, m.poly);
+    for (const s of still) {
+      const ps = parentOf(s);
+      if (!ps) continue;
+      const sThen = applyToPolygon(ps.transform, s.poly);
+      if (Math.abs(signedArea(intersectConvex(mThen, sThen))) < 1e-9 * state.size * state.size) {
+        continue;
+      }
+      // Below in the stack means on the back side of a facet whose front faces up.
+      const mBelow = pm.z < ps.z;
+      const againstStill: 1 | -1 = (mBelow ? -1 : 1) * (isFlipped(ps) ? -1 : 1) === 1 ? 1 : -1;
+      const againstMoving: 1 | -1 = (mBelow ? 1 : -1) * (isFlipped(pm) ? -1 : 1) === 1 ? 1 : -1;
+      for (const vi of mesh.index.get(m.id) ?? []) memory.sides.set(`${vi}:${s.id}`, againstStill);
+      for (const vi of mesh.index.get(s.id) ?? []) memory.sides.set(`${vi}:${m.id}`, againstMoving);
+    }
+  }
+}
+
+/**
+ * The contacts of this frame: every vertex of moving paper within reach of
+ * a still facet, and every still vertex within reach of a moving facet,
+ * each with the side it was first seen on (remembered across frames).
+ */
+function findContacts(
+  state: PaperState,
+  mesh: Mesh,
+  pos: readonly Vec3[],
+  moving: ReadonlySet<number>,
+  memory: ContactMemory,
+  reach: number,
+): Contact[] {
+  if (!memory.seeded) seedSides(state, mesh, moving, memory);
+  interface Body {
+    readonly id: number;
+    readonly ids: readonly number[];
+    readonly centre: Vec3;
+    readonly radius: number;
+    readonly normal: Vec3;
+  }
+  const bodies: Body[] = [];
+  for (const [id, ids] of mesh.index) {
+    if (ids.length < 3) continue;
+    let centre: Vec3 = { x: 0, y: 0, z: 0 };
+    for (const vi of ids) centre = add3(centre, pos[vi] as Vec3);
+    centre = mul3(centre, 1 / ids.length);
+    let radius = 0;
+    for (const vi of ids) radius = Math.max(radius, len3(sub3(pos[vi] as Vec3, centre)));
+    bodies.push({ id, ids, centre, radius, normal: currentNormal(pos, ids) });
+  }
+  const flying = bodies.filter((b) => moving.has(b.id));
+  const still = bodies.filter((b) => !moving.has(b.id));
+  const contacts: Contact[] = [];
+  const near = (vertex: number, facet: Body): void => {
+    if (facet.ids.includes(vertex)) return;
+    const p = pos[vertex] as Vec3;
+    const d = dot3(sub3(p, pos[facet.ids[0] as number] as Vec3), facet.normal);
+    if (Math.abs(d) > reach) return;
+    const found = onFacet(pos, facet.ids, facet.normal, sub3(p, mul3(facet.normal, d)));
+    if (!found) return;
+    const key = `${vertex}:${facet.id}`;
+    let side = memory.sides.get(key);
+    if (side === undefined) {
+      side = d >= 0 ? 1 : -1;
+      memory.sides.set(key, side);
+    }
+    contacts.push({ vertex, tri: found.tri, w: found.w, side });
+  };
+  for (const a of flying) {
+    for (const b of still) {
+      if (len3(sub3(a.centre, b.centre)) > a.radius + b.radius + reach) continue;
+      for (const vi of a.ids) near(vi, b);
+      for (const vi of b.ids) near(vi, a);
+    }
+  }
+  return contacts;
+}
+
+/** Hold a vertex on its side of a facet's triangle, `thickness` away. Returns the correction. */
+function contactConstraint(
+  pos: Vec3[],
+  c: Contact,
+  thickness: number,
+  pinned: ReadonlySet<number>,
+): number {
+  const a = pos[c.tri[0]] as Vec3;
+  const b = pos[c.tri[1]] as Vec3;
+  const d = pos[c.tri[2]] as Vec3;
+  const n = mul3(norm3(cross3(sub3(b, a), sub3(d, a))), c.side);
+  const on = add3(add3(mul3(a, c.w[0]), mul3(b, c.w[1])), mul3(d, c.w[2]));
+  const p = pos[c.vertex] as Vec3;
+  const gap = dot3(sub3(p, on), n) - thickness;
+  if (gap >= 0) return 0;
+  const wp = pinned.has(c.vertex) ? 0 : 1;
+  let sum = wp;
+  for (let k = 0; k < 3; k++) {
+    const w = c.w[k] as number;
+    if (!pinned.has(c.tri[k] as number)) sum += w * w;
+  }
+  if (sum < 1e-12) return 0;
+  const lambda = -gap / sum;
+  if (wp) pos[c.vertex] = add3(p, mul3(n, lambda));
+  for (let k = 0; k < 3; k++) {
+    const vi = c.tri[k] as number;
+    if (!pinned.has(vi)) pos[vi] = sub3(pos[vi] as Vec3, mul3(n, lambda * (c.w[k] as number)));
+  }
+  return -gap;
+}
+
 /**
  * Keep the point where `over` lies on `under` at least `thickness` above
  * it, along the stack's up direction there. Returns the correction applied.
@@ -472,6 +661,11 @@ export function solveSheet(
     }
     return moved;
   };
+  // While a step plays, moving paper is held off the still paper it comes near.
+  const contacts =
+    inFlight && options.contact
+      ? findContacts(state, mesh, pos, inFlight, options.contact, CONTACT_REACH * state.size)
+      : [];
   const separationSweep = (): number => {
     let moved = 0;
     for (const c of mesh.overlaps) {
@@ -479,6 +673,7 @@ export function solveSheet(
       if (inFlight && inFlight.has(c.underId) !== inFlight.has(c.overId)) continue;
       moved = Math.max(moved, separationConstraint(pos, c, thickness, pinned));
     }
+    for (const c of contacts) moved = Math.max(moved, contactConstraint(pos, c, thickness, pinned));
     return moved;
   };
 

@@ -35,6 +35,7 @@ import {
   solvedScene,
   wrapAngle,
 } from './view3d';
+import { type ContactMemory } from './rigid';
 import { Timeline } from './timeline';
 import {
   type FoldStep,
@@ -1693,11 +1694,14 @@ export function createApp(root: HTMLElement): App {
       // tells the views where its creases swing from.
       const previous = timeline.previous ?? timeline.state;
       const start = performance.now();
+      // The 3D view keeps moving paper from passing through still paper; the
+      // sides it has seen are carried through the step.
+      const contact: ContactMemory = { before: previous, sides: new Map(), seeded: false };
       const tick = (now: number): void => {
         const progress = Math.min(1, ((now - start) * speed) / ANIMATION_MS);
         phase = {
           kind: 'animating',
-          animation: { previous, movedIds, progress },
+          animation: { previous, movedIds, progress, contact },
           start,
         };
         render();
