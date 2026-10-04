@@ -1628,7 +1628,11 @@ export function createApp(root: HTMLElement): App {
     side: Side,
     options: LayerSelection | FoldOptions,
   ): Promise<void> => {
-    const opts: FoldOptions = 'kind' in options ? { layers: options } : options;
+    // Folds made by hand take attached paper along, so they never tear the sheet.
+    const opts: FoldOptions = {
+      ...('kind' in options ? { layers: options } : options),
+      attached: true,
+    };
     const step: FoldStep = { line: l, side, options: opts };
     const probe = fold(timeline.state, l, side, opts);
     if (probe.movedIds.length === 0) {
@@ -1641,8 +1645,12 @@ export function createApp(root: HTMLElement): App {
     timeline.insert(at, step);
     const result = timeline.forward();
     selected = at;
+    const along =
+      result && result.takenAlong > 0
+        ? ` It took ${result.takenAlong} attached facet${result.takenAlong === 1 ? '' : 's'} along so the paper does not tear.`
+        : '';
     return (result ? animate(result) : Promise.resolve()).then(() =>
-      afterEdit(`Inserted step ${at + 1}.`, at + 1),
+      afterEdit(`Inserted step ${at + 1}.${along}`, at + 1),
     );
   };
 

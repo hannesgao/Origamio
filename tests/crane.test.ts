@@ -32,9 +32,8 @@ const run = (count = steps.length): PaperState => {
 };
 
 describe('crane preset', () => {
-  it('builds a square base and a bird base that real paper can take', () => {
-    // Pre-creases, square base, two petal folds: no neighbouring facets pulled apart.
-    for (let count = 1; count <= 5; count++) {
+  it('is a sequence real paper can take: no step pulls neighbouring facets apart', () => {
+    for (let count = 1; count <= steps.length; count++) {
       expect(tears(run(count)), `after step ${count}`).toBe(0);
     }
     const base = run(3);

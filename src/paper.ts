@@ -27,6 +27,9 @@ import {
   lineNormal,
   orientCCW,
   reflection,
+  signedDistance,
+  sub,
+  vec,
   scale,
   sideOf,
 } from './geometry';
@@ -82,6 +85,13 @@ export interface FoldOptions {
   readonly placement?: Placement;
   /** Fold angle for display, in degrees (0, 180]; see `Crease.angle`. */
   readonly angle?: number;
+  /**
+   * Take along every facet the selected ones are attached to across an edge
+   * that is not the fold line, and so on, so that the paper never tears:
+   * what real paper does when a flap is folded and the layer joined to it
+   * at a crease has to follow.
+   */
+  readonly attached?: boolean;
 }
 
 export interface PaperState {
@@ -102,6 +112,8 @@ export interface FoldResult {
   /** Facets whose transform changed in this fold (useful for animation). */
   readonly movedIds: readonly number[];
   readonly line: Line;
+  /** Facets the fold took along because they were attached to selected ones (see `attached`). */
+  readonly takenAlong: number;
 }
 
 /** A fresh rectangular sheet (square by default) with its lower-left corner at the origin. */
@@ -188,6 +200,99 @@ function selectFacets(state: PaperState, options: FoldOptions): Set<number> {
   return selected;
 }
 
+/** The part of a facet's unfolded polygon that lies on the moving side of the fold. */
+function movingPart(facet: Facet, line: Line, probe: Vec): Polygon {
+  const toLocal = invert(facet.transform);
+  const localLine = applyToLine(toLocal, line);
+  const movingSide = sideOf(localLine, apply(toLocal, probe));
+  const split = clipPolygon(facet.poly, localLine);
+  return movingSide > 0 ? split.positive : split.negative;
+}
+
+/** The segment of edge ab that edge cd covers, if the two are collinear and overlap. */
+function sharedSegment(a: Vec, b: Vec, c: Vec, d: Vec, tolerance: number): [Vec, Vec] | null {
+  const ab = sub(b, a);
+  const len = Math.hypot(ab.x, ab.y);
+  if (len < tolerance) return null;
+  const dir = { x: ab.x / len, y: ab.y / len };
+  const off = (p: Vec): number => Math.abs(dir.x * (p.y - a.y) - dir.y * (p.x - a.x));
+  if (off(c) > tolerance || off(d) > tolerance) return null;
+  const along = (p: Vec): number => dir.x * (p.x - a.x) + dir.y * (p.y - a.y);
+  const lo = Math.max(0, Math.min(along(c), along(d)));
+  const hi = Math.min(len, Math.max(along(c), along(d)));
+  if (hi - lo < tolerance) return null;
+  return [
+    { x: a.x + dir.x * lo, y: a.y + dir.y * lo },
+    { x: a.x + dir.x * hi, y: a.y + dir.y * hi },
+  ];
+}
+
+/** Whether two facets are joined along an edge of the sheet that the fold model kept intact. */
+function attachedAlong(p: Facet, q: Facet, tolerance: number): [Vec, Vec] | null {
+  for (let i = 0; i < p.poly.length; i++) {
+    const a = p.poly[i] as Vec;
+    const b = p.poly[(i + 1) % p.poly.length] as Vec;
+    for (let j = 0; j < q.poly.length; j++) {
+      const c = q.poly[j] as Vec;
+      const d = q.poly[(j + 1) % q.poly.length] as Vec;
+      const shared = sharedSegment(a, b, c, d, tolerance);
+      if (!shared) continue;
+      const probes = [vec(0.37, 0.61), vec(0.83, 0.29)];
+      const same = (m: Mat, n: Mat): boolean =>
+        probes.every(
+          (t) =>
+            Math.hypot(apply(m, t).x - apply(n, t).x, apply(m, t).y - apply(n, t).y) < tolerance,
+        );
+      if (same(p.transform, q.transform)) return shared;
+      const over = compose(
+        reflection(applyToLine(p.transform, { a: shared[0], b: shared[1] })),
+        p.transform,
+      );
+      if (same(over, q.transform)) return shared;
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Grow the selection until no selected facet is attached, across an edge
+ * that does not lie on the fold line, to an unselected facet with paper on
+ * the moving side. Facets joined only along the fold line stay: that edge
+ * becomes the crease.
+ */
+function takeAttachedAlong(state: PaperState, selected: Set<number>, line: Line, probe: Vec): void {
+  const tolerance = EPS * 1e3 * state.size;
+  const candidates = state.facets.filter(
+    (f) => !selected.has(f.id) && area(movingPart(f, line, probe)) > AREA_EPS,
+  );
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const q of candidates) {
+      if (selected.has(q.id)) continue;
+      for (const p of state.facets) {
+        if (!selected.has(p.id)) continue;
+        const edge = attachedAlong(p, q, tolerance);
+        if (!edge) continue;
+        // Only an attachment that itself reaches the moving side drags the
+        // neighbour along; an edge on the fold line is the hinge, and one
+        // wholly on the staying side is not pulled at all.
+        const folded = applyToLine(p.transform, { a: edge[0], b: edge[1] });
+        const toward = sideOf(line, probe);
+        const reach = Math.max(
+          signedDistance(line, folded.a) * toward,
+          signedDistance(line, folded.b) * toward,
+        );
+        if (reach <= tolerance) continue;
+        selected.add(q.id);
+        grew = true;
+        break;
+      }
+    }
+  }
+}
+
 /** Renumber the layers 0, 1, 2, … keeping their order. */
 function compactLayers(facets: readonly Facet[]): Facet[] {
   const ranks = new Map<number, number>();
@@ -214,6 +319,9 @@ export function fold(
   const flip = reflection(line);
   // A probe point strictly on the moving side, in current coordinates.
   const probe = add(line.a, scale(lineNormal(line), side));
+  const chosen = selected.size;
+  if (opts.attached) takeAttachedAlong(state, selected, line, probe);
+  const takenAlong = selected.size - chosen;
 
   const staying: Facet[] = [];
   const moving: Facet[] = [];
@@ -259,7 +367,7 @@ export function fold(
   }
 
   if (moving.length === 0) {
-    return { state, movedIds: [], line };
+    return { state, movedIds: [], line, takenAlong: 0 };
   }
 
   const placement = opts.placement ?? 'top';
@@ -288,6 +396,7 @@ export function fold(
     state: { ...state, facets, creases, foldCount: state.foldCount + 1, nextId },
     movedIds: relocated.map((f) => f.id),
     line,
+    takenAlong,
   };
 }
 

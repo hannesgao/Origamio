@@ -49,10 +49,8 @@ reflections and convex polygon clipping.
   into the bird base, narrow both points, close the model along its centre
   line, reverse fold the neck, the tail and the head, and spread the wings,
   which the last step keeps open at 150° so the crane stands up in the 3D
-  view. The square base and the bird base are states that real paper can
-  take (no neighbouring facets pulled apart); the narrowing and the reverse
-  folds still use the model's layer selection and are checked for shape
-  rather than for paper continuity.
+  view. Every step leaves the sheet in a state real paper can take: the
+  tests check that no neighbouring facets are ever pulled apart.
 - **3D view with real creases.** A third card shows the sheet as rigid panels
   joined at their creases: every crease is opened a few degrees from flat (the
   _Open_ chips offer 0° to 30°, and the box beside them takes any value up to
@@ -128,7 +126,9 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    endpoint snaps to the nearest one (or onto an edge) within a few pixels; a
    ring marks the snap and the status line names it. The _Snap_ button turns
    this off, and Alt bypasses it for one drag. The fold goes onto the timeline
-   at the playhead.
+   at the playhead. A fold made by hand takes any paper attached to the moving
+   layers along with it, the way real paper must; the message after the fold
+   says how many facets came along.
 2. **Choose the side.** Move the pointer over either side of the line; the side
    that would flip is shaded. Click to fold it over. Press Esc to discard the
    line instead.
@@ -337,17 +337,18 @@ Every step is one call of `fold` on the sheet as it is at that moment:
 }
 ```
 
-| Field       | Meaning                                                                                                                     |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `line`      | Two points on the fold line, in the **folded** coordinates of that step (unit sheet, origin bottom left).                   |
-| `side`      | `1` or `-1`: the half-plane to the left or to the right of the directed line flips over.                                    |
-| `layers`    | `"all"` (default), `{ "top": k }` or `{ "bottom": k }`.                                                                     |
-| `region`    | Optional convex polygon in **unfolded** coordinates; only facets inside it take part.                                       |
-| `window`    | Optional convex polygon in **folded** coordinates; only facets inside it take part.                                         |
-| `placement` | `"top"` (default), `"bottom"` or `"inside"`, see above.                                                                     |
-| `angle`     | Optional fold angle in degrees, `(0, 180]`; below 180 the 3D view keeps the crease open at that angle.                      |
-| `also`      | Optional list of further folds (`line`, `side`, `layers`, `region`, `window`, `placement`) made in the same step, in order. |
-| `label`     | Optional name shown on the timeline.                                                                                        |
+| Field       | Meaning                                                                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `line`      | Two points on the fold line, in the **folded** coordinates of that step (unit sheet, origin bottom left).                                 |
+| `side`      | `1` or `-1`: the half-plane to the left or to the right of the directed line flips over.                                                  |
+| `layers`    | `"all"` (default), `{ "top": k }` or `{ "bottom": k }`.                                                                                   |
+| `region`    | Optional convex polygon in **unfolded** coordinates; only facets inside it take part.                                                     |
+| `window`    | Optional convex polygon in **folded** coordinates; only facets inside it take part.                                                       |
+| `placement` | `"top"` (default), `"bottom"` or `"inside"`, see above.                                                                                   |
+| `angle`     | Optional fold angle in degrees, `(0, 180]`; below 180 the 3D view keeps the crease open at that angle.                                    |
+| `attached`  | Optional `true`: facets attached to the selected ones across any edge other than the fold line are taken along, so the paper never tears. |
+| `also`      | Optional list of further folds (`line`, `side`, `layers`, `region`, `window`, `placement`, `attached`) made in the same step, in order.   |
+| `label`     | Optional name shown on the timeline.                                                                                                      |
 
 `src/sequence.ts` parses and validates files (errors name the offending field)
 and serialises them with points kept on one line. The preset files are
