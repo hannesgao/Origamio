@@ -32,6 +32,7 @@ import {
   OPENING_STEPS,
   MAX_ORBIT_ZOOM,
   MIN_ORBIT_ZOOM,
+  autoFrame,
   wrapAngle,
 } from './view3d';
 import { type SolveRequest, createSheetSolver } from './solver';
@@ -385,7 +386,7 @@ export function createApp(root: HTMLElement): App {
       .then(
         (solid) => {
           lastSolved = key;
-          scene.update(solid, sceneStyle(), orbit, viewFrame, highlighted);
+          scene.update(solid, sceneStyle(), orbit, frameOf(timeline.state), highlighted);
         },
         (error: unknown) => {
           console.error('3D solve failed', error);
@@ -424,6 +425,13 @@ export function createApp(root: HTMLElement): App {
   let orbit: Orbit = DEFAULT_ORBIT;
   /** How the loaded model stands, for the fixed views; undefined means the sheet's axes. */
   let viewFrame: ViewFrame | undefined;
+  // A model that does not say how it stands gets a frame from its shape, per sheet.
+  let autoFrameFor: { state: PaperState; frame: ViewFrame } | null = null;
+  const frameOf = (state: PaperState): ViewFrame => {
+    if (viewFrame) return viewFrame;
+    if (autoFrameFor?.state !== state) autoFrameFor = { state, frame: autoFrame(state) };
+    return autoFrameFor.frame;
+  };
   const rememberedTab = remembered(TAB_KEY);
   let activeTab: ViewTab = VIEW_TABS.some((t) => t.id === rememberedTab)
     ? (rememberedTab as ViewTab)
@@ -1173,7 +1181,7 @@ export function createApp(root: HTMLElement): App {
   const fitViews = (): void => {
     fitViewsInner();
     scene.resize();
-    scene.reorbit(orbit, viewFrame);
+    scene.reorbit(orbit, frameOf(timeline.state));
   };
 
   let fitFrame = 0;
@@ -2452,16 +2460,18 @@ export function createApp(root: HTMLElement): App {
         ),
       );
     });
-    scene.reorbit(orbit, viewFrame);
+    scene.reorbit(orbit, frameOf(timeline.state));
   };
   /** Recompute the fixed views for the loaded model's frame. */
   const setViewFrame = (frame: ViewFrame | undefined): void => {
     viewFrame = frame;
-    fixedViews = namedViews(viewFrame);
+    fixedViews = namedViews(frameOf(timeline.state));
     setOrbit(DEFAULT_ORBIT);
   };
   viewButtons.forEach((button, i) =>
     button.addEventListener('click', () => {
+      // A frame from the shape follows the sheet as it is folded.
+      if (!viewFrame) fixedViews = namedViews(frameOf(timeline.state));
       const view = fixedViews[i];
       if (view) setOrbit({ ...view.orbit, zoom: orbit.zoom });
     }),

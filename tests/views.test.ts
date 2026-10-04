@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { approxEqualVec, vec } from '../src/geometry';
-import { createPaper } from '../src/paper';
+import { approxEqualVec, line, vec } from '../src/geometry';
+import { createPaper, fold } from '../src/paper';
 import { PRESETS, presetToSequence } from '../src/presets';
 import { type Vec3, hinges, stepPose } from '../src/rigid';
 import { type FoldStep, applyStep, parseSequence, serializeSequence } from '../src/sequence';
 import { solveSheet } from '../src/solve';
-import { DEFAULT_FRAME, namedViews } from '../src/view3d';
+import { DEFAULT_FRAME, autoFrame, namedViews } from '../src/view3d';
 
 const dot = (a: Vec3, b: Vec3): number => a.x * b.x + a.y * b.y + a.z * b.z;
 const len = (a: Vec3): number => Math.hypot(a.x, a.y, a.z);
@@ -100,5 +100,23 @@ describe('the solved crane', () => {
     const v = (p: Vec3): number => (p.y - p.x) * Math.SQRT1_2;
     expect(v(a)).toBeGreaterThan(0);
     expect(v(c)).toBeGreaterThan(0);
+  });
+});
+
+describe('autoFrame', () => {
+  it('takes the long axis of a strip as its front and keeps the axes of a square', () => {
+    const flat = createPaper();
+    expect(autoFrame(flat)).toEqual(DEFAULT_FRAME);
+    // Folded twice across the same way: a 1 × 1/4 strip along x.
+    const once = fold(flat, line(vec(0, 0.5), vec(1, 0.5)), 1).state;
+    const strip = fold(once, line(vec(0, 0.25), vec(1, 0.25)), 1).state;
+    const frame = autoFrame(strip);
+    expect(Math.abs(frame.front.x)).toBeCloseTo(1);
+    expect(Math.abs(frame.front.y)).toBeCloseTo(0);
+    expect(Math.abs(frame.top.y)).toBeCloseTo(1);
+    // The sheet's own frame for the crane is kept by the file; a diagonal strip turns the frame.
+    const diagonal = fold(flat, line(vec(0, 0), vec(1, 1)), 1).state;
+    const d = autoFrame(diagonal);
+    expect(Math.abs(d.front.x)).toBeCloseTo(Math.SQRT1_2, 1);
   });
 });
