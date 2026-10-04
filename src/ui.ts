@@ -16,10 +16,15 @@ import {
   vec,
 } from './geometry';
 import { LIBRARY } from './library';
+import { Scene3d, type SceneStyle } from './scene3d';
 import { type Snap, type SnapTargets, snapTargets, snapTo } from './snap';
 import {
   type Orbit,
   DEFAULT_OPENING,
+  DEFAULT_THICKNESS_MM,
+  MAX_THICKNESS_MM,
+  SHEET_MM,
+  THICKNESS_STEPS_MM,
   DEFAULT_ORBIT,
   MAX_OPENING,
   type NamedView,
@@ -27,7 +32,7 @@ import {
   OPENING_STEPS,
   MAX_ORBIT_ZOOM,
   MIN_ORBIT_ZOOM,
-  render3d,
+  solvedScene,
   wrapAngle,
 } from './view3d';
 import { Timeline } from './timeline';
@@ -386,8 +391,7 @@ export function createApp(root: HTMLElement): App {
   // --- DOM -----------------------------------------------------------------
   const foldedSvg = svgElement(paper.width, paper.height, 'view folded-view');
   const unfoldedSvg = svgElement(paper.width, paper.height, 'view unfolded-view');
-  const solidSvg = svgElement(paper.width, paper.height, 'view solid-view');
-  const views = [foldedSvg, unfoldedSvg, solidSvg];
+  const views = [foldedSvg, unfoldedSvg];
 
   const layerAll = el('input', { type: 'radio', name: 'layers', value: 'all', checked: '' });
   const layerTop = el('input', { type: 'radio', name: 'layers', value: 'top' });
@@ -801,6 +805,43 @@ export function createApp(root: HTMLElement): App {
     el('div', { class: 'tool-toggle', role: 'group', 'aria-label': 'Named views' }, viewButtons),
     orbitReset,
   ]);
+  // Paper thickness in millimetres for a 15 cm sheet: a few presets, or any value typed.
+  let thicknessMm = DEFAULT_THICKNESS_MM;
+  const thicknessButtons = THICKNESS_STEPS_MM.map((mm) =>
+    el(
+      'button',
+      {
+        type: 'button',
+        class: 'chip',
+        'aria-pressed': String(mm === thicknessMm),
+        title: `Paper ${mm} mm thick on a ${SHEET_MM / 10} cm sheet`,
+      },
+      [mm === 0 ? '0' : String(mm)],
+    ),
+  );
+  const thicknessInput = el('input', {
+    type: 'number',
+    class: 'chip-input',
+    min: '0',
+    max: String(MAX_THICKNESS_MM),
+    step: '0.01',
+    value: String(thicknessMm),
+    'aria-label': 'Paper thickness in millimetres',
+    title: `Exact thickness, 0 to ${MAX_THICKNESS_MM} mm`,
+  });
+  const thicknessControl = el(
+    'span',
+    { class: 'chips', role: 'group', 'aria-label': 'Paper thickness' },
+    [...thicknessButtons, thicknessInput, el('span', { class: 'chip-unit' }, ['mm'])],
+  );
+  /** What the 3D card draws with: the sheet's colours, the ink, thickness and shadow. */
+  const sceneStyle = (): SceneStyle => ({
+    front: paper.front,
+    back: paper.back,
+    ink: getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#2a211a',
+    thickness: thicknessMm / SHEET_MM,
+    shadow: true,
+  });
   // How far every crease is opened from flat, in degrees: a few presets, or any value typed.
   let opening = DEFAULT_OPENING;
   const openingButtons = OPENING_STEPS.map((degrees) =>
@@ -869,7 +910,10 @@ export function createApp(root: HTMLElement): App {
 
   const foldedFrame = el('div', { class: 'view-frame' }, [foldedSvg]);
   const unfoldedFrame = el('div', { class: 'view-frame' }, [unfoldedSvg]);
-  const solidFrame = el('div', { class: 'view-frame' }, [solidSvg]);
+  const solidFrame = el('div', { class: 'view-frame' });
+  // The 3D card draws with WebGL into a canvas inside its frame.
+  const scene = new Scene3d(solidFrame);
+  const solidCanvas = scene.canvas;
   const foldedCard = card('Folded', viewTools, foldedFrame, [statusBar, statsRow], 'folded-card');
   const unfoldedCard = card(
     'Unfolded',
@@ -883,11 +927,8 @@ export function createApp(root: HTMLElement): App {
     solidTools,
     solidFrame,
     [
-      el('span', {}, [
-        'Creases opened a little. ',
-        el('span', { class: 'help-more' }, ['Drag to turn, scroll to zoom.']),
-      ]),
       el('span', { class: 'range-label' }, ['Open', openingControl]),
+      el('span', { class: 'range-label' }, ['Paper', thicknessControl]),
     ],
     'solid-card',
   );
@@ -984,7 +1025,7 @@ export function createApp(root: HTMLElement): App {
    * measured, the rest of the height goes to the frame, and the frame never
    * grows wider than its card.
    */
-  const fitViews = (): void => {
+  const fitViewsInner = (): void => {
     const gap = parseFloat(getComputedStyle(viewsGrid).rowGap) || 0;
     const workspaceStyle = getComputedStyle(workspace);
     const padding =
@@ -1061,6 +1102,13 @@ export function createApp(root: HTMLElement): App {
     const [cardEl, frame] =
       secondaryTab === 'solid' ? [solidCard, solidFrame] : [unfoldedCard, unfoldedFrame];
     fill(frame, column - chrome(cardEl, frame));
+  };
+
+  /** Size the frames, then let the 3D canvas follow its frame. */
+  const fitViews = (): void => {
+    fitViewsInner();
+    scene.resize();
+    scene.reorbit(orbit, viewFrame);
   };
 
   let fitFrame = 0;
@@ -1170,6 +1218,7 @@ export function createApp(root: HTMLElement): App {
         node.classList.toggle('facet-hit', highlighted.has(Number(node.getAttribute('data-id'))));
       }
     }
+    scene.highlight(highlighted);
   };
 
   const setHighlight = (ids: readonly number[]): void => {
@@ -1283,18 +1332,12 @@ export function createApp(root: HTMLElement): App {
     renderTimeline();
     renderStepPanel();
     creaseCount.textContent = `${state.creases.length} crease${state.creases.length === 1 ? '' : 's'}`;
-    // The 3D view: the sheet before the step lets a playing step swing its creases.
-    const solidRect = solidSvg.getBoundingClientRect();
-    const solid = render3d(state, {
-      orbit,
+    // The 3D view: the sheet solved as paper, the step in progress swinging its creases.
+    const solid = solvedScene(state, {
       opening: (opening * Math.PI) / 180,
-      ...(solidRect.width > 0 && solidRect.height > 0
-        ? { aspect: solidRect.width / solidRect.height }
-        : {}),
       ...(phase.kind === 'animating' ? { animation: phase.animation } : {}),
     });
-    solidSvg.setAttribute('viewBox', solid.viewBox);
-    solidSvg.innerHTML = solid.markup;
+    scene.update(solid, sceneStyle(), orbit, viewFrame, highlighted);
     applyHighlight();
     if (statsFor !== state) {
       statsFor = state;
@@ -2250,7 +2293,7 @@ export function createApp(root: HTMLElement): App {
     }
   });
 
-  for (const svg of [unfoldedSvg, solidSvg]) {
+  for (const svg of [unfoldedSvg]) {
     svg.addEventListener('pointermove', (event) => {
       const hit = event.target instanceof Element ? event.target.closest('[data-id]') : null;
       setHighlight(hit ? [Number(hit.getAttribute('data-id'))] : []);
@@ -2270,6 +2313,21 @@ export function createApp(root: HTMLElement): App {
   );
   openingInput.addEventListener('input', () => setOpening(Number(openingInput.value)));
   openingInput.addEventListener('change', () => setOpening(Number(openingInput.value)));
+  const setThickness = (mm: number): void => {
+    thicknessMm = Math.max(0, Math.min(MAX_THICKNESS_MM, Number.isFinite(mm) ? mm : 0));
+    thicknessButtons.forEach((button, i) =>
+      button.setAttribute('aria-pressed', String(THICKNESS_STEPS_MM[i] === thicknessMm)),
+    );
+    if (Number(thicknessInput.value) !== thicknessMm) thicknessInput.value = String(thicknessMm);
+    render();
+  };
+  thicknessButtons.forEach((button, i) =>
+    button.addEventListener('click', () =>
+      setThickness(THICKNESS_STEPS_MM[i] ?? DEFAULT_THICKNESS_MM),
+    ),
+  );
+  thicknessInput.addEventListener('input', () => setThickness(Number(thicknessInput.value)));
+  thicknessInput.addEventListener('change', () => setThickness(Number(thicknessInput.value)));
 
   // Turning the 3D view: drag spins and tilts, the wheel zooms, a double click resets.
   let orbitDrag: { readonly pointerId: number; last: Vec } | null = null;
@@ -2309,7 +2367,7 @@ export function createApp(root: HTMLElement): App {
         ),
       );
     });
-    render();
+    scene.reorbit(orbit, viewFrame);
   };
   /** Recompute the fixed views for the loaded model's frame. */
   const setViewFrame = (frame: ViewFrame | undefined): void => {
@@ -2323,29 +2381,35 @@ export function createApp(root: HTMLElement): App {
       if (view) setOrbit({ ...view.orbit, zoom: orbit.zoom });
     }),
   );
-  solidSvg.addEventListener('pointerdown', (event) => {
+  solidCanvas.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
     orbitDrag = { pointerId: event.pointerId, last: clientPoint(event) };
-    solidSvg.setPointerCapture(event.pointerId);
-    solidSvg.classList.add('is-turning');
+    solidCanvas.setPointerCapture(event.pointerId);
+    solidCanvas.classList.add('is-turning');
   });
-  solidSvg.addEventListener('pointermove', (event) => {
-    if (!orbitDrag || orbitDrag.pointerId !== event.pointerId) return;
+  solidCanvas.addEventListener('pointermove', (event) => {
+    if (!orbitDrag || orbitDrag.pointerId !== event.pointerId) {
+      // Not turning: the facet under the pointer lights up in every view.
+      const id = scene.pick(event.clientX, event.clientY);
+      setHighlight(id === null ? [] : [id]);
+      return;
+    }
     const now = clientPoint(event);
     const dx = now.x - orbitDrag.last.x;
     const dy = now.y - orbitDrag.last.y;
     orbitDrag.last = now;
     setOrbit({ ...orbit, yaw: orbit.yaw + dx * 0.01, pitch: orbit.pitch + dy * 0.01 });
   });
+  solidCanvas.addEventListener('pointerleave', () => setHighlight([]));
   const endOrbit = (event: PointerEvent): void => {
     if (orbitDrag?.pointerId !== event.pointerId) return;
     orbitDrag = null;
-    solidSvg.classList.remove('is-turning');
+    solidCanvas.classList.remove('is-turning');
   };
-  solidSvg.addEventListener('pointerup', endOrbit);
-  solidSvg.addEventListener('pointercancel', endOrbit);
-  solidSvg.addEventListener(
+  solidCanvas.addEventListener('pointerup', endOrbit);
+  solidCanvas.addEventListener('pointercancel', endOrbit);
+  solidCanvas.addEventListener(
     'wheel',
     (event) => {
       event.preventDefault();
@@ -2353,7 +2417,7 @@ export function createApp(root: HTMLElement): App {
     },
     { passive: false },
   );
-  solidSvg.addEventListener('dblclick', () => setOrbit(DEFAULT_ORBIT));
+  solidCanvas.addEventListener('dblclick', () => setOrbit(DEFAULT_ORBIT));
   orbitReset.addEventListener('click', () => setOrbit(DEFAULT_ORBIT));
   window.addEventListener('resize', scheduleFit);
 

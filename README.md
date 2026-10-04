@@ -6,10 +6,11 @@ inspect the crease pattern and count the resulting faces.
 
 **Try it:** <https://origamio.hannesgao.workers.dev/>
 
-Origamio is a pure front-end application (Vite + TypeScript, no framework, no
-runtime dependencies). Both views are rendered as SVG from a small, immutable
-geometric model, so every fold is exact: no meshes, no physics, just
-reflections and convex polygon clipping.
+Origamio is a pure front-end application (Vite + TypeScript, no framework;
+the one runtime dependency is three.js, used only by the 3D card). The flat
+views are rendered as SVG from a small, immutable geometric model, so every
+fold is exact: reflections and convex polygon clipping. The 3D card solves
+that model as a sheet of paper and draws it with WebGL.
 
 ## Features
 
@@ -61,11 +62,15 @@ reflections and convex polygon clipping.
   panel keeps its shape and panels joined at a crease stay joined. Where the
   angles contradict each other, as the wings and body of a crane do, the
   sheet settles on a compromise the way paper gives, so a crane stands with
-  its wings on both sides and a slightly puffed body. It is lit from one side
-  with the front and back colours on the right faces. Drag to turn it any way
-  round, scroll to zoom, and use _Front view_, _Side view_, _Top view_ and
-  _Isometric_ for the fixed views of the model (a sequence can say how its
-  model stands; the crane does), _Reset_ returns to the default angle. While a step plays, its creases swing from flat to folded in three
+  its wings on both sides and a slightly puffed body. It is drawn with WebGL
+  (three.js): the paper has a thickness (_Paper_ chips from 0 to 0.2 mm for a
+  15 cm sheet, or any value typed), a soft key light, a ground shadow under
+  the model (hidden in the top view) and crease lines only where the sheet
+  bends or ends. Drag to turn it any way round, scroll to zoom, and use
+  _Front view_, _Side view_, _Top view_ and _Isometric_ for the fixed views
+  of the model (a sequence can say how its model stands; the crane does);
+  _Reset_ returns to the default angle. Pointing at a facet lights it up in
+  every view. While a step plays, its creases swing from flat to folded in three
   dimensions, and a step saved with a fold `angle` below 180° stays open at
   that angle. Pointing at a facet in any view outlines the same facet in the
   others, and pointing at the folded sheet outlines every facet under the
@@ -384,7 +389,8 @@ rewrites them and `npm test` fails when they are out of date.
 | `src/render.ts`   | SVG markup for the flat views, the fold animation and the folded-view camera     |
 | `src/rigid.ts`    | Hinges with fold angles, attachment, the rigid walk that places the facets       |
 | `src/solve.ts`    | Position-based solver: rigid facets, welded creases, crease angles with loops    |
-| `src/view3d.ts`   | The 3D view: solved sheet, orbit and named views, lighting, edges, depth order   |
+| `src/view3d.ts`   | The 3D view's geometry: solved sheet, edges to draw, orbit and named views       |
+| `src/scene3d.ts`  | The 3D card's WebGL renderer (three.js): extruded facets, lights, shadow, pick   |
 | `src/snap.ts`     | Snap targets of the folded sheet: corners, crossings, midpoints, edges           |
 | `src/sequence.ts` | The JSON sequence format: parse, validate, serialise                             |
 | `src/presets.ts`  | Geometry of the shipped sequences, including the crane; source of `presets/`     |

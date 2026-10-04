@@ -1,7 +1,6 @@
 import { type PaperState, foldedPoints } from './paper';
 import { type ViewFrame } from './sequence';
-import { BACK_COLOR, FRONT_COLOR } from './render';
-import { type Hinge, type StepAnimation, type Vec3, hinges, stepPose } from './rigid';
+import { type Hinge, type Panel, type StepAnimation, type Vec3, hinges, stepPose } from './rigid';
 import { solveSheet } from './solve';
 
 export type { StepAnimation } from './rigid';
@@ -86,6 +85,13 @@ export function namedViews(frame: ViewFrame = DEFAULT_FRAME): NamedView[] {
 export const MIN_ORBIT_ZOOM = 0.5;
 export const MAX_ORBIT_ZOOM = 4;
 
+/** Paper thicknesses offered as presets, in millimetres of a 15 cm sheet. */
+export const THICKNESS_STEPS_MM: readonly number[] = [0, 0.05, 0.07, 0.1, 0.2];
+export const DEFAULT_THICKNESS_MM = 0.07;
+export const MAX_THICKNESS_MM = 1;
+/** The sheet the thickness presets are given for, in millimetres. */
+export const SHEET_MM = 150;
+
 /** Crease openings offered as presets, in degrees; any other value can be typed. */
 export const OPENING_STEPS: readonly number[] = [0, 3, 6, 10, 15, 30];
 export const DEFAULT_OPENING = 6;
@@ -100,78 +106,33 @@ export const wrapAngle = (a: number): number => {
   return r;
 };
 
-export interface View3dOptions {
-  readonly orbit: Orbit;
+export interface SceneOptions {
   /** How far every folded crease is opened from flat, in radians. */
   readonly opening: number;
   readonly animation?: StepAnimation;
-  /** Width / height of the frame; the view box takes the same shape. */
-  readonly aspect?: number;
 }
 
-export interface View3d {
-  readonly viewBox: string;
-  readonly markup: string;
+/** A line to draw: the sheet's boundary or a crease that is bent in the current pose. */
+export interface SceneEdge {
+  readonly a: Vec3;
+  readonly b: Vec3;
 }
 
-const fmt = (n: number): string => (Math.abs(n) < 1e-9 ? '0' : n.toFixed(4));
-const dot3 = (a: Vec3, b: Vec3): number => a.x * b.x + a.y * b.y + a.z * b.z;
-const norm3 = (a: Vec3): Vec3 => {
-  const l = Math.hypot(a.x, a.y, a.z) || 1;
-  return { x: a.x / l, y: a.y / l, z: a.z / l };
-};
-
-function rotate(orbit: Orbit, centre: Vec3, p: Vec3): Vec3 {
-  // A named view's basis first, then spin about the vertical and tilt about the screen's x axis.
-  let x = p.x - centre.x;
-  let y = p.y - centre.y;
-  let z = p.z - centre.z;
-  if (orbit.basis) {
-    const [r, u, d] = orbit.basis;
-    const bx = r.x * x + r.y * y + r.z * z;
-    const by = u.x * x + u.y * y + u.z * z;
-    const bz = d.x * x + d.y * y + d.z * z;
-    x = bx;
-    y = by;
-    z = bz;
-  }
-  const cy = Math.cos(orbit.yaw);
-  const sy = Math.sin(orbit.yaw);
-  const x1 = x * cy - y * sy;
-  const y1 = x * sy + y * cy;
-  const cp = Math.cos(orbit.pitch);
-  const sp = Math.sin(orbit.pitch);
-  // Pitch 0 looks straight down; pitch π/2 looks along the table.
-  const x2 = x1;
-  const y2 = y1 * cp + z * sp;
-  const z2 = -y1 * sp + z * cp;
-  // Roll turns the picture about the line of sight.
-  const cr = Math.cos(orbit.roll);
-  const sr = Math.sin(orbit.roll);
-  return { x: x2 * cr - y2 * sr, y: x2 * sr + y2 * cr, z: z2 };
+export interface SolvedScene {
+  readonly panels: Panel[];
+  readonly edges: SceneEdge[];
+  /** Centre of the sheet's extent (in the sheet's plane) that views turn about. */
+  readonly centre: Vec3;
+  /** Farthest any solved point lies from the centre. */
+  readonly reach: number;
 }
 
-/** Hex colour darkened or lightened by `factor` (1 keeps it). */
-function shade(hex: string, factor: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const channel = (v: number): string =>
-    Math.max(0, Math.min(255, Math.round(v * factor)))
-      .toString(16)
-      .padStart(2, '0');
-  return `#${channel((n >> 16) & 255)}${channel((n >> 8) & 255)}${channel(n & 255)}`;
-}
-
-/**
- * Markup for the folded sheet as rigid panels joined at their creases, each
- * crease opened a little so the paper reads as folded rather than stacked,
- * seen from the orbit.
- */
 /** The hinge along a facet's edge, if the edge lies on one. */
 function hingeAlong(
   byFacet: Map<number, Hinge[]>,
   facetId: number,
-  a: Vec3,
-  b: Vec3,
+  a: { x: number; y: number },
+  b: { x: number; y: number },
 ): Hinge | null {
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   for (const h of byFacet.get(facetId) ?? []) {
@@ -186,27 +147,18 @@ function hingeAlong(
   return null;
 }
 
-/** Paper grain and a soft edge, defined once per drawing. */
-const DEFS =
-  '<defs>' +
-  '<filter id="paper-grain" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">' +
-  '<feTurbulence type="fractalNoise" baseFrequency="700" numOctaves="2" seed="7" result="noise" />' +
-  // Grey noise at low opacity, kept to the paper itself.
-  '<feColorMatrix in="noise" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.12 0" result="grey" />' +
-  '<feComposite in="grey" in2="SourceAlpha" operator="in" result="grain" />' +
-  '<feBlend in="SourceGraphic" in2="grain" mode="multiply" />' +
-  '</filter>' +
-  '</defs>';
-
-export function render3d(state: PaperState, options: View3dOptions): View3d {
-  const size = state.size;
+/**
+ * The sheet solved as paper for the given opening (and step in progress):
+ * every facet placed in space, plus the edges worth drawing. The 3D card
+ * renders this; it is also what the tests look at.
+ */
+export function solvedScene(state: PaperState, options: SceneOptions): SolvedScene {
   const all = hinges(state);
   const pose = stepPose(state, options.opening, options.animation);
   // Solved from the rigid walk every time: a few milliseconds for a crane,
   // and a flat warm start would stall the crease constraints.
   const panels = solveSheet(state, all, { ...pose, iterations: 80 }).panels;
   const animation = options.animation;
-  // Hinges by facet, to tell a real fold from a flat seam between facets.
   const byFacet = new Map<number, Hinge[]>();
   for (const h of all) {
     for (const id of [h.p, h.q]) {
@@ -216,7 +168,23 @@ export function render3d(state: PaperState, options: View3dOptions): View3d {
     }
   }
   const angleOf = pose.angleOf ?? ((h: Hinge): number => h.shown);
-
+  // An edge is drawn only where the paper actually bends or ends; seams
+  // between facets lying flat against each other stay invisible.
+  const BEND = (2 * Math.PI) / 180;
+  const edges: SceneEdge[] = [];
+  for (const panel of panels) {
+    const poly = panel.facet.poly;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i] as { x: number; y: number };
+      const b = poly[(i + 1) % poly.length] as { x: number; y: number };
+      const hinge = hingeAlong(byFacet, panel.facet.id, a, b);
+      if (hinge !== null && Math.abs(angleOf(hinge)) < BEND) continue;
+      // Each crease is shared by two facets; draw it once, from the lower id.
+      if (hinge !== null && hinge.p !== panel.facet.id && hinge.q !== panel.facet.id) continue;
+      if (hinge !== null && Math.min(hinge.p, hinge.q) !== panel.facet.id) continue;
+      edges.push({ a: panel.points[i] as Vec3, b: panel.points[(i + 1) % poly.length] as Vec3 });
+    }
+  }
   // While a step plays the sheet may reach further than its end state does.
   const extent = animation
     ? [...foldedPoints(state), ...foldedPoints(animation.previous)]
@@ -228,67 +196,53 @@ export function render3d(state: PaperState, options: View3dOptions): View3d {
     y: (Math.min(...ys) + Math.max(...ys)) / 2,
     z: 0,
   };
-  const light = norm3({ x: -0.35, y: 0.45, z: 0.82 });
-  // An edge is drawn only where the paper actually bends or ends; seams
-  // between facets lying flat against each other stay invisible.
-  const BEND = (2 * Math.PI) / 180;
-  // Coincident panels are ordered by layer: higher layers are nearer when the
-  // sheet is seen from the front, lower ones when it is seen from behind.
-  const fromFront = rotate(options.orbit, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }).z >= 0;
-  const drawn = panels
-    .map((panel) => {
-      const points = panel.points.map((p) => rotate(options.orbit, centre, p));
-      const normal = norm3(rotate(options.orbit, { x: 0, y: 0, z: 0 }, panel.normal));
-      const depth = points.reduce((sum, p) => sum + p.z, 0) / points.length;
-      const moving = animation ? animation.movedIds.has(panel.facet.id) : false;
-      return { facet: panel.facet, points, normal, depth, moving };
-    })
-    // Far panels first; coincident ones in layer order.
-    .sort(
-      (a, b) => a.depth - b.depth || (fromFront ? a.facet.z - b.facet.z : b.facet.z - a.facet.z),
-    );
-  const parts: string[] = [DEFS, '<g filter="url(#paper-grain)">'];
-  for (const d of drawn) {
-    // The front face is seen when its normal points at the viewer.
-    const seesFront = d.normal.z >= 0;
-    const base = seesFront ? FRONT_COLOR : BACK_COLOR;
-    // Mostly ambient light with a soft key light, so facets read as one sheet.
-    const lit = 0.74 + 0.26 * Math.abs(dot3(d.normal, light));
-    const fill = shade(base, lit);
-    const pts = d.points.map((p) => `${fmt(p.x)},${fmt(-p.y)}`).join(' ');
-    const cls = `solid-facet ${seesFront ? 'solid-front' : 'solid-back'}${d.moving ? ' facet-moving' : ''}`;
-    parts.push(`<polygon class="${cls}" data-id="${d.facet.id}" points="${pts}" fill="${fill}" />`);
-    // Edges: the sheet's boundary, and creases that are bent in this pose.
-    const poly = d.facet.poly;
-    const segments: string[] = [];
-    for (let i = 0; i < poly.length; i++) {
-      const a = poly[i] as { x: number; y: number };
-      const b = poly[(i + 1) % poly.length] as { x: number; y: number };
-      const hinge = hingeAlong(byFacet, d.facet.id, { ...a, z: 0 }, { ...b, z: 0 });
-      // A seam between facets lying in one plane is not drawn; a fold is.
-      if (hinge !== null && Math.abs(angleOf(hinge)) < BEND) continue;
-      const pa = d.points[i] as Vec3;
-      const pb = d.points[(i + 1) % poly.length] as Vec3;
-      segments.push(`M${fmt(pa.x)},${fmt(-pa.y)}L${fmt(pb.x)},${fmt(-pb.y)}`);
-    }
-    if (segments.length > 0) parts.push(`<path class="solid-edge" d="${segments.join('')}" />`);
-  }
-  parts.push('</g>');
-  // Fit the solved sheet: its reach from the centre, so a model whose wings
-  // stand out still fits, whatever the turn, and the view does not jump.
-  let reach = size * 0.3;
+  let reach = state.size * 0.3;
   for (const panel of panels) {
     for (const p of panel.points) {
       reach = Math.max(reach, Math.hypot(p.x - centre.x, p.y - centre.y, p.z - centre.z));
     }
   }
-  const span = reach * 2 * 1.08;
-  const zoom = Math.max(MIN_ORBIT_ZOOM, Math.min(MAX_ORBIT_ZOOM, options.orbit.zoom));
-  const h = span / 2 / zoom;
-  const aspect = options.aspect ?? 1;
-  const w = h * aspect;
-  return {
-    viewBox: `${fmt(-w)} ${fmt(-h)} ${fmt(2 * w)} ${fmt(2 * h)}`,
-    markup: parts.join(''),
+  return { panels, edges, centre, reach };
+}
+
+/**
+ * The orbit as a rotation from model space to view space: rows are the
+ * model-space directions that map to screen right, screen up and towards
+ * the viewer (a named view's basis first, then yaw, pitch and roll).
+ */
+export function viewRotation(orbit: Orbit): readonly [Vec3, Vec3, Vec3] {
+  const rotate = (p: Vec3): Vec3 => {
+    let { x, y, z } = p;
+    if (orbit.basis) {
+      const [r, u, d] = orbit.basis;
+      const bx = r.x * x + r.y * y + r.z * z;
+      const by = u.x * x + u.y * y + u.z * z;
+      const bz = d.x * x + d.y * y + d.z * z;
+      x = bx;
+      y = by;
+      z = bz;
+    }
+    const cy = Math.cos(orbit.yaw);
+    const sy = Math.sin(orbit.yaw);
+    const x1 = x * cy - y * sy;
+    const y1 = x * sy + y * cy;
+    const cp = Math.cos(orbit.pitch);
+    const sp = Math.sin(orbit.pitch);
+    // Pitch 0 looks straight down; pitch π/2 looks along the table.
+    const x2 = x1;
+    const y2 = y1 * cp + z * sp;
+    const z2 = -y1 * sp + z * cp;
+    const cr = Math.cos(orbit.roll);
+    const sr = Math.sin(orbit.roll);
+    return { x: x2 * cr - y2 * sr, y: x2 * sr + y2 * cr, z: z2 };
   };
+  // The rows of the rotation are the images of the model axes, transposed.
+  const ex = rotate({ x: 1, y: 0, z: 0 });
+  const ey = rotate({ x: 0, y: 1, z: 0 });
+  const ez = rotate({ x: 0, y: 0, z: 1 });
+  return [
+    { x: ex.x, y: ey.x, z: ez.x },
+    { x: ex.y, y: ey.y, z: ez.y },
+    { x: ex.z, y: ey.z, z: ez.z },
+  ];
 }
