@@ -17,7 +17,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "presets:write": "WRITE_PRESETS=1 vitest run tests/presets-json.test.ts",
-    "shot": "node scripts/screenshot.mjs"
+    "shot": "node scripts/screenshot.mjs",
+    "shot:ci": "node scripts/screenshot.mjs --browser linux --url http://localhost:4173/ --out shots/ci --scenario scripts/scenarios/baseline.mjs --width 1400 --height 900",
+    "shot:compare": "node scripts/compare-shots.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -27,7 +29,9 @@
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",
     "jsdom": "^29.1.1",
+    "pixelmatch": "^7.2.0",
     "playwright-core": "^1.63.0",
+    "pngjs": "^7.0.0",
     "prettier": "^3.9.9",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.0",

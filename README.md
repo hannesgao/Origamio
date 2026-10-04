@@ -285,6 +285,15 @@ Linux or WSL) and falls back to the Chrome installed on Windows when run from
 WSL, using a fresh temporary profile for every run that it closes and deletes
 afterwards. It never ends browser processes by name. `shots/` is ignored by git.
 
+The `shots` job of the `ci` workflow guards the pictures themselves: it serves
+the build, runs `scripts/scenarios/baseline.mjs` in Playwright's Chromium with
+software WebGL (`npm run shot:ci`) and compares the crane's four fixed 3D views,
+the folded view and the crease pattern with the baselines in `tests/shots/`
+(`npm run shot:compare`, at most 0.3% of the pixels may differ). A change that
+alters a picture on purpose ships new baselines: download the job's `shots`
+artifact, or run the two commands on Linux, then
+`npm run shot:compare -- --update` and commit `tests/shots/`.
+
 ## Data model
 
 The sheet is a unit square in the coordinate system of the **unfolded** paper.
