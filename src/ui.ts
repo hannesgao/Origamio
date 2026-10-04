@@ -54,7 +54,6 @@ import {
 } from './sequence';
 import {
   type FoldOptions,
-  type FoldResult,
   type LayerSelection,
   type PaperState,
   ALL_LAYERS,
@@ -311,7 +310,13 @@ type Phase =
   | { readonly kind: 'idle' }
   | { readonly kind: 'dragging'; readonly from: Vec; readonly to: Vec; readonly snap?: Snap }
   | { readonly kind: 'choose-side'; readonly line: Line; readonly hover?: Side }
-  | { readonly kind: 'animating'; readonly animation: FoldAnimation; readonly start: number };
+  | {
+      readonly kind: 'animating';
+      readonly animation: FoldAnimation;
+      /** The sheet being shown: after the part of the step that is playing. */
+      readonly state: PaperState;
+      readonly start: number;
+    };
 
 export interface App {
   readonly root: HTMLElement;
@@ -1355,7 +1360,7 @@ export function createApp(root: HTMLElement): App {
   let statsFor: PaperState | null = null;
 
   const render = (): void => {
-    const state = timeline.state;
+    const state = phase.kind === 'animating' ? phase.state : timeline.state;
     let options = {};
     const next = timeline.next;
     // The step that would be applied next shows as its line only; shading is
@@ -1757,33 +1762,50 @@ export function createApp(root: HTMLElement): App {
   };
 
   // --- Folding ---------------------------------------------------------------
-  const animate = (result: FoldResult): Promise<void> =>
-    new Promise((resolve) => {
-      const movedIds = new Set(result.movedIds);
-      // The step just applied sits before the playhead; the sheet before it
-      // tells the views where its creases swing from.
-      const previous = timeline.previous ?? timeline.state;
+  /** One fold of a step played on its own, from the sheet before it to the sheet after. */
+  const animatePart = (before: PaperState, after: PaperState, movedIds: Set<number>, ms: number) =>
+    new Promise<void>((resolve) => {
       const start = performance.now();
-      // One id per step: the solver keeps what it learns about contacts for that long.
+      // One id per fold: the solver keeps what it learns about contacts for that long.
       animationSerial++;
       const tick = (now: number): void => {
-        const progress = Math.min(1, ((now - start) * speed) / ANIMATION_MS);
+        const progress = Math.min(1, ((now - start) * speed) / ms);
         phase = {
           kind: 'animating',
-          animation: { previous, movedIds, progress },
+          animation: { previous: before, movedIds, progress },
+          state: after,
           start,
         };
         render();
-        if (progress < 1) {
-          requestAnimationFrame(tick);
-        } else {
-          phase = { kind: 'idle' };
-          render();
-          resolve();
-        }
+        if (progress < 1) requestAnimationFrame(tick);
+        else resolve();
       };
       requestAnimationFrame(tick);
     });
+
+  /**
+   * Play the step just applied (it sits before the playhead), one fold at a
+   * time: a pre-crease folds and unfolds, a petal fold forms crease by
+   * crease. A fold that moves nothing is skipped; a step that moves nothing
+   * at all resolves at once.
+   */
+  const animate = async (): Promise<void> => {
+    const step = timeline.steps[timeline.position - 1];
+    const previous = timeline.previous;
+    if (!step || !previous) return;
+    const parts = [step, ...(step.also ?? [])];
+    const ms = parts.length > 1 ? ANIMATION_MS * 0.7 : ANIMATION_MS;
+    let before = previous;
+    for (const part of parts) {
+      const result = fold(before, part.line, part.side, part.options);
+      if (result.movedIds.length > 0) {
+        await animatePart(before, result.state, new Set(result.movedIds), ms);
+      }
+      before = result.state;
+    }
+    phase = { kind: 'idle' };
+    render();
+  };
 
   const enqueue = (task: () => Promise<void>): Promise<void> => {
     queue = queue.then(task, task);
@@ -1832,7 +1854,7 @@ export function createApp(root: HTMLElement): App {
       result && result.takenAlong > 0
         ? ` It took ${result.takenAlong} attached facet${result.takenAlong === 1 ? '' : 's'} along so the paper does not tear.`
         : '';
-    return (result ? animate(result) : Promise.resolve()).then(() =>
+    return (result ? animate() : Promise.resolve()).then(() =>
       afterEdit(`Inserted step ${at + 1}.${along}`, at + 1),
     );
   };
@@ -1840,7 +1862,7 @@ export function createApp(root: HTMLElement): App {
   /** Apply the next step; animated unless `instant`. */
   const applyNext = async (instant = false): Promise<void> => {
     const result = timeline.forward();
-    if (result && result.movedIds.length > 0 && !instant) await animate(result);
+    if (result && !instant) await animate();
   };
 
   const stepForward = (): Promise<void> =>
