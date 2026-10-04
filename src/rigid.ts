@@ -342,6 +342,22 @@ function angleBefore(hinge: Hinge, animation: StepAnimation): number {
 }
 
 /**
+ * How many layers lay at a hinge before the current step: the cover of the
+ * crease of the previous sheet that this hinge is part of, or its own
+ * cover if the crease is new. A step that stacks more paper on a crease
+ * closes it a little; interpolating from the old cover keeps that smooth.
+ */
+function coverBefore(hinge: Hinge, previous: PaperState): number {
+  const tolerance = 1e-6 * previous.size;
+  const length = distance(hinge.a, hinge.b);
+  for (const h of hinges(previous)) {
+    const shared = sharedSegment(h.a, h.b, hinge.a, hinge.b, tolerance);
+    if (shared && distance(shared[0], shared[1]) > length - tolerance) return h.cover;
+  }
+  return hinge.cover;
+}
+
+/**
  * Pose options for a sheet shown with its creases opened by `opening`, and,
  * while a step plays, with that step's creases part way between their old
  * and new angles. The facets that stay put anchor the walk.
@@ -356,7 +372,8 @@ export function stepPose(
     const open = hingeOpening(h, opening);
     const target = openedAngle(h.shown, open);
     if (!animation || t >= 1) return target;
-    const from = openedAngle(angleBefore(h, animation), open);
+    const openBefore = hingeOpening({ ...h, cover: coverBefore(h, animation.previous) }, opening);
+    const from = openedAngle(angleBefore(h, animation), openBefore);
     return from + (target - from) * t;
   };
   const still = animation

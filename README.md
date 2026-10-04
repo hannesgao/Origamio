@@ -10,8 +10,9 @@ Origamio is a pure front-end application (Vite + TypeScript, no framework;
 the one runtime dependency is three.js, used only by the 3D card). The flat
 views are rendered as SVG from a small, immutable geometric model, so every
 fold is exact: reflections and convex polygon clipping. The 3D card solves
-that model as a sheet of paper and draws it with WebGL; without WebGL the
-3D card shows a note and the other views work as before.
+that model as a sheet of paper (in a Web Worker, so the interface never
+waits for it) and draws it with WebGL; without WebGL the 3D card shows a
+note and the other views work as before.
 
 ## Features
 
@@ -388,25 +389,27 @@ rewrites them and `npm test` fails when they are out of date.
 
 ### Code layout
 
-| File              | Responsibility                                                                   |
-| ----------------- | -------------------------------------------------------------------------------- |
-| `index.html`      | Page shell, favicon and meta tags; mounts the app on `#app`                      |
-| `src/main.ts`     | Entry point: loads the stylesheet and creates the app                            |
-| `src/geometry.ts` | Vectors, lines, affine transforms, reflections, convex clipping and intersection |
-| `src/paper.ts`    | Facet model, `fold`, layer selection, statistics, undo history                   |
-| `src/render.ts`   | SVG markup for the flat views, the fold animation and the folded-view camera     |
-| `src/rigid.ts`    | Hinges with fold angles, attachment, the rigid walk that places the facets       |
-| `src/solve.ts`    | Position-based solver: rigid facets, welded creases, crease angles with loops    |
-| `src/view3d.ts`   | The 3D view's geometry: solved sheet, edges to draw, orbit and named views       |
-| `src/scene3d.ts`  | The 3D card's WebGL renderer (three.js): extruded facets, lights, shadow, pick   |
-| `src/snap.ts`     | Snap targets of the folded sheet: corners, crossings, midpoints, edges           |
-| `src/sequence.ts` | The JSON sequence format: parse, validate, serialise                             |
-| `src/presets.ts`  | Geometry of the shipped sequences, including the crane; source of `presets/`     |
-| `src/library.ts`  | Loads `presets/*.json` for the app                                               |
-| `src/ui.ts`       | Page layout, toolbar, pointer interaction, animation loop, shortcuts             |
-| `src/style.css`   | Theme tokens (light and dark), layout, controls and SVG styling                  |
-| `presets/`        | The shipped sequences as JSON, generated from `src/presets.ts`                   |
-| `tests/`          | Vitest specs for geometry, paper, camera, views, snapping, sequences and presets |
+| File                  | Responsibility                                                                   |
+| --------------------- | -------------------------------------------------------------------------------- |
+| `index.html`          | Page shell, favicon and meta tags; mounts the app on `#app`                      |
+| `src/main.ts`         | Entry point: loads the stylesheet and creates the app                            |
+| `src/geometry.ts`     | Vectors, lines, affine transforms, reflections, convex clipping and intersection |
+| `src/paper.ts`        | Facet model, `fold`, layer selection, statistics, undo history                   |
+| `src/render.ts`       | SVG markup for the flat views, the fold animation and the folded-view camera     |
+| `src/rigid.ts`        | Hinges with fold angles, attachment, the rigid walk that places the facets       |
+| `src/solve.ts`        | Position-based solver: rigid facets, welded creases, crease angles with loops    |
+| `src/solver.ts`       | The solver as a service: in a Web Worker when there is one, inline otherwise     |
+| `src/solve.worker.ts` | The worker entry: answers each request with the solved scene                     |
+| `src/view3d.ts`       | The 3D view's geometry: solved sheet, edges to draw, orbit and named views       |
+| `src/scene3d.ts`      | The 3D card's WebGL renderer (three.js): extruded facets, lights, shadow, pick   |
+| `src/snap.ts`         | Snap targets of the folded sheet: corners, crossings, midpoints, edges           |
+| `src/sequence.ts`     | The JSON sequence format: parse, validate, serialise                             |
+| `src/presets.ts`      | Geometry of the shipped sequences, including the crane; source of `presets/`     |
+| `src/library.ts`      | Loads `presets/*.json` for the app                                               |
+| `src/ui.ts`           | Page layout, toolbar, pointer interaction, animation loop, shortcuts             |
+| `src/style.css`       | Theme tokens (light and dark), layout, controls and SVG styling                  |
+| `presets/`            | The shipped sequences as JSON, generated from `src/presets.ts`                   |
+| `tests/`              | Vitest specs for geometry, paper, camera, views, snapping, sequences and presets |
 
 ## Contributing
 
