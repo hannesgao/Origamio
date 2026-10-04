@@ -1,0 +1,5 @@
+# Served by Cloudflare Workers static assets alongside the files in dist/.
+/
+  Content-Type: text/html; charset=utf-8
+/index.html
+  Content-Type: text/html; charset=utf-8
