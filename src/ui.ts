@@ -19,12 +19,14 @@ import { LIBRARY } from './library';
 import { type Snap, type SnapTargets, snapTargets, snapTo } from './snap';
 import {
   type Orbit,
+  DEFAULT_OPENING,
   DEFAULT_ORBIT,
+  MAX_OPENING,
+  OPENING_STEPS,
   MAX_ORBIT_ZOOM,
-  MAX_PITCH,
   MIN_ORBIT_ZOOM,
-  MIN_PITCH,
   render3d,
+  wrapAngle,
 } from './view3d';
 import { Timeline } from './timeline';
 import {
@@ -754,15 +756,35 @@ export function createApp(root: HTMLElement): App {
     el('span', { class: 'caption' }, ['Drag to turn']),
     orbitReset,
   ]);
-  // How far every crease is opened from flat, in degrees.
+  // How far every crease is opened from flat, in degrees: a few presets, or any value typed.
+  let opening = DEFAULT_OPENING;
+  const openingButtons = OPENING_STEPS.map((degrees) =>
+    el(
+      'button',
+      {
+        type: 'button',
+        class: 'chip',
+        'aria-pressed': String(degrees === opening),
+        title: `Open every crease by ${degrees}°`,
+      },
+      [`${degrees}°`],
+    ),
+  );
   const openingInput = el('input', {
-    type: 'range',
+    type: 'number',
+    class: 'chip-input',
     min: '0',
-    max: '30',
-    step: '1',
-    value: '6',
+    max: String(MAX_OPENING),
+    step: '0.5',
+    value: String(opening),
     'aria-label': 'Crease opening in degrees',
+    title: `Exact opening, 0 to ${MAX_OPENING} degrees`,
   });
+  const openingControl = el(
+    'span',
+    { class: 'chips', role: 'group', 'aria-label': 'Crease opening' },
+    [...openingButtons, openingInput, el('span', { class: 'chip-unit' }, ['°'])],
+  );
 
   const stat = (value: HTMLElement, label: string): HTMLElement =>
     el('div', { class: 'stat' }, [value, el('span', { class: 'stat-label' }, [label])]);
@@ -820,7 +842,7 @@ export function createApp(root: HTMLElement): App {
         'Creases opened a little. ',
         el('span', { class: 'help-more' }, ['Drag to turn, scroll to zoom.']),
       ]),
-      el('label', { class: 'range-label' }, ['Open', openingInput]),
+      el('span', { class: 'range-label' }, ['Open', openingControl]),
     ],
     'solid-card',
   );
@@ -1217,7 +1239,7 @@ export function createApp(root: HTMLElement): App {
     const solidRect = solidSvg.getBoundingClientRect();
     const solid = render3d(state, {
       orbit,
-      opening: ((Number(openingInput.value) || 0) * Math.PI) / 180,
+      opening: (opening * Math.PI) / 180,
       ...(solidRect.width > 0 && solidRect.height > 0
         ? { aspect: solidRect.width / solidRect.height }
         : {}),
@@ -2177,14 +2199,27 @@ export function createApp(root: HTMLElement): App {
     });
     svg.addEventListener('pointerleave', () => setHighlight([]));
   }
-  openingInput.addEventListener('input', render);
+  const setOpening = (degrees: number): void => {
+    opening = Math.max(0, Math.min(MAX_OPENING, Number.isFinite(degrees) ? degrees : 0));
+    openingButtons.forEach((button, i) =>
+      button.setAttribute('aria-pressed', String(OPENING_STEPS[i] === opening)),
+    );
+    if (Number(openingInput.value) !== opening) openingInput.value = String(opening);
+    render();
+  };
+  openingButtons.forEach((button, i) =>
+    button.addEventListener('click', () => setOpening(OPENING_STEPS[i] ?? DEFAULT_OPENING)),
+  );
+  openingInput.addEventListener('input', () => setOpening(Number(openingInput.value)));
+  openingInput.addEventListener('change', () => setOpening(Number(openingInput.value)));
 
   // Turning the 3D view: drag spins and tilts, the wheel zooms, a double click resets.
   let orbitDrag: { readonly pointerId: number; last: Vec } | null = null;
   const setOrbit = (next: Orbit): void => {
+    // Any turn is allowed, including looking from underneath; angles stay bounded.
     orbit = {
-      yaw: next.yaw,
-      pitch: Math.max(MIN_PITCH, Math.min(MAX_PITCH, next.pitch)),
+      yaw: wrapAngle(next.yaw),
+      pitch: wrapAngle(next.pitch),
       zoom: Math.max(MIN_ORBIT_ZOOM, Math.min(MAX_ORBIT_ZOOM, next.zoom)),
     };
     render();

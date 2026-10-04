@@ -976,6 +976,60 @@ kbd {
   accent-color: var(--accent);
 }
 
+/* Small preset chips with an exact-value box, sized for a 20px foot line. */
+.chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.chip {
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chip:hover {
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+
+.chip[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.chip-input {
+  width: 3.4em;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.chip-unit {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 .collapse svg {
   transition: transform 150ms ease;
 }

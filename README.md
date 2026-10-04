@@ -55,10 +55,11 @@ reflections and convex polygon clipping.
   rather than for paper continuity.
 - **3D view with real creases.** A third card shows the sheet as rigid panels
   joined at their creases: every crease is opened a few degrees from flat (the
-  _Open_ slider sets how far), so the paper reads as folded rather than as a
-  stack of layers, lit from one side with the front and back colours on the
-  right faces. Drag to turn it, scroll to zoom, double-click or _Reset view_ to
-  go back. While a step plays, its creases swing from flat to folded in three
+  _Open_ chips offer 0° to 30°, and the box beside them takes any value up to
+  90°), so the paper reads as folded rather than as a stack of layers, lit from
+  one side with the front and back colours on the right faces. Drag to turn it
+  any way round, including from underneath, scroll to zoom, double-click or
+  _Reset view_ to go back. While a step plays, its creases swing from flat to folded in three
   dimensions, and a step saved with a fold `angle` below 180° stays open at
   that angle. Pointing at a facet in any view outlines the same facet in the
   others, and pointing at the folded sheet outlines every facet under the
@@ -167,8 +168,8 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    panel on the rail names the sequence, exports the timeline as JSON,
    imports such a file onto a fresh sheet and clears everything with _New_.
 8. **See it in space.** The 3D card shows the folded sheet with every crease
-   opened by the _Open_ slider (0 shows it flat, as the model really is): drag
-   to turn it and scroll to zoom. Move the pointer over a facet in the
+   opened by the _Open_ setting (0° shows it flat, as the model really is;
+   pick a chip or type a value): drag to turn it and scroll to zoom. Move the pointer over a facet in the
    Unfolded or 3D view to see where it sits in the folded sheet, or over the
    folded sheet to see all facets stacked under the cursor.
 9. **Look closer.** The folded sheet gets small quickly, so the Folded card has
