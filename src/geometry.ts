@@ -62,6 +62,17 @@ export const line = (a: Vec, b: Vec): Line => {
   return { a, b };
 };
 
+/**
+ * The line every point of which is equally far from `a` and `b`: folding
+ * along it brings `a` onto `b`.
+ */
+export function perpendicularBisector(a: Vec, b: Vec): Line {
+  const mid = scale(add(a, b), 0.5);
+  const d = sub(b, a);
+  const perp = { x: -d.y, y: d.x };
+  return line(mid, add(mid, perp));
+}
+
 /** Unit direction vector of a line. */
 export const lineDirection = (l: Line): Vec => normalize(sub(l.b, l.a));
 

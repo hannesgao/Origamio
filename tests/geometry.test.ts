@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   IDENTITY,
   apply,
+  approxEqual,
   approxEqualVec,
   area,
   chord,
@@ -12,7 +13,10 @@ import {
   invert,
   line,
   partialFlip,
+  perpendicularBisector,
   reflection,
+  sideOf,
+  signedDistance,
   vec,
 } from '../src/geometry';
 
@@ -73,5 +77,16 @@ describe('intersectConvex', () => {
   it('is empty for disjoint polygons', () => {
     const far = square.map((p) => vec(p.x + 2, p.y));
     expect(intersectConvex(square, far)).toHaveLength(0);
+  });
+});
+
+describe('perpendicularBisector', () => {
+  it('is equally far from both points and folds one onto the other', () => {
+    const a = vec(0, 0);
+    const b = vec(1, 1);
+    const l = perpendicularBisector(a, b);
+    expect(approxEqual(Math.abs(signedDistance(l, a)), Math.abs(signedDistance(l, b)))).toBe(true);
+    expect(sideOf(l, a)).not.toBe(sideOf(l, b));
+    expect(approxEqualVec(apply(reflection(l), a), b)).toBe(true);
   });
 });

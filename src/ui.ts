@@ -9,6 +9,7 @@ import {
   add,
   distance,
   line,
+  perpendicularBisector,
   scale,
   sideOf,
   sub,
@@ -257,7 +258,8 @@ function remember(key: string, value: string): void {
 }
 
 /** What a left-button drag on the folded sheet does. */
-type Tool = 'fold' | 'move';
+/** What a drag on the folded sheet does: draw the fold line, bring a point onto another, or pan. */
+type Tool = 'fold' | 'point' | 'move';
 
 /** An in-flight pan or pinch gesture on the folded view. */
 type Navigation = { readonly kind: 'pan'; readonly pointerId: number } | { readonly kind: 'pinch' };
@@ -577,7 +579,8 @@ export function createApp(root: HTMLElement): App {
     { class: 'keys' },
     (
       [
-        ['Drag', 'Draw a fold line, then click the side that flips'],
+        ['Drag', 'Line tool: draw a fold line, then click the side that flips'],
+        ['Drag', 'Point tool: bring a point onto another point'],
         ['Esc', 'Cancel the line, or pause playback'],
         ['← / →', 'One step back or forward'],
         ['P', 'Play or pause'],
@@ -620,8 +623,18 @@ export function createApp(root: HTMLElement): App {
 
   const toolFold = el(
     'button',
-    { type: 'button', 'aria-pressed': 'true', title: 'Drag to draw a fold line' },
-    ['Fold'],
+    { type: 'button', 'aria-pressed': 'true', title: 'Drag to draw the fold line' },
+    ['Line'],
+  );
+  const toolPoint = el(
+    'button',
+    {
+      type: 'button',
+      'aria-pressed': 'false',
+      title:
+        'Drag a point onto another point: the sheet folds along the line halfway between them, so the first point lands on the second',
+    },
+    ['Point'],
   );
   const toolMove = el(
     'button',
@@ -672,6 +685,7 @@ export function createApp(root: HTMLElement): App {
   const viewTools = el('div', { class: 'card-tools' }, [
     el('div', { class: 'tool-toggle', role: 'group', 'aria-label': 'Drag tool' }, [
       toolFold,
+      toolPoint,
       toolMove,
     ]),
     layerControl,
@@ -1081,25 +1095,33 @@ export function createApp(root: HTMLElement): App {
     switch (p.kind) {
       case 'idle': {
         if (redrawing !== null) {
-          return `Redrawing step ${redrawing + 1}: drag the new fold line, then click the side that flips (Esc cancels).`;
+          return tool === 'point'
+            ? `Redrawing step ${redrawing + 1}: drag a point onto the point it should land on (Esc cancels).`
+            : `Redrawing step ${redrawing + 1}: drag the new fold line, then click the side that flips (Esc cancels).`;
         }
         const next = timeline.next;
         if (next) return `Next: ${describeStep(next)}. Press → to apply it or play (P).`;
-        return tool === 'move'
-          ? 'Drag to pan, scroll to zoom. Switch back to Fold to add creases.'
-          : 'Drag to draw a fold line. Scroll to zoom, hold Space to pan.';
+        if (tool === 'move')
+          return 'Drag to pan, scroll to zoom. Switch back to Line or Point to fold.';
+        if (tool === 'point') return 'Drag a corner or point onto the point it should land on.';
+        return 'Drag to draw a fold line. Scroll to zoom, hold Space to pan.';
       }
-      case 'dragging':
+      case 'dragging': {
+        const release =
+          tool === 'point' ? 'Release to fold it there.' : 'Release to set the fold line.';
         switch (p.snap?.kind) {
           case 'vertex':
-            return 'Snapped to a corner. Release to set the fold line.';
+            return `Snapped to a corner. ${release}`;
+          case 'intersection':
+            return `Snapped to where two edges cross. ${release}`;
           case 'midpoint':
-            return 'Snapped to the middle of an edge. Release to set the fold line.';
+            return `Snapped to the middle of an edge. ${release}`;
           case 'edge':
-            return 'Snapped onto an edge. Release to set the fold line.';
+            return `Snapped onto an edge. ${release}`;
           default:
-            return 'Release to set the fold line.';
+            return release;
         }
+      }
       case 'choose-side':
         return redrawing !== null
           ? `Click the side that flips for step ${redrawing + 1} (Esc to cancel).`
@@ -1123,7 +1145,13 @@ export function createApp(root: HTMLElement): App {
     }
     if (phase.kind === 'dragging') {
       if (distance(phase.from, phase.to) >= MIN_DRAG) {
-        options = { preview: { line: line(phase.from, phase.to) } };
+        if (tool === 'point') {
+          // The fold that brings `from` onto `to`, with the side that moves shaded.
+          const bisector = perpendicularBisector(phase.from, phase.to);
+          options = { preview: { line: bisector, side: sideOf(bisector, phase.from) } };
+        } else {
+          options = { preview: { line: line(phase.from, phase.to) } };
+        }
       }
     } else if (phase.kind === 'choose-side') {
       options =
@@ -1140,7 +1168,7 @@ export function createApp(root: HTMLElement): App {
     zoomReadout.textContent = `${Math.round(camera.zoom * 100)}%`;
     snapButton.setAttribute('aria-pressed', String(snapEnabled));
     // Snap markers: every target while a line is drawn, just the ring on hover.
-    if (snapEnabled && tool === 'fold' && (phase.kind === 'dragging' || hoverSnap)) {
+    if (snapEnabled && tool !== 'move' && (phase.kind === 'dragging' || hoverSnap)) {
       const radius = 2.5 * unitsPerPixel();
       const markers: SnapMarkers =
         phase.kind === 'dragging'
@@ -1155,6 +1183,7 @@ export function createApp(root: HTMLElement): App {
     }
     foldedSvg.dataset['tool'] = tool;
     toolFold.setAttribute('aria-pressed', String(tool === 'fold'));
+    toolPoint.setAttribute('aria-pressed', String(tool === 'point'));
     toolMove.setAttribute('aria-pressed', String(tool === 'move'));
     foldedSvg.innerHTML = renderFolded(state, options);
     unfoldedSvg.innerHTML = renderUnfolded(state);
@@ -1937,6 +1966,23 @@ export function createApp(root: HTMLElement): App {
     foldedSvg.classList.remove('is-panning');
   };
 
+  /** Apply a fold chosen on the sheet: redraw the step being redrawn, or insert at the playhead. */
+  const commitFold = (l: Line, side: Side): void => {
+    playing = false;
+    if (redrawing !== null) {
+      const at = redrawing;
+      redrawing = null;
+      timeline.update(at, { line: l, side });
+      timeline.seek(at + 1);
+      selected = at;
+      stepSignature = '';
+      afterEdit(`Line of step ${at + 1} redrawn.`, at);
+      return;
+    }
+    // A fold made by hand is inserted at the playhead; later steps stay.
+    void enqueue(() => insertFold(l, side, selectedLayers()));
+  };
+
   foldedSvg.addEventListener('pointerdown', (event) => {
     pointers.set(event.pointerId, clientPoint(event));
     if (pointers.size === 2) {
@@ -1958,21 +2004,7 @@ export function createApp(root: HTMLElement): App {
     if (event.button !== 0) return;
     const p = toModel(clientPoint(event));
     if (phase.kind === 'choose-side') {
-      const side = sideOf(phase.line, p);
-      const l = phase.line;
-      playing = false;
-      if (redrawing !== null) {
-        const at = redrawing;
-        redrawing = null;
-        timeline.update(at, { line: l, side });
-        timeline.seek(at + 1);
-        selected = at;
-        stepSignature = '';
-        afterEdit(`Line of step ${at + 1} redrawn.`, at);
-        return;
-      }
-      // A fold made by hand is inserted at the playhead; later steps stay.
-      void enqueue(() => insertFold(l, side, selectedLayers()));
+      commitFold(phase.line, sideOf(phase.line, p));
       return;
     }
     if (phase.kind !== 'idle') return;
@@ -2017,7 +2049,7 @@ export function createApp(root: HTMLElement): App {
         ...(snap ? { snap } : {}),
       };
       render();
-    } else if (phase.kind === 'idle' && tool === 'fold' && !spaceHeld) {
+    } else if (phase.kind === 'idle' && tool !== 'move' && !spaceHeld) {
       const snap = snapFor(p, event);
       const same =
         snap === hoverSnap ||
@@ -2051,6 +2083,12 @@ export function createApp(root: HTMLElement): App {
     const to = snapFor(raw, event)?.point ?? raw;
     if (distance(phase.from, to) < MIN_DRAG) {
       phase = { kind: 'idle' };
+    } else if (tool === 'point') {
+      // Point onto point: the fold is fully determined, so it is applied at once.
+      const bisector = perpendicularBisector(phase.from, to);
+      const from = phase.from;
+      phase = { kind: 'idle' };
+      commitFold(bisector, sideOf(bisector, from));
     } else {
       phase = { kind: 'choose-side', line: line(phase.from, to) };
     }
@@ -2167,6 +2205,7 @@ export function createApp(root: HTMLElement): App {
   });
 
   toolFold.addEventListener('click', () => setTool('fold'));
+  toolPoint.addEventListener('click', () => setTool('point'));
   toolMove.addEventListener('click', () => setTool('move'));
   snapButton.addEventListener('click', () => setSnapEnabled(!snapEnabled));
   fitButton.addEventListener('click', fitView);
