@@ -26,6 +26,8 @@ import {
   WebGLRenderer,
 } from 'three';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+
+import { t } from './i18n';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 
@@ -331,10 +333,7 @@ export function createScene(container: HTMLElement): SheetScene {
   try {
     return new Scene3d(container);
   } catch {
-    return new SceneUnavailable(
-      container,
-      'The 3D view needs WebGL, which this browser does not provide. The other views still work.',
-    );
+    return new SceneUnavailable(container, t.solid.noWebGL);
   }
 }
 

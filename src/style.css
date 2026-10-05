@@ -38,6 +38,19 @@
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
+/* The page's language picks the fonts for its script; the Latin stack stays for the rest. */
+:lang(zh) {
+  --font-body:
+    system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans CJK SC', 'Segoe UI', Roboto, sans-serif;
+}
+
+:lang(ja) {
+  --font-body:
+    system-ui, -apple-system, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI',
+    'Yu Gothic', Meiryo, 'Noto Sans CJK JP', 'Segoe UI', Roboto, sans-serif;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #1b1714;
@@ -346,6 +359,7 @@ kbd {
   transition:
     background-color 120ms ease,
     color 120ms ease;
+  white-space: nowrap;
 }
 
 /* The icon that opens a segmented control, before its first option. */
@@ -402,15 +416,18 @@ kbd {
 }
 
 .name-input,
-.tl-speed {
+.tl-speed,
+.lang-select {
   padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
+  color: var(--ink);
 }
 
 .name-input:focus,
-.tl-speed:focus {
+.tl-speed:focus,
+.lang-select:focus {
   outline: none;
   border-color: var(--accent);
 }
@@ -1455,6 +1472,9 @@ a.credit:hover {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  /* A long word (German has them) breaks with a hyphen rather than being cut off. */
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .tl-clip.done {
