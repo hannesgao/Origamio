@@ -397,8 +397,10 @@ export function createApp(root: HTMLElement): App {
   let solveInFlight = false;
   let solvePending: SolveRequest | null = null;
   let lastSolved = '';
+  let lastStyled = '';
   const solveKey = (r: SolveRequest): string =>
     `${r.stateId}|${r.opening}|${r.thickness}|${r.animation ? `${r.animation.id}:${r.animation.progress}` : ''}`;
+  const styleKey = (): string => `${JSON.stringify(sceneStyle())}|${highlighted ?? ''}`;
   /** Solve the latest request only: while one runs, newer ones replace each other. */
   const requestSolve = (request: SolveRequest): void => {
     if (solveInFlight) {
@@ -409,6 +411,9 @@ export function createApp(root: HTMLElement): App {
     // The same sheet in the same pose: only the colours, thickness or
     // projection can have changed, and those need no solve.
     if (key === lastSolved) {
+      const style = styleKey();
+      if (style === lastStyled) return;
+      lastStyled = style;
       scene.restyle(sceneStyle(), highlighted);
       return;
     }
@@ -418,6 +423,7 @@ export function createApp(root: HTMLElement): App {
       .then(
         (solid) => {
           lastSolved = key;
+          lastStyled = styleKey();
           scene.update(solid, sceneStyle(), orbit, frameOf(timeline.state), highlighted);
         },
         (error: unknown) => {
@@ -717,11 +723,14 @@ export function createApp(root: HTMLElement): App {
       [
         ['Drag', 'Line tool: draw a fold line, then click the side that flips'],
         ['Drag', 'Point tool: bring a point onto another point'],
-        ['Esc', 'Cancel the line, or pause playback'],
+        ['Esc', 'Cancel the line, close the panel or menu, pause playback'],
         ['← / →', 'One step back or forward'],
         ['P', 'Play or pause'],
         ['Home / End', 'Flat sheet or last step'],
-        ['Ctrl+Z', 'Undo (one step back)'],
+        ['Ctrl+Z', 'Undo the last edit of the timeline'],
+        ['Ctrl+Shift+Z', 'Redo an edit (also Ctrl+Y)'],
+        ['Delete', 'Delete the selected step'],
+        ['F2', 'Rename the selected step'],
         ['Scroll', 'Zoom around the pointer'],
         ['Space + drag', 'Pan the folded view'],
         ['Alt + drag', 'Draw a fold line without snapping'],
@@ -752,10 +761,7 @@ export function createApp(root: HTMLElement): App {
   const statCreases = el('span', { class: 'stat-value' }, ['0']);
   const hint = el('span', { class: 'status-text' });
   const statsRow = el('div', { class: 'card-stats' });
-  const statusBar = el('div', { class: 'status-bar', role: 'status', 'aria-live': 'polite' }, [
-    el('span', { class: 'status-dot' }),
-    hint,
-  ]);
+  const statusBar = el('div', { class: 'status-bar' }, [el('span', { class: 'status-dot' }), hint]);
 
   /** A tool button: an icon and a keyword (the keyword gives way on a narrow card). */
   const toolButton = (
@@ -1569,6 +1575,8 @@ export function createApp(root: HTMLElement): App {
         [el('span', { class: 'tl-label' }, [describeStep(step)])],
       );
     });
+    // A rename in progress goes with the clips it was typed into.
+    renaming = null;
     track.replaceChildren(...clips);
     revealPlayhead();
   };
@@ -1861,6 +1869,7 @@ export function createApp(root: HTMLElement): App {
 
   const afterEdit = (message: string, from = 0): void => {
     const dead = deadAfter(from);
+    redrawing = null;
     phase = { kind: 'idle' };
     render();
     say(
@@ -1911,12 +1920,15 @@ export function createApp(root: HTMLElement): App {
   const stepForward = (): Promise<void> =>
     enqueue(async () => {
       if (timeline.position >= timeline.length) return;
+      redrawing = null;
       await applyNext();
       render();
     });
 
   const stepBack = (): void => {
     if (phase.kind === 'animating') return;
+    playing = false;
+    redrawing = null;
     timeline.back();
     phase = { kind: 'idle' };
     render();
@@ -1926,6 +1938,7 @@ export function createApp(root: HTMLElement): App {
   const jumpTo = (index: number): void => {
     if (phase.kind === 'animating') return;
     playing = false;
+    redrawing = null;
     timeline.seek(index);
     phase = { kind: 'idle' };
     render();
@@ -1959,6 +1972,7 @@ export function createApp(root: HTMLElement): App {
       const paperChanged = !sameSize(wanted, paper);
       if (!samePaper(wanted, paper)) setPaper(wanted, false);
       timeline.load(sequence.steps);
+      redrawing = null;
       selected = null;
       setName(sequence.name);
       setViewFrame(sequence.view);
@@ -2114,6 +2128,8 @@ export function createApp(root: HTMLElement): App {
     const finish = (commit: boolean): void => {
       if (done) return;
       done = true;
+      // The track may have been rebuilt without this field: nothing to commit then.
+      if (!input.isConnected) return;
       renaming = null;
       if (commit) renameStep(index, input.value);
       else {
@@ -2669,6 +2685,7 @@ export function createApp(root: HTMLElement): App {
     if (phase.kind === 'animating') return;
     playing = false;
     timeline.clear();
+    redrawing = null;
     selected = null;
     setName('My sequence');
     setViewFrame(undefined);
@@ -2840,6 +2857,9 @@ export function createApp(root: HTMLElement): App {
       // keyboard users (focus-visible) keep the native behaviour.
       const active = document.activeElement;
       if (active instanceof HTMLButtonElement && active.matches(':focus-visible')) return;
+      // Links, disclosure summaries and fields keep their own use of Space.
+      if (active instanceof HTMLElement && active.matches('a[href], summary, textarea, input'))
+        return;
       if (active instanceof HTMLButtonElement) active.blur();
       if (!event.repeat) {
         spaceHeld = true;

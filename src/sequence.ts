@@ -224,10 +224,37 @@ export function sequenceToJson(sequence: Sequence): SequenceJson {
 
 /** The JSON text of a sequence, indented for reading and diffing, points on one line. */
 export const serializeSequence = (sequence: Sequence): string =>
-  `${JSON.stringify(sequenceToJson(sequence), null, 2).replace(
-    /\[\s*(-?[\d.e+-]+),\s*(-?[\d.e+-]+)\s*\]/g,
-    '[$1, $2]',
-  )}\n`;
+  `${compactPoints(JSON.stringify(sequenceToJson(sequence), null, 2))}\n`;
+
+/** Every two-number array outside a string on one line: `[x, y]`. */
+function compactPoints(text: string): string {
+  const point = /^\[\s*(-?[\d.e+-]+),\s*(-?[\d.e+-]+)\s*\]/;
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i] as string;
+    if (c === '"') {
+      // Copy the string literal whole, escapes included.
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j + 1;
+    } else if (c === '[') {
+      const m = point.exec(text.slice(i, i + 80));
+      if (m) {
+        out += `[${m[1]}, ${m[2]}]`;
+        i += m[0].length;
+      } else {
+        out += c;
+        i++;
+      }
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
 
 // --- Parsing -------------------------------------------------------------------
 
@@ -245,6 +272,12 @@ const fail = (where: string, what: string): never => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+/** Bounds for a file from anywhere: generous for any real model, small enough to replay. */
+const MAX_COORDINATE = 1e6;
+const MAX_POLYGON_POINTS = 64;
+const MAX_FOLDS_PER_STEP = 256;
+const MAX_STEPS = 10000;
+
 function parsePoint(value: unknown, where: string): Vec {
   if (
     !Array.isArray(value) ||
@@ -253,12 +286,18 @@ function parsePoint(value: unknown, where: string): Vec {
   ) {
     return fail(where, 'expected a point as [x, y]');
   }
+  if (!value.every((n) => Math.abs(n as number) <= MAX_COORDINATE)) {
+    return fail(where, `expected coordinates within ±${MAX_COORDINATE}`);
+  }
   return vec(value[0] as number, value[1] as number);
 }
 
 function parsePolygon(value: unknown, where: string): Polygon {
   if (!Array.isArray(value) || value.length < 3) {
     return fail(where, 'expected a polygon with at least three points');
+  }
+  if (value.length > MAX_POLYGON_POINTS) {
+    return fail(where, `expected at most ${MAX_POLYGON_POINTS} points`);
   }
   return value.map((p, i) => parsePoint(p, `${where}[${i}]`));
 }
@@ -283,6 +322,9 @@ export function parseStep(value: unknown, where = 'step'): FoldStep {
   let also: FoldPart[] | undefined;
   if (alsoValue !== undefined) {
     if (!Array.isArray(alsoValue)) return fail(`${where}.also`, 'expected a list of folds');
+    if (alsoValue.length > MAX_FOLDS_PER_STEP) {
+      return fail(`${where}.also`, `expected at most ${MAX_FOLDS_PER_STEP} folds`);
+    }
     also = alsoValue.map((v, i) => parsePart(v, `${where}.also[${i}]`));
   }
   const label = value['label'];
@@ -372,6 +414,8 @@ export function parseSequence(input: unknown): Sequence {
   }
   const steps = value['steps'];
   if (!Array.isArray(steps)) return fail('sequence.steps', 'expected an array');
+  if (steps.length > MAX_STEPS)
+    return fail('sequence.steps', `expected at most ${MAX_STEPS} steps`);
   const paperValue = value['paper'];
   let paper: Paper | undefined;
   if (paperValue !== undefined) {

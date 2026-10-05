@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { line, sideOf, vec } from '../src/geometry';
 import { createPaper, fold } from '../src/paper';
 import { hinges, stepPose } from '../src/rigid';
-import { InlineSolver, SolveCore, createSheetSolver } from '../src/solver';
+import { InlineSolver, SolveCore, WorkerSolver, createSheetSolver } from '../src/solver';
 
 describe('the solver service', () => {
   it('solves inline where there is no Worker', async () => {
@@ -70,5 +70,29 @@ describe('opening across a step', () => {
     // Two layers at the start: opened by the full amount; four at the end: by half.
     expect(Math.PI - Math.abs(atStart)).toBeCloseTo(opening);
     expect(Math.PI - Math.abs(atEnd)).toBeCloseTo(opening / 2);
+  });
+});
+
+describe('the worker solver', () => {
+  it('solves on this thread once the worker has failed', async () => {
+    class FakeWorker extends EventTarget {
+      posted = 0;
+      postMessage(): void {
+        this.posted++;
+      }
+      terminate(): void {
+        return;
+      }
+    }
+    const fake = new FakeWorker();
+    const solver = new WorkerSolver(fake as unknown as Worker);
+    const state = fold(createPaper(), { a: vec(0.5, 0), b: vec(0.5, 1) }, 1).state;
+    const request = { stateId: 'a', state, opening: 0.1, thickness: 0 };
+    const first = solver.solve(request);
+    fake.dispatchEvent(new Event('error'));
+    await expect(first).rejects.toThrow('solver worker failed');
+    const scene = await solver.solve(request);
+    expect(scene.panels).toHaveLength(2);
+    expect(fake.posted).toBe(1);
   });
 });

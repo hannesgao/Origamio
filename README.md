@@ -25,7 +25,7 @@ note and the other views work as before.
   corner" or "corner to the middle" is exact; hold Alt to draw freely.
 - **Fold all layers or only the top _k_.** Choose between folding the whole
   stack or just the top few layers before you click.
-- **Live unfolded view.** The right panel always shows the sheet flattened out
+- **Live unfolded view.** The Unfolded view shows the sheet flattened out
   again, with every crease drawn in red and a legend for front, back and
   crease colours.
 - **Layer-aware colouring.** Facets are translucent, so a region gets darker
@@ -35,7 +35,7 @@ note and the other views work as before.
   0.8 s, switching to its back colour as it passes the vertical.
 - **Statistics.** Number of folds, maximum number of layers at any point,
   number of faces in the unfolded sheet, and the layer count under the cursor.
-- **Undo, reset and presets.** Fold in half three times, or fold in half twice
+- **Presets.** Fold in half three times, or fold in half twice
   and then fold one of three kinds of corner: the loose corner where the four
   sheet corners stack, the corner where both folded edges meet, and a corner
   with a single folded edge.
@@ -55,10 +55,10 @@ note and the other views work as before.
   diagonals, collapse the square base (both medians, then the squash that
   puts its four flaps side by side), petal fold the front and the back page
   into the bird base, narrow both points, close the model along its centre
-  line, reverse fold the neck, the tail and the head, and spread the wings,
-  which the last step keeps open at 150° so the crane stands up in the 3D
-  view (the last step swings each wing up over its own side of the body and
-  keeps the creases open at 100°). Every step leaves the sheet in a state
+  line, reverse fold the neck, the tail and the head, and spread the wings:
+  the last step swings each wing up over its own side of the body and keeps
+  the creases open at 100°, so the crane stands up in the 3D view. Every
+  step leaves the sheet in a state
   real paper can take: the tests check that no neighbouring facets are ever
   pulled apart.
 - **3D view with real creases.** A third card shows the sheet as rigid panels
@@ -70,8 +70,8 @@ note and the other views work as before.
   angles contradict each other, as the wings and body of a crane do, the
   sheet settles on a compromise the way paper gives: a panel may bend a
   little across its diagonals before a crease yields, so a crane stands with
-  Layers that lie on one
-  another in the flat model stay in that order: that no layer passes through
+  its wings spread and its body closed. Layers that lie on one another in
+  the flat model stay in that order: that no layer passes through
   another is a hard rule, and that each sits a paper's thickness above the
   one beneath it is a preference, since layers welded at a crease or a tip
   cannot be a thickness apart there. It is drawn with WebGL (three.js): the paper has
@@ -123,8 +123,9 @@ note and the other views work as before.
   one clip per step and a playhead you can drag. Step back and forward (also
   with the arrow keys), play and pause at any step, choose the playback
   speed, click a clip or scrub to jump. Presets only load their steps; you
-  decide whether to step through them or play them. Undone steps stay on the
-  timeline until a new fold by hand replaces them. The whole timeline can be
+  decide whether to step through them or play them. The steps after the
+  playhead stay on the timeline; a fold by hand is inserted in front of them.
+  The whole timeline can be
   saved as a JSON file and loaded again later; the presets ship in the same
   format.
 - **Three layouts.** The header switches between _Folded large_ (the
@@ -133,13 +134,14 @@ note and the other views work as before.
   in its head), _Side by side_ (all three views in a row) and
   _Focus_ (one view at a time, chosen with a tab strip over the workspace).
   The folded canvas is as big as its card allows, whatever the window's
-  aspect; the other canvases stay square. All of these choices are remembered
-  in the browser.
+  aspect; in _Side by side_ and _Focus_ the other canvases stay square, in
+  _Folded large_ the second card fills its column. All of these choices are
+  remembered in the browser.
 - **Made for wide screens.** Header, rail and status bar are fixed and the views
   are sized to the remaining space, so nothing scrolls on a 16:9 display.
   Windows narrower than 1340 px show one view at a time behind Folded /
-  Unfolded / 3D tabs and float the panels over the workspace; on phones
-  the playback controls sit at the bottom edge.
+  Unfolded / 3D tabs; below 900 px the panels float over the workspace, and
+  on phones (under 700 px) the playback controls sit at the bottom edge.
 
 ## Using the simulator
 
@@ -191,8 +193,9 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    maximum layers, facets, layers under the cursor) update after every fold.
 5. **Choose the paper.** The Paper panel (second button on the rail) shows
    the current sheet and lets you pick a shape or type a width and height;
-   the longer side is 1 by convention. Presets are folded from a square, so
-   loading one switches the sheet back and says so in the status line.
+   the longer side is 1 by convention. Every preset carries the sheet it was
+   made for (a square, or the frog's 1:2 sheet), so loading one sets that
+   sheet and says so in the status line when the size changes.
 6. **Try a preset.** The Library panel (first button on the rail) lists the
    presets; clicking one loads its steps onto the timeline from a flat sheet,
    where you step through or play them. Esc or the × closes the panel.
@@ -210,13 +213,15 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    right-click menu renames, duplicates, moves and deletes. The _Track_
    button hides the track; the choice and the speed are remembered. The File
    panel on the rail names the sequence, exports the timeline as JSON,
-   imports such a file onto a fresh sheet and clears everything with _New_.
+   imports such a file onto a fresh sheet and clears the steps with _New
+   sheet_ (the paper's size and colours stay).
 8. **See it in space.** The 3D card shows the folded sheet with every crease
    opened by the _Open_ setting (0° shows it flat, as the model really is;
    pick a chip or type a value): drag to turn it and scroll to zoom. The four
    fixed views follow the loaded sequence's `view` frame (the crane's face
    points up the diagonal, its back towards the other diagonal); a sequence
-   without one gets views along the sheet's own axes. Move the pointer over a facet in the
+   without one is framed by the shape of its folded sheet, long axis front to
+   back. Move the pointer over a facet in the
    Unfolded or 3D view to see where it sits in the folded sheet, or over the
    folded sheet to see all facets stacked under the cursor.
 9. **Look closer.** The folded sheet gets small quickly, so the Folded card has
@@ -224,7 +229,8 @@ Folded card: the drag tool, the layer selection, zoom and the status line.
    square again, the mouse wheel zooms around the pointer, and the _Move_ tool
    (or holding Space, or the middle mouse button) lets you drag the view. On a
    touch screen, pinch to zoom and pan with two fingers. Zoom and position are
-   kept across folds and undo; Reset returns to the full view.
+   kept across folds and undo; _Full_ (or 0) returns to the whole sheet, and
+   loading a sequence resets the view.
 
 Keyboard shortcuts:
 
@@ -232,9 +238,9 @@ Keyboard shortcuts:
 | ----------------------- | ----------------------------------------------- |
 | Ctrl+Z (Cmd+Z on macOS) | Undo the last edit of the timeline              |
 | Ctrl+Shift+Z / Ctrl+Y   | Redo an edit                                    |
-| Delete                  | Delete the selected step                        |
+| Delete / Backspace      | Delete the selected step                        |
 | F2                      | Rename the selected step                        |
-| Esc                     | Cancel the fold line you are drawing or placing |
+| Esc                     | Cancel the line, close the panel or menu, pause |
 | F                       | Fit the folded sheet into view                  |
 | 0                       | Show the whole sheet                            |
 | Space (held)            | Drag to pan instead of drawing a fold line      |
@@ -299,8 +305,12 @@ npm run shot -- --out shots --scenario scripts/scenarios/preset.mjs
 ```
 
 A scenario is an ES module whose default export gets the Playwright page and a
-`shot(name)` helper; `scripts/scenarios/preset.mjs` loads a preset and captures
-the views. The helper prefers Playwright's own Chromium (`npx playwright-core
+`shot(name)` helper; `scripts/scenarios/preset.mjs` loads a preset (named by
+`SHOT_PRESET`, the crane by default) and captures the page and the folded
+sheet. The helper also takes `--width` and `--height` for the window,
+`--dark` for the dark theme, `--full-page`, `--name` for the picture's file
+name and `--browser auto|wsl|linux|windows` to pick the browser (`linux` is
+what CI uses, with software WebGL). It prefers Playwright's own Chromium (`npx playwright-core
 install chromium`, plus `sudo npx playwright-core install-deps chromium` once on
 Linux or WSL) and falls back to the Chrome installed on Windows when run from
 WSL, using a fresh temporary profile for every run that it closes and deletes
@@ -317,8 +327,8 @@ artifact, or run the two commands on Linux, then
 
 ## Data model
 
-The sheet is a unit square in the coordinate system of the **unfolded** paper.
-It is represented as a set of _facets_ (`src/paper.ts`):
+The sheet is a rectangle (the unit square by default) in the coordinate system
+of the **unfolded** paper. It is represented as a set of _facets_ (`src/paper.ts`):
 
 | Field       | Meaning                                                                                                           |
 | ----------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -326,7 +336,7 @@ It is represented as a set of _facets_ (`src/paper.ts`):
 | `transform` | A 2D affine transform (a product of reflections) that maps unfolded coordinates to the current folded position.   |
 | `z`         | The layer index. Larger values are closer to the viewer.                                                          |
 
-A fold `fold(state, line, side, layers)` works as follows:
+A fold `fold(state, line, side, options)` works as follows:
 
 1. `line` is given in the **folded** coordinate system, `side` says which
    half-plane flips over, and `layers` is `all`, "the top _k_ layers" or "the
@@ -359,8 +369,12 @@ Facet transforms are compositions of reflections, so their determinant is
 −1 whenever the facet currently shows its back side; the renderer uses that to
 pick the face colour.
 
-`FoldHistory` keeps the list of states so that undo is a pop; states are never
-mutated, so a fold that moves nothing is rejected without changing history.
+The app keeps every step on a `Timeline` (`src/timeline.ts`): the states are
+replayed from the flat sheet and cached, every edit takes a snapshot so that
+Ctrl+Z and Ctrl+Shift+Z undo and redo edits independently of the playhead
+(the last 100 of them), and a fold by hand that moves nothing is rejected
+before it is inserted. States are never mutated. `FoldHistory` in
+`src/paper.ts` is the plain stack of states the tests fold with.
 
 ### Sequence files
 
@@ -403,14 +417,15 @@ Every step is one call of `fold` on the sheet as it is at that moment:
 | `placement` | `"top"` (default), `"bottom"` or `"inside"`, see above.                                                                                    |
 | `angle`     | Optional fold angle in degrees, `(0, 180]`; below 180 the 3D view keeps the crease open at that angle. Allowed on the folds of `also` too. |
 | `attached`  | Optional `true`: facets attached to the selected ones across any edge other than the fold line are taken along, so the paper never tears.  |
-| `also`      | Optional list of further folds (`line`, `side`, `layers`, `region`, `window`, `placement`, `attached`) made in the same step, in order.    |
+| `also`      | Optional list of further folds (`line`, `side`, `layers`, `region`, `window`, `placement`, `angle`, `attached`) made in the same step.     |
 | `label`     | Optional name shown on the timeline.                                                                                                       |
 
 A sequence may also carry `"view": { "front": [x, y], "top": [x, y] }`: two
 directions in the folded coordinates of the final state, `front` pointing
 out of the model's face and `top` up its back, which define the fixed views
-of the 3D card (front, side, top and isometric). Without it the views follow
-the sheet's own axes.
+of the 3D card (front, side, top and isometric). Without it the views are
+framed by the shape of the folded sheet: its long axis front to back, or the
+sheet's own axes when it has no long axis.
 
 `src/sequence.ts` parses and validates files (errors name the offending field)
 and serialises them with points kept on one line. The preset files are
@@ -424,7 +439,8 @@ rewrites them and `npm test` fails when they are out of date.
 | `index.html`          | Page shell, favicon and meta tags; mounts the app on `#app`                      |
 | `src/main.ts`         | Entry point: loads the stylesheet and creates the app                            |
 | `src/geometry.ts`     | Vectors, lines, affine transforms, reflections, convex clipping and intersection |
-| `src/paper.ts`        | Facet model, `fold`, layer selection, statistics, undo history                   |
+| `src/paper.ts`        | Facet model, `fold`, layer selection, statistics, the `FoldHistory` stack        |
+| `src/timeline.ts`     | The editable timeline: steps, playhead, cached states, edit undo and redo        |
 | `src/render.ts`       | SVG markup for the flat views, the fold animation and the folded-view camera     |
 | `src/rigid.ts`        | Hinges with fold angles, attachment, the rigid walk that places the facets       |
 | `src/solve.ts`        | Position-based solver: rigid facets, welded creases, crease angles with loops    |
@@ -439,7 +455,8 @@ rewrites them and `npm test` fails when they are out of date.
 | `src/ui.ts`           | Page layout, toolbar, pointer interaction, animation loop, shortcuts             |
 | `src/style.css`       | Theme tokens (light and dark), layout, controls and SVG styling                  |
 | `presets/`            | The shipped sequences as JSON, generated from `src/presets.ts`                   |
-| `tests/`              | Vitest specs for geometry, paper, camera, views, snapping, sequences and presets |
+| `tests/`              | Vitest specs for every module, and the screenshot baselines in `tests/shots/`    |
+| `scripts/`            | The screenshot helper, its scenarios and the baseline comparison                 |
 
 ## Contributing
 

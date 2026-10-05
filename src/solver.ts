@@ -115,7 +115,8 @@ export class InlineSolver implements SheetSolver {
   private readonly core = new SolveCore();
 
   solve(request: SolveRequest): Promise<SolvedScene> {
-    return Promise.resolve(this.core.solve(request));
+    // A throw inside the solve rejects, as the worker's reply would.
+    return new Promise((resolve) => resolve(this.core.solve(request)));
   }
 
   dispose(): void {
@@ -123,7 +124,11 @@ export class InlineSolver implements SheetSolver {
   }
 }
 
-/** The solver in a Web Worker; falls back to the thread if the worker fails. */
+/**
+ * The solver in a Web Worker. A worker that fails (its script missing after
+ * a deploy, a message it cannot read) answers nothing, so from the first
+ * failure on the requests are solved on this thread instead.
+ */
 export class WorkerSolver implements SheetSolver {
   private readonly worker: Worker;
   private readonly waiting = new Map<
@@ -131,6 +136,7 @@ export class WorkerSolver implements SheetSolver {
     { resolve: (scene: SolvedScene) => void; reject: (error: Error) => void }
   >();
   private seq = 0;
+  private fallback: InlineSolver | null = null;
 
   constructor(worker: Worker) {
     this.worker = worker;
@@ -142,14 +148,22 @@ export class WorkerSolver implements SheetSolver {
       if (reply.scene) pending.resolve(reply.scene);
       else pending.reject(new Error(reply.error ?? 'solve failed'));
     });
-    worker.addEventListener('error', (event) => {
-      const error = new Error(event.message || 'solver worker failed');
+    const failed = (message: string): void => {
+      const error = new Error(message);
       for (const pending of this.waiting.values()) pending.reject(error);
       this.waiting.clear();
-    });
+      if (!this.fallback) {
+        console.warn(`${message}; solving on the main thread from now on`);
+        this.fallback = new InlineSolver();
+        this.worker.terminate();
+      }
+    };
+    worker.addEventListener('error', (event) => failed(event.message || 'solver worker failed'));
+    worker.addEventListener('messageerror', () => failed('solver worker sent an unreadable reply'));
   }
 
   solve(request: SolveRequest): Promise<SolvedScene> {
+    if (this.fallback) return this.fallback.solve(request);
     const seq = ++this.seq;
     return new Promise((resolve, reject) => {
       this.waiting.set(seq, { resolve, reject });

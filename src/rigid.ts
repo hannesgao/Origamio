@@ -189,11 +189,6 @@ export function tears(state: PaperState): number {
   return neighbours(state).torn.length;
 }
 
-/** The facet pairs that `tears` counts, with the shared edge, for diagnostics. */
-export function tornPairs(state: PaperState): readonly { a: Vec; b: Vec; p: number; q: number }[] {
-  return neighbours(state).torn;
-}
-
 interface Neighbours {
   hinges: Hinge[];
   torn: { a: Vec; b: Vec; p: number; q: number }[];

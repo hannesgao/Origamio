@@ -31,9 +31,6 @@
   --clip-pending: #3a322c;
   --playhead: #ff5a4f;
 
-  /* Tallest a sheet view may grow: the viewport minus header, card chrome and gaps. */
-  --view-max: calc(100vh - 230px);
-
   --radius: 14px;
   --radius-sm: 9px;
   --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
@@ -84,6 +81,7 @@ html {
 body {
   margin: 0;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   font-family: var(--font-body);
   font-size: 15px;
@@ -120,8 +118,11 @@ select {
   --toolbar-h: 40px;
   --foot-h: 28px;
   display: grid;
+  /* One column no wider than the viewport: the timeline track scrolls inside its card instead. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
+  height: 100dvh;
 }
 
 .body {
@@ -143,6 +144,7 @@ select {
 .workspace {
   grid-column: 3;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto;
   align-content: start;
   gap: var(--space);
@@ -739,7 +741,9 @@ kbd {
   padding: 0 14px;
 }
 
-/* In view cards the head, the tools and the foot are exactly as wide as the canvas. */
+/* In view cards the head, the tools and the foot are exactly as wide as the
+   canvas, and each measures itself for the queries that trim its contents,
+   since the canvas can be narrower than the card. */
 .view-card .card-head,
 .view-card .card-toolbar,
 .view-card .card-foot {
@@ -747,6 +751,7 @@ kbd {
   margin: 0 auto;
   padding-left: 0;
   padding-right: 0;
+  container-type: inline-size;
 }
 
 .card-toolbar {
@@ -880,8 +885,7 @@ kbd {
 }
 
 @container (max-width: 460px) {
-  .card-stats .stat:nth-child(4),
-  .help-more {
+  .card-stats .stat:nth-child(4) {
     display: none;
   }
 }
@@ -1046,11 +1050,6 @@ kbd {
   gap: 8px;
 }
 
-.range-label input[type='range'] {
-  width: 120px;
-  accent-color: var(--accent);
-}
-
 /* Small preset chips with an exact-value box, sized for a 20px foot line. */
 .chips {
   display: inline-flex;
@@ -1084,7 +1083,7 @@ kbd {
 
 .chip-input {
   flex: none;
-  width: 3.6em;
+  width: 4.2em;
   height: 18px;
   margin-left: 4px;
   padding: 0 4px;
@@ -1262,6 +1261,7 @@ kbd {
   font-size: 0.78rem;
   color: var(--muted);
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .status-item {
@@ -1744,6 +1744,12 @@ a.credit:hover {
 }
 
 @media (max-width: 900px) {
+  /* The status bar keeps the author, the version and the link; the build date and the licence go. */
+  .credit-build,
+  .credits a[title='Read the licence'] {
+    display: none;
+  }
+
   .panel {
     position: absolute;
     left: var(--rail-w);
@@ -1761,14 +1767,30 @@ a.credit:hover {
   }
 
   .workspace {
-    padding: 8px 8px 64px;
+    padding: 8px 8px 96px;
   }
 
   .tl-speed-label .btn-label,
   .drawer-toggle .btn-label,
   .timeline-head h2,
-  .statusbar,
+  .statusbar .status-item,
+  .statusbar .credits,
   .project-name {
+    display: none;
+  }
+
+  /* Only the latest message, in a strip above the transport, and nothing when there is none. */
+  .statusbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(44px + env(safe-area-inset-bottom));
+    z-index: 5;
+    height: 28px;
+    padding: 0 10px;
+  }
+
+  .statusbar:has(.status-message:empty) {
     display: none;
   }
 

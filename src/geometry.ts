@@ -98,12 +98,6 @@ export function signedDistance(l: Line, p: Vec): number {
 /** The side of the line a point lies on. Points on the line count as the left side. */
 export const sideOf = (l: Line, p: Vec): Side => (signedDistance(l, p) >= 0 ? 1 : -1);
 
-/** Orthogonal projection of a point onto the line. */
-export function projectOnto(l: Line, p: Vec): Vec {
-  const d = lineDirection(l);
-  return add(l.a, scale(d, dot(sub(p, l.a), d)));
-}
-
 // ---------------------------------------------------------------------------
 // Affine transforms
 // ---------------------------------------------------------------------------
