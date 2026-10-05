@@ -1,0 +1,377 @@
+import { type Messages } from './index';
+
+/** Deutsch. */
+export const de: Messages = {
+  name: 'Deutsch',
+  tag: 'de',
+  language: 'Sprache',
+
+  layouts: {
+    'side-by-side': { label: 'Nebeneinander', title: 'Alle drei Ansichten in einer Reihe' },
+    'folded-large': {
+      label: 'Gefaltet groß',
+      title: 'Eine große gefaltete Ansicht, die anderen daneben',
+    },
+    focus: { label: 'Fokus', title: 'Nur die gefaltete Ansicht' },
+    group: 'Anordnung',
+  },
+
+  panels: {
+    library: { label: 'Bibliothek', title: 'Vorlagen für die Zeitleiste' },
+    paper: { label: 'Papier', title: 'Größe des Bogens' },
+    step: { label: 'Schritt', title: 'Den gewählten Schritt bearbeiten' },
+    file: { label: 'Datei', title: 'Name, Import, Export und Leeren' },
+    keys: { label: 'Tasten', title: 'Tastenkürzel' },
+    nav: 'Leisten',
+    close: 'Schließen',
+    presets: 'Vorlagen',
+  },
+
+  paper: {
+    square: 'Quadrat 1:1',
+    aSeries: 'A-Reihe 1:√2',
+    portrait: (shape) => `${shape} hochkant`,
+    custom: 'Eigenes Maß',
+    current: (sheet) => `Aktueller Bogen: ${sheet}`,
+    width: 'Breite des Bogens',
+    height: 'Höhe des Bogens',
+    useSize: 'Dieses Maß verwenden',
+    rotate: 'Drehen (hochkant / quer)',
+    rotateTitle: 'Breite und Höhe tauschen',
+    customField: 'Eigenes Maß (Breite × Höhe, die lange Seite ist meist 1)',
+    rewindHelp:
+      'Ein neues Maß spult zum flachen Bogen zurück und behält jeden Schritt auf der Zeitleiste; abspielen zeigt sie auf dem neuen Bogen.',
+    coloursField: 'Farben (Vorderseite / Rückseite)',
+    front: 'Vorderseite',
+    back: 'Rückseite',
+    frontColour: 'Farbe der Vorderseite',
+    backColour: 'Farbe der Rückseite',
+    savedHelp: 'Maß und Farben werden in exportierten Dateien gespeichert.',
+    colours: {
+      orange: 'Orange und Braun (Standard)',
+      kami: 'Kami-Rot und Weiß',
+      blue: 'Blau und Weiß',
+      green: 'Grün und Creme',
+      kraft: 'Kraftpapier',
+      gold: 'Schwarz und Gold',
+    },
+  },
+
+  tabs: {
+    folded: 'Gefaltet',
+    unfolded: 'Entfaltet',
+    solid: '3D',
+    view: 'Ansicht',
+    secondary: 'Zweite Ansicht',
+  },
+
+  transport: {
+    timeline: 'Zeitleiste',
+    start: 'Zurück zum flachen Bogen (Pos1)',
+    back: 'Einen Schritt zurück (←)',
+    play: 'Die übrigen Schritte abspielen (P)',
+    pause: 'Nach diesem Schritt anhalten (P)',
+    forward: 'Einen Schritt vor (→)',
+    end: 'Alle übrigen Schritte auf einmal anwenden (Ende)',
+    speed: 'Tempo',
+    speedLabel: 'Abspieltempo',
+    track: 'Spur',
+    hideTrack: 'Spur ausblenden',
+    showTrack: 'Spur einblenden',
+    steps: 'Faltschritte',
+    clipTitle: (step) =>
+      `${step} — Klick springt dorthin, Doppelklick benennt um, Ziehen verschiebt`,
+    clipDead: (step) => `${step} — bewegt auf dem Bogen an dieser Stelle nichts`,
+    renameLabel: (n) => `Name von Schritt ${n}`,
+  },
+
+  file: {
+    name: 'Name',
+    sequenceName: 'Name der Sequenz',
+    untitled: 'Unbenannte Sequenz',
+    defaultName: 'Meine Sequenz',
+    import: 'Datei laden…',
+    importTitle: 'Eine Sequenz aus einer JSON-Datei laden',
+    export: 'Datei speichern',
+    exportTitle: 'Die Zeitleiste als JSON-Datei speichern',
+    newSheet: 'Neuer Bogen',
+    newTitle: 'Bogen und Zeitleiste leeren',
+    help: 'Eine Datei enthält jeden Schritt der Zeitleiste, angewendet oder nicht, im JSON-Format origamio-sequence, das die README beschreibt.',
+  },
+
+  keys: [
+    ['Ziehen', 'Linie: eine Faltlinie ziehen, dann die Seite anklicken, die umklappt'],
+    ['Ziehen', 'Punkt: einen Punkt auf einen anderen Punkt bringen'],
+    ['Esc', 'Linie abbrechen, Leiste oder Menü schließen, Abspielen anhalten'],
+    ['← / →', 'Einen Schritt zurück oder vor'],
+    ['P', 'Abspielen oder anhalten'],
+    ['Pos1 / Ende', 'Flacher Bogen oder letzter Schritt'],
+    ['Strg+Z', 'Die letzte Änderung der Zeitleiste zurücknehmen'],
+    ['Strg+Umschalt+Z', 'Eine Änderung wiederholen (auch Strg+Y)'],
+    ['Entf', 'Den gewählten Schritt löschen'],
+    ['F2', 'Den gewählten Schritt umbenennen'],
+    ['Scrollen', 'Um den Zeiger zoomen'],
+    ['Leertaste + Ziehen', 'Die gefaltete Ansicht verschieben'],
+    ['Alt + Ziehen', 'Eine Faltlinie ohne Einrasten ziehen'],
+    ['F / 0', 'Den Bogen einpassen oder ganz zeigen'],
+  ],
+
+  folded: {
+    title: 'Gefaltet',
+    dragTool: 'Ziehwerkzeug',
+    line: 'Linie',
+    lineTitle: 'Ziehen, um die Faltlinie zu zeichnen',
+    point: 'Punkt',
+    pointTitle:
+      'Einen Punkt auf einen anderen bringen: der Bogen faltet sich entlang der Mittelsenkrechten, so dass der erste Punkt auf dem zweiten landet',
+    move: 'Verschieben',
+    moveTitle: 'Ziehen verschiebt die Ansicht (oder Leertaste halten)',
+    layersTitle:
+      'Lagen, die der nächste Falz bewegt: alle, oder nur die oberen n (eine Fläche gehört zu den oberen n, wenn weniger als n Lagen über ihr liegen)',
+    all: 'Alle',
+    top: 'Obere',
+    layerCount: 'Zahl der oberen Lagen, die gefaltet werden',
+    snap: 'Rasten',
+    snapTitle: 'Faltlinien an Ecken, Mittelpunkten und Kanten einrasten (Alt halten zeichnet frei)',
+    fit: 'Einpassen',
+    fitTitle: 'Den gefalteten Bogen in die Ansicht einpassen (F)',
+    full: 'Ganz',
+    fullTitle: 'Den ganzen Bogen zeigen (0)',
+    zoomTitle: 'Zoom; scrollen auf dem Bogen ändert ihn',
+    more: 'Weitere Ansichtswerkzeuge',
+    stats: {
+      folds: 'Falze',
+      layers: 'Lagen',
+      facets: 'Flächen',
+      underCursor: 'unter dem Zeiger',
+      creases: 'Faltlinien',
+    },
+  },
+
+  unfolded: {
+    title: 'Entfaltet',
+    frontUp: 'Vorderseite oben',
+    backUp: 'Rückseite oben',
+    crease: 'Faltlinie',
+    caption: 'Faltmuster, live',
+  },
+
+  solid: {
+    title: '3D',
+    namedViews: 'Feste Ansichten',
+    views: {
+      front: { short: 'Vorn', title: 'Vorderansicht: mit Blick auf das Gesicht' },
+      side: { short: 'Seite', title: 'Seitenansicht: das Profil' },
+      top: { short: 'Oben', title: 'Draufsicht: von oben' },
+      isometric: { short: 'Iso', title: 'Isometrie: die Seitenansicht um 45° gedreht' },
+    },
+    perspective: 'Perspektive',
+    perspectiveTitle:
+      'Perspektive: Nahes wird größer gezeichnet. Ohne sie ist jede Ansicht eine orthografische Zeichnung',
+    reset: 'Zurück',
+    resetTitle: 'Das Modell in die Standardansicht drehen',
+    open: 'Öffnung',
+    openingChip: (degrees) => `Jede Faltlinie um ${degrees}° öffnen`,
+    openingLabel: 'Öffnung der Faltlinien in Grad',
+    openingTitle: (max) => `Genaue Öffnung, 0 bis ${max} Grad`,
+    openingGroup: 'Öffnung der Faltlinien',
+    paper: 'Papier',
+    thicknessChip: (mm, cm) => `${mm} mm dickes Papier bei einem Bogen von ${cm} cm`,
+    thicknessLabel: 'Papierdicke in Millimetern',
+    thicknessTitle: (max) => `Genaue Dicke, 0 bis ${max} mm`,
+    thicknessGroup: 'Papierdicke',
+    mm: 'mm',
+    dragToTurn: 'Ziehen dreht',
+    noWebGL:
+      'Die 3D-Ansicht braucht WebGL, das dieser Browser nicht bietet. Die anderen Ansichten funktionieren.',
+  },
+
+  credits: {
+    copyright: '© 2026 Hannes Gao',
+    licence: 'MIT-Lizenz',
+    licenceTitle: 'Die Lizenz lesen',
+    built: (iso) => `Gebaut ${iso} (UTC)`,
+    github: 'GitHub',
+    githubTitle: 'Origamio auf GitHub',
+  },
+
+  hints: {
+    redrawPoint: (n) =>
+      `Schritt ${n} wird neu gezeichnet: einen Punkt auf den Punkt ziehen, auf dem er landen soll (Esc bricht ab).`,
+    redrawLine: (n) =>
+      `Schritt ${n} wird neu gezeichnet: die neue Faltlinie ziehen, dann die Seite anklicken, die umklappt (Esc bricht ab).`,
+    next: (step) => `Als Nächstes: ${step}. → wendet es an, P spielt ab.`,
+    move: 'Ziehen verschiebt, Scrollen zoomt. Zurück zu Linie oder Punkt, um zu falten.',
+    point: 'Eine Ecke oder einen Punkt auf den Punkt ziehen, auf dem sie landen soll.',
+    line: 'Ziehen zeichnet eine Faltlinie. Scrollen zoomt, Leertaste halten verschiebt.',
+    releasePoint: 'Loslassen faltet dorthin.',
+    releaseLine: 'Loslassen legt die Faltlinie fest.',
+    snappedCorner: (release) => `An einer Ecke eingerastet. ${release}`,
+    snappedCrossing: (release) => `Dort eingerastet, wo zwei Kanten sich kreuzen. ${release}`,
+    snappedMidpoint: (release) => `In der Mitte einer Kante eingerastet. ${release}`,
+    snappedEdge: (release) => `Auf einer Kante eingerastet. ${release}`,
+    chooseSideRedraw: (n) => `Die Seite anklicken, die bei Schritt ${n} umklappt (Esc bricht ab).`,
+    chooseSide: 'Die Seite anklicken, die umklappen soll (Esc bricht ab).',
+    playing: 'Spielt ab… (P oder Esc hält nach diesem Schritt an)',
+    folding: 'Faltet…',
+  },
+
+  step: {
+    foldAll: 'Alle falten',
+    foldTop: (n) => `Obere ${n} falten`,
+    foldBottom: (n) => `Untere ${n} falten`,
+    placed: (which, placement) => `${which} (${placement})`,
+    placements: { top: 'oben', bottom: 'unten', inside: 'innen' },
+  },
+
+  status: {
+    noSteps: 'Keine Schritte',
+    stepOf: (position, length) => `Schritt ${position} von ${length}`,
+  },
+
+  inspector: {
+    emptyNoSteps:
+      'Etwas falten oder eine Vorlage laden, dann einen Schritt auf der Zeitleiste wählen.',
+    emptySelect:
+      'Einen Schritt auf der Zeitleiste wählen (einen Clip anklicken), um ihn hier zu bearbeiten.',
+    changed: (what, n) => `${what} von Schritt ${n} geändert.`,
+    name: 'Name',
+    stepName: 'Name des Schritts',
+    layers: 'Lagen, die sich bewegen',
+    layersAll: 'Alle Lagen',
+    layersTop: 'Obere n Lagen',
+    layersBottom: 'Untere n Lagen',
+    layerCount: 'Zahl der Lagen',
+    placement: 'Wo das bewegte Papier landet',
+    placementTop: 'Oben (Talfalte)',
+    placementBottom: 'Unten (auf der Rückseite)',
+    placementInside: 'Innen (Umkehrfalte)',
+    flip: 'Die bewegte Seite tauschen',
+    redraw: 'Die Linie auf dem gefalteten Bogen neu zeichnen',
+    redrawing: 'Wird neu gezeichnet… (Esc bricht ab)',
+    coincide: 'Die Linie lässt sich nicht ändern: die beiden Punkte fielen zusammen.',
+    from: 'Von',
+    to: 'Bis',
+    regionLimit: 'Nur Flächen in einem Bereich des entfalteten Bogens',
+    windowLimit: 'Nur Flächen in einem Fenster des gefalteten Bogens',
+    points: (text, n) => `${text} (${n} Punkte)`,
+    remove: 'Entfernen',
+    title: (n, length) => `Schritt ${n} von ${length}`,
+    movesNothing: ' — bewegt an seiner jetzigen Stelle nichts',
+    moreFolds: (n) =>
+      `Dieser Schritt macht zugleich ${n} weitere${n === 1 ? 'n Falz' : ' Falze'}; die Felder unten gehören zu seinem ersten.`,
+    foldLine: (side) =>
+      `Faltlinie (gefaltete Koordinaten bei diesem Schritt; die ${side === 'left' ? 'linke' : 'rechte'} Seite bewegt sich)`,
+    limits: 'Grenzen',
+    replayHelp:
+      'Jede Änderung spielt die Schritte danach neu ab; ein Schritt, der dann nichts mehr bewegt, wird auf der Zeitleiste markiert.',
+    what: {
+      layers: 'Lagen',
+      placement: 'Ablage',
+      side: 'Seite',
+      line: 'Linie',
+      region: 'Bereich',
+      window: 'Fenster',
+    },
+  },
+
+  messages: {
+    drawNewLine: (n) => `Die neue Linie für Schritt ${n} auf dem gefalteten Bogen zeichnen.`,
+    laterDead: (message, n) =>
+      `${message} ${n} später${n === 1 ? 'er Schritt bewegt' : 'e Schritte bewegen'} jetzt nichts mehr.`,
+    movesNothing: 'Dieser Falz bewegt nichts.',
+    inserted: (n) => `Schritt ${n} eingefügt.`,
+    tookAlong: (n) =>
+      ` Er nahm ${n} verbundene Fläche${n === 1 ? '' : 'n'} mit, damit das Papier nicht reißt.`,
+    sheetSetFor: (sheet, name) => `Bogen für „${name}“ auf ${sheet} gesetzt.`,
+    sheetNow: (sheet, steps) => `Der Bogen ist jetzt ${sheet}; ${steps} Schritte zurückgespult.`,
+    saved: (n) => `${n} Schritte gespeichert.`,
+    loaded: (name, n, sheet) =>
+      `„${name}“ geladen: ${n} Schritte auf einem Bogen ${sheet}. Abspielen drücken.`,
+    loadedPreset: (name, n, sheet) =>
+      `„${name}“ geladen: ${n} Schritte auf einem Bogen ${sheet}. Mit → schrittweise oder abspielen.`,
+    couldNotLoad: (file, reason) => `${file} ließ sich nicht laden: ${reason}`,
+    unreadable: 'unlesbare Datei',
+    deleted: (n) => `Schritt ${n} gelöscht.`,
+    duplicated: (n) => `Schritt ${n} verdoppelt.`,
+    moved: (from, to) => `Schritt ${from} nach ${to} verschoben.`,
+    removedAfter: (count, n) =>
+      `${count} Schritt${count === 1 ? '' : 'e'} nach Schritt ${n} entfernt.`,
+    nothingToUndo: 'Nichts zurückzunehmen.',
+    undid: 'Die letzte Änderung zurückgenommen.',
+    nothingToRedo: 'Nichts zu wiederholen.',
+    redid: 'Die Änderung wiederholt.',
+    lineRedrawn: (n) => `Linie von Schritt ${n} neu gezeichnet.`,
+    badSize: (max) => `Dieses Maß geht nicht: die Seiten müssen zwischen 0 und ${max} liegen.`,
+  },
+
+  menu: {
+    rename: 'Umbenennen',
+    edit: 'Bearbeiten…',
+    goTo: 'Zu diesem Schritt',
+    duplicate: 'Verdoppeln',
+    moveLeft: 'Nach links',
+    moveRight: 'Nach rechts',
+    delete: 'Löschen',
+    deleteAfter: 'Schritte danach löschen',
+    snapOn: 'An Punkten einrasten: an',
+    snapOff: 'An Punkten einrasten: aus',
+    fit: 'Den Bogen einpassen (F)',
+    full: 'Den ganzen Bogen zeigen (0)',
+    zoom: (zoom) => `Zoom ${zoom}`,
+  },
+
+  presets: {
+    'three-halves': {
+      name: 'Dreimal halbieren',
+      description: 'Links über rechts, oben über unten, wieder links über rechts',
+    },
+    'corner-loose': {
+      name: 'Hälften + lose Ecke',
+      description:
+        'Zweimal halbieren, dann die lose Ecke falten, an der die vier Bogenecken liegen',
+    },
+    'corner-two-edges': {
+      name: 'Hälften + Mittelecke',
+      description: 'Zweimal halbieren, dann die Ecke falten, an der beide Faltkanten sich treffen',
+    },
+    'corner-one-edge': {
+      name: 'Hälften + einkantige Ecke',
+      description: 'Zweimal halbieren, dann eine Ecke mit nur einer Faltkante falten',
+    },
+    crane: {
+      name: 'Kranich',
+      description:
+        'Diagonalen, Quadratgrundform, Vogelgrundform, Spitzen verschmälern, Modell schließen, Umkehrfalten für Hals, Schwanz und Kopf, Flügel ausbreiten',
+    },
+    frog: {
+      name: 'Springfrosch',
+      description: 'Wasserbombenkopf mit Beinen, Seiten nach innen, gefaltete Sprungfeder',
+    },
+  },
+
+  stepLabels: {
+    'Pre-crease': 'Vorfalten',
+    'Square base': 'Quadratgrundform',
+    'Petal fold front': 'Blütenblattfalte vorn',
+    'Petal fold back': 'Blütenblattfalte hinten',
+    'Narrow front point': 'Vordere Spitze verschmälern',
+    'Narrow back point': 'Hintere Spitze verschmälern',
+    'Close along centre': 'Entlang der Mitte schließen',
+    'Reverse fold neck': 'Umkehrfalte Hals',
+    'Reverse fold tail': 'Umkehrfalte Schwanz',
+    'Reverse fold head': 'Umkehrfalte Kopf',
+    'Spread wings': 'Flügel ausbreiten',
+    'Right half over': 'Rechte Hälfte darüber',
+    'Top half down': 'Obere Hälfte nach unten',
+    'Half back down': 'Hälfte zurück',
+    'Loose corner': 'Lose Ecke',
+    'Centre corner': 'Mittelecke',
+    'Single-edge corner': 'Einkantige Ecke',
+    Waterbomb: 'Wasserbombe',
+    'Legs up': 'Beine hoch',
+    'Feet out': 'Füße nach außen',
+    'Sides in': 'Seiten nach innen',
+    'Bottom up': 'Unten nach oben',
+  },
+};

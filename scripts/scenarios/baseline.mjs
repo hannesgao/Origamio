@@ -10,7 +10,11 @@
 import { join } from 'node:path';
 
 export default async function (page, { out, log }) {
-  await page.evaluate(() => localStorage.clear());
+  // The baselines are English whatever the runner's locale.
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('origamio.lang', 'en');
+  });
   await page.reload({ waitUntil: 'networkidle' });
   await page.click('[data-panel="library"]');
   await page.click('[data-preset="crane"]');

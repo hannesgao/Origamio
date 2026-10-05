@@ -104,6 +104,11 @@ note and the other views work as before.
   facet under the cursor.
 - **Light and dark themes.** The interface follows the operating system's
   colour scheme.
+- **Four languages.** English, Chinese, Japanese and German, chosen from the
+  menu in the header, remembered in the browser and taken from the browser's
+  language at first; `?lang=ja` in the address picks one for a link. The
+  shipped sequences' names and step names are translated too; names you type
+  are kept as typed, and files always store the English names.
 - **An editable timeline.** Every clip can be renamed (double-click or F2),
   dragged to another position, duplicated, deleted (Delete) or cut off with
   everything after it, from a right-click menu. A fold made by hand is
@@ -376,6 +381,23 @@ Ctrl+Z and Ctrl+Shift+Z undo and redo edits independently of the playhead
 before it is inserted. States are never mutated. `FoldHistory` in
 `src/paper.ts` is the plain stack of states the tests fold with.
 
+### Languages
+
+Every word the interface shows lives in `src/i18n/en.ts`, grouped by where
+it appears; messages that carry a value are functions, so each language
+orders its own sentence. `src/i18n/index.ts` derives the `Messages` type
+from the English table, and the other languages (`zh.ts`, `ja.ts`, `de.ts`)
+are typed against it, so a word missing from a translation does not
+compile. The current language's words are read through `t`; a change of
+language swaps them in place and rebuilds the page with the same sequence at
+the same step. The shipped sequences' names and step names are translated
+through `presets` and `stepLabels` in the same table, keyed by the preset
+id and the English step name the files store; `tests/i18n.test.ts` checks
+that every shipped name has an entry in every language. To add a language:
+copy `en.ts`, translate, add it to `LANGUAGES` and `loaders` in `index.ts`
+and to the names in `ui.ts`, and give `style.css` a font stack for its
+script if it needs one.
+
 ### Sequence files
 
 Presets live in `presets/*.json` and anything you fold can be exported to the
@@ -452,6 +474,7 @@ rewrites them and `npm test` fails when they are out of date.
 | `src/sequence.ts`     | The JSON sequence format: parse, validate, serialise                             |
 | `src/presets.ts`      | Geometry of the shipped sequences, including the crane; source of `presets/`     |
 | `src/library.ts`      | Loads `presets/*.json` for the app                                               |
+| `src/i18n/`           | The words of the interface: `en.ts` is the source, one file per language, `t`    |
 | `src/ui.ts`           | Page layout, toolbar, pointer interaction, animation loop, shortcuts             |
 | `src/style.css`       | Theme tokens (light and dark), layout, controls and SVG styling                  |
 | `presets/`            | The shipped sequences as JSON, generated from `src/presets.ts`                   |

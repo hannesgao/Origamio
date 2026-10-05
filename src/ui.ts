@@ -15,6 +15,8 @@ import {
   sub,
   vec,
 } from './geometry';
+import { type Language, LANGUAGES, language, setLanguage, t } from './i18n';
+import { type en } from './i18n/en';
 import { LIBRARY } from './library';
 import { type SceneStyle, createScene } from './scene3d';
 import { type Snap, type SnapTargets, snapTargets, snapTo } from './snap';
@@ -173,6 +175,13 @@ const COLLAPSE_ICON = '<path d="m5 8 5 5 5-5" />';
 const SNAP_ICON =
   '<path d="M6 3v7a4 4 0 0 0 8 0V3" /><path d="M4 3h4M12 3h4" /><path d="M4 8h4M12 8h4" />';
 const SNAP_KEY = 'origamio.snap';
+/** Each language by its own name, so that a visitor finds theirs whatever the page is in. */
+const LANGUAGE_NAMES: Record<Language, string> = {
+  en: 'English',
+  zh: '中文',
+  ja: '日本語',
+  de: 'Deutsch',
+};
 /** How close the pointer must be to a corner, midpoint or edge, in CSS pixels. */
 const SNAP_PIXELS = 10;
 
@@ -220,50 +229,38 @@ function brandMark(): SVGSVGElement {
 
 /** How the view cards share the workspace. */
 type Layout = 'side-by-side' | 'folded-large' | 'focus';
-const LAYOUTS: readonly { readonly id: Layout; readonly label: string; readonly title: string }[] =
-  [
-    { id: 'side-by-side', label: 'Side by side', title: 'All three views in a row' },
-    { id: 'folded-large', label: 'Folded large', title: 'A big folded view, the others beside it' },
-    { id: 'focus', label: 'Focus', title: 'Only the folded view' },
-  ];
+const LAYOUTS: readonly Layout[] = ['side-by-side', 'folded-large', 'focus'];
 const LAYOUT_KEY = 'origamio.layout';
 /** Panels that open from the icon rail on the left. */
 type Panel = 'library' | 'paper' | 'step' | 'file' | 'keys';
-const PANELS: readonly { readonly id: Panel; readonly label: string; readonly title: string }[] = [
-  { id: 'library', label: 'Library', title: 'Presets to load onto the timeline' },
-  { id: 'paper', label: 'Paper', title: 'Size of the sheet' },
-  { id: 'step', label: 'Step', title: 'Edit the selected step' },
-  { id: 'file', label: 'File', title: 'Name, import, export and clear' },
-  { id: 'keys', label: 'Shortcuts', title: 'Keyboard shortcuts' },
-];
+const PANELS: readonly Panel[] = ['library', 'paper', 'step', 'file', 'keys'];
 const PANEL_KEY = 'origamio.panel';
 
 /** Sheet shapes offered in the Paper panel; the longer side is always 1. */
 const PAPER_PRESETS: readonly {
   readonly id: string;
-  readonly label: string;
+  readonly label: () => string;
   readonly paper: { readonly width: number; readonly height: number };
 }[] = [
-  { id: 'square', label: 'Square 1:1', paper: { width: 1, height: 1 } },
-  { id: 'a-series', label: 'A series 1:√2', paper: { width: 1, height: 0.7071 } },
-  { id: '4-3', label: '4:3', paper: { width: 1, height: 0.75 } },
-  { id: '3-2', label: '3:2', paper: { width: 1, height: 0.6667 } },
-  { id: '16-9', label: '16:9', paper: { width: 1, height: 0.5625 } },
+  { id: 'square', label: () => t.paper.square, paper: { width: 1, height: 1 } },
+  { id: 'a-series', label: () => t.paper.aSeries, paper: { width: 1, height: 0.7071 } },
+  { id: '4-3', label: () => '4:3', paper: { width: 1, height: 0.75 } },
+  { id: '3-2', label: () => '3:2', paper: { width: 1, height: 0.6667 } },
+  { id: '16-9', label: () => '16:9', paper: { width: 1, height: 0.5625 } },
 ];
 
 /** Face colour pairs offered in the Paper panel. */
 const COLOUR_PRESETS: readonly {
-  readonly id: string;
-  readonly label: string;
+  readonly id: keyof typeof en.paper.colours;
   readonly front: string;
   readonly back: string;
 }[] = [
-  { id: 'orange', label: 'Orange and brown (default)', front: DEFAULT_FRONT, back: DEFAULT_BACK },
-  { id: 'kami', label: 'Kami red and white', front: '#d7263d', back: '#f6f1e7' },
-  { id: 'blue', label: 'Blue and white', front: '#2b5fb3', back: '#f2f5fb' },
-  { id: 'green', label: 'Green and cream', front: '#3f8f5a', back: '#f3f0dc' },
-  { id: 'kraft', label: 'Kraft', front: '#c9a26b', back: '#a67c48' },
-  { id: 'gold', label: 'Black and gold', front: '#24201c', back: '#d4a53a' },
+  { id: 'orange', front: DEFAULT_FRONT, back: DEFAULT_BACK },
+  { id: 'kami', front: '#d7263d', back: '#f6f1e7' },
+  { id: 'blue', front: '#2b5fb3', back: '#f2f5fb' },
+  { id: 'green', front: '#3f8f5a', back: '#f3f0dc' },
+  { id: 'kraft', front: '#c9a26b', back: '#a67c48' },
+  { id: 'gold', front: '#24201c', back: '#d4a53a' },
 ];
 
 /** Same size, colours aside. */
@@ -280,27 +277,20 @@ const describePaper = (paper: Paper): string => {
     sameSize({ ...paper, width: p.paper.height, height: p.paper.width }, paper),
   );
   const dims = `${+paper.width.toFixed(4)} × ${+paper.height.toFixed(4)}`;
-  if (preset) return `${preset.label} (${dims})`;
-  if (portrait) return `${portrait.label} portrait (${dims})`;
-  return `Custom (${dims})`;
+  if (preset) return `${preset.label()} (${dims})`;
+  if (portrait) return `${t.paper.portrait(portrait.label())} (${dims})`;
+  return `${t.paper.custom} (${dims})`;
 };
 const DRAWER_KEY = 'origamio.drawer';
 /** Below this width the views sit behind tabs and the panel floats over the workspace. */
 const NARROW_QUERY = '(max-width: 1339px)';
 /** The view shown on its own: on narrow screens, and in the Focus layout. */
 type ViewTab = 'folded' | 'unfolded' | 'solid';
-const VIEW_TABS: readonly { readonly id: ViewTab; readonly label: string }[] = [
-  { id: 'folded', label: 'Folded' },
-  { id: 'unfolded', label: 'Unfolded' },
-  { id: 'solid', label: '3D' },
-];
+const VIEW_TABS: readonly ViewTab[] = ['folded', 'unfolded', 'solid'];
 const TAB_KEY = 'origamio.tab';
 /** Which secondary view the tabbed card of the folded-large layout shows. */
 type SecondaryTab = 'unfolded' | 'solid';
-const SECONDARY_TABS: readonly { readonly id: SecondaryTab; readonly label: string }[] = [
-  { id: 'unfolded', label: 'Unfolded' },
-  { id: 'solid', label: '3D' },
-];
+const SECONDARY_TABS: readonly SecondaryTab[] = ['unfolded', 'solid'];
 const SECONDARY_KEY = 'origamio.secondary';
 const PERSPECTIVE_KEY = 'origamio.perspective';
 
@@ -371,6 +361,8 @@ export interface App {
   readonly camera: Camera;
   fitView(): void;
   fullView(): void;
+  /** Take the app off the page: listeners on the document and window, the scene, the solver. */
+  dispose(): void;
 }
 
 export function createApp(root: HTMLElement): App {
@@ -447,16 +439,16 @@ export function createApp(root: HTMLElement): App {
   let hoverSnap: Snap | null = null;
   let spaceHeld = false;
   const rememberedLayout = remembered(LAYOUT_KEY);
-  let layout: Layout = LAYOUTS.some((l) => l.id === rememberedLayout)
+  let layout: Layout = LAYOUTS.some((l) => l === rememberedLayout)
     ? (rememberedLayout as Layout)
     : 'folded-large';
   const rememberedPanel = remembered(PANEL_KEY);
-  let openPanel: Panel | null = PANELS.some((p) => p.id === rememberedPanel)
+  let openPanel: Panel | null = PANELS.some((p) => p === rememberedPanel)
     ? (rememberedPanel as Panel)
     : null;
   let drawerOpen = remembered(DRAWER_KEY) !== 'closed';
   const rememberedSecondary = remembered(SECONDARY_KEY);
-  let secondaryTab: SecondaryTab = SECONDARY_TABS.some((t) => t.id === rememberedSecondary)
+  let secondaryTab: SecondaryTab = SECONDARY_TABS.some((tab) => tab === rememberedSecondary)
     ? (rememberedSecondary as SecondaryTab)
     : 'unfolded';
   /** How the 3D view is turned; dragging on it changes this. */
@@ -471,7 +463,7 @@ export function createApp(root: HTMLElement): App {
     return autoFrameFor.frame;
   };
   const rememberedTab = remembered(TAB_KEY);
-  let activeTab: ViewTab = VIEW_TABS.some((t) => t.id === rememberedTab)
+  let activeTab: ViewTab = VIEW_TABS.some((tab) => tab === rememberedTab)
     ? (rememberedTab as ViewTab)
     : 'folded';
   const rememberedSpeed = Number(remembered(SPEED_KEY));
@@ -479,8 +471,12 @@ export function createApp(root: HTMLElement): App {
   let playing = false;
   /** Index of the step whose line is being redrawn on the folded sheet. */
   let redrawing: number | null = null;
-  let sequenceName = 'My sequence';
+  let sequenceName = t.file.defaultName;
   let timelineMessage = '';
+  let timelineError = false;
+  // Listeners on the document and the window go when the app is disposed.
+  const alive = new AbortController();
+  const signal = alive.signal;
   let navigation: Navigation | null = null;
   /** Last known position of every pointer that is down on the folded view. */
   const pointers = new Map<number, Vec>();
@@ -497,41 +493,58 @@ export function createApp(root: HTMLElement): App {
     min: '1',
     step: '1',
     value: '1',
-    'aria-label': 'Number of top layers to fold',
+    'aria-label': t.folded.layerCount,
   });
 
-  const layoutButtons = LAYOUTS.map((l) =>
-    el('button', { type: 'button', title: l.title, 'aria-pressed': 'false', 'data-layout': l.id }, [
-      icon(LAYOUT_ICONS[l.id]),
-      el('span', { class: 'btn-label' }, [l.label]),
-    ]),
+  const layoutButtons = LAYOUTS.map((id) =>
+    el(
+      'button',
+      { type: 'button', title: t.layouts[id].title, 'aria-pressed': 'false', 'data-layout': id },
+      [icon(LAYOUT_ICONS[id]), el('span', { class: 'btn-label' }, [t.layouts[id].label])],
+    ),
   );
   const layoutSwitch = el(
     'div',
-    { class: 'tool-toggle layout-switch', role: 'group', 'aria-label': 'Layout' },
+    { class: 'tool-toggle layout-switch', role: 'group', 'aria-label': t.layouts.group },
     layoutButtons,
   );
+  // The language, by its own name; a change rebuilds the page in the new words.
+  const languageSelect = el('select', { class: 'lang-select ctl', 'aria-label': t.language });
+  for (const lang of LANGUAGES) {
+    const option = el('option', { value: lang }, [LANGUAGE_NAMES[lang]]);
+    if (lang === language()) option.selected = true;
+    languageSelect.append(option);
+  }
 
-  const presetButtons = LIBRARY.map(({ id, sequence }) =>
-    el(
+  /** A shipped sequence's name and description, in the visitor's language. */
+  const presetText = (id: string, sequence: Sequence): { name: string; description: string } => {
+    const known = t.presets[id];
+    return {
+      name: known?.name ?? sequence.name,
+      description: known?.description ?? sequence.description ?? '',
+    };
+  };
+  const presetButtons = LIBRARY.map(({ id, sequence }) => {
+    const text = presetText(id, sequence);
+    return el(
       'button',
-      { type: 'button', class: 'preset', 'data-preset': id, title: sequence.description ?? '' },
+      { type: 'button', class: 'preset', 'data-preset': id, title: text.description },
       [
-        el('span', { class: 'preset-label' }, [sequence.name]),
-        el('span', { class: 'preset-desc' }, [sequence.description ?? '']),
+        el('span', { class: 'preset-label' }, [text.name]),
+        el('span', { class: 'preset-desc' }, [text.description]),
       ],
-    ),
-  );
+    );
+  });
 
   // --- Transport and track (the dock at the bottom) --------------------------
   const transport = (name: keyof typeof TRANSPORT_ICONS, title: string): HTMLButtonElement =>
     el('button', { type: 'button', class: 'btn transport', title }, [icon(TRANSPORT_ICONS[name])]);
-  const startButton = transport('start', 'Back to the flat sheet (Home)');
-  const backButton = transport('back', 'One step back (←)');
-  const playButton = transport('play', 'Play the remaining steps (P)');
-  const forwardButton = transport('forward', 'One step forward (→)');
-  const endButton = transport('end', 'Apply all remaining steps at once (End)');
-  const speedSelect = el('select', { class: 'tl-speed ctl', 'aria-label': 'Playback speed' });
+  const startButton = transport('start', t.transport.start);
+  const backButton = transport('back', t.transport.back);
+  const playButton = transport('play', t.transport.play);
+  const forwardButton = transport('forward', t.transport.forward);
+  const endButton = transport('end', t.transport.end);
+  const speedSelect = el('select', { class: 'tl-speed ctl', 'aria-label': t.transport.speedLabel });
   for (const value of SPEEDS) {
     const option = el('option', { value: String(value) }, [`${value}×`]);
     if (value === speed) option.selected = true;
@@ -545,20 +558,20 @@ export function createApp(root: HTMLElement): App {
       type: 'button',
       class: 'btn collapse drawer-toggle',
       'aria-expanded': 'true',
-      title: 'Hide the track',
+      title: t.transport.hideTrack,
     },
-    [icon(COLLAPSE_ICON), el('span', { class: 'btn-label' }, ['Track'])],
+    [icon(COLLAPSE_ICON), el('span', { class: 'btn-label' }, [t.transport.track])],
   );
   // The track: a ruler with one tick per step, the step clips, and a playhead
   // that sits on the boundary after the last applied step.
   const ruler = el('div', { class: 'tl-ruler' });
-  const track = el('div', { class: 'tl-track', role: 'list', 'aria-label': 'Fold steps' });
+  const track = el('div', { class: 'tl-track', role: 'list', 'aria-label': t.transport.steps });
   const playhead = el('div', { class: 'tl-playhead' }, [el('div', { class: 'tl-playhead-head' })]);
   const lanes = el('div', { class: 'tl-lanes' }, [ruler, track, playhead]);
   const scroller = el('div', { class: 'tl-scroll' }, [lanes]);
   const drawer = el('div', { class: 'drawer' }, [scroller]);
   const timelineHead = el('div', { class: 'card-head timeline-head' }, [
-    el('h2', {}, ['Timeline']),
+    el('h2', {}, [t.transport.timeline]),
     el('div', { class: 'card-tools timeline-tools' }, [
       el('div', { class: 'transport-group' }, [
         startButton,
@@ -568,7 +581,7 @@ export function createApp(root: HTMLElement): App {
         endButton,
       ]),
       el('label', { class: 'tl-speed-label' }, [
-        el('span', { class: 'btn-label' }, ['Speed']),
+        el('span', { class: 'btn-label' }, [t.transport.speed]),
         speedSelect,
       ]),
       positionReadout,
@@ -582,16 +595,16 @@ export function createApp(root: HTMLElement): App {
     type: 'text',
     class: 'name-input ctl',
     value: sequenceName,
-    'aria-label': 'Sequence name',
-    placeholder: 'Sequence name',
+    'aria-label': t.file.sequenceName,
+    placeholder: t.file.sequenceName,
   });
   // The same name, editable in the header; the two inputs mirror each other.
   const projectName = el('input', {
     type: 'text',
     class: 'project-name',
     value: sequenceName,
-    'aria-label': 'Sequence name',
-    placeholder: 'Untitled sequence',
+    'aria-label': t.file.sequenceName,
+    placeholder: t.file.untitled,
     spellcheck: 'false',
   });
   const setName = (name: string): void => {
@@ -604,26 +617,26 @@ export function createApp(root: HTMLElement): App {
   const importInput = el('input', { type: 'file', accept: 'application/json,.json', hidden: '' });
   const importButton = el(
     'button',
-    { type: 'button', class: 'btn panel-action', title: 'Load a sequence from a JSON file' },
-    [icon(IMPORT_ICON), el('span', {}, ['Import file…'])],
+    { type: 'button', class: 'btn panel-action', title: t.file.importTitle },
+    [icon(IMPORT_ICON), el('span', {}, [t.file.import])],
   );
   const exportButton = el(
     'button',
-    { type: 'button', class: 'btn panel-action', title: 'Save the timeline as a JSON file' },
-    [icon(EXPORT_ICON), el('span', {}, ['Export file'])],
+    { type: 'button', class: 'btn panel-action', title: t.file.exportTitle },
+    [icon(EXPORT_ICON), el('span', {}, [t.file.export])],
   );
   const newButton = el(
     'button',
-    { type: 'button', class: 'btn panel-action', title: 'Clear the sheet and the timeline' },
-    [icon(NEW_ICON), el('span', {}, ['New sheet'])],
+    { type: 'button', class: 'btn panel-action', title: t.file.newTitle },
+    [icon(NEW_ICON), el('span', {}, [t.file.newSheet])],
   );
   const filePanel = el('div', { class: 'panel-section' }, [
-    el('label', { class: 'field' }, [el('span', { class: 'field-label' }, ['Name']), nameInput]),
-    el('div', { class: 'panel-actions' }, [exportButton, importButton, newButton]),
-    el('p', { class: 'help' }, [
-      'A file holds every step on the timeline, applied and pending, in the origamio-sequence ',
-      'JSON format described in the README.',
+    el('label', { class: 'field' }, [
+      el('span', { class: 'field-label' }, [t.file.name]),
+      nameInput,
     ]),
+    el('div', { class: 'panel-actions' }, [exportButton, importButton, newButton]),
+    el('p', { class: 'help' }, [t.file.help]),
   ]);
 
   // --- Paper panel ---------------------------------------------------------------
@@ -636,7 +649,7 @@ export function createApp(root: HTMLElement): App {
         'data-paper': preset.id,
         'aria-pressed': 'false',
       },
-      [el('span', { class: 'preset-label' }, [preset.label])],
+      [el('span', { class: 'preset-label' }, [preset.label()])],
     ),
   );
   const paperWidth = el('input', {
@@ -646,7 +659,7 @@ export function createApp(root: HTMLElement): App {
     max: String(MAX_PAPER_SIDE),
     step: '0.01',
     value: '1',
-    'aria-label': 'Sheet width',
+    'aria-label': t.paper.width,
   });
   const paperHeight = el('input', {
     type: 'number',
@@ -655,21 +668,21 @@ export function createApp(root: HTMLElement): App {
     max: String(MAX_PAPER_SIDE),
     step: '0.01',
     value: '1',
-    'aria-label': 'Sheet height',
+    'aria-label': t.paper.height,
   });
-  const paperApply = el('button', { type: 'button', class: 'btn panel-action' }, ['Use this size']);
+  const paperApply = el('button', { type: 'button', class: 'btn panel-action' }, [t.paper.useSize]);
   const paperSwap = el(
     'button',
-    { type: 'button', class: 'btn panel-action', title: 'Swap width and height' },
-    ['Rotate (portrait / landscape)'],
+    { type: 'button', class: 'btn panel-action', title: t.paper.rotateTitle },
+    [t.paper.rotate],
   );
   const paperCurrent = el('p', { class: 'help paper-current' }, ['']);
   const colourButtons = COLOUR_PRESETS.map((preset) =>
     el('button', {
       type: 'button',
       class: 'colour-preset',
-      title: preset.label,
-      'aria-label': preset.label,
+      title: t.paper.colours[preset.id],
+      'aria-label': t.paper.colours[preset.id],
       'aria-pressed': 'false',
       'data-colours': preset.id,
       style: `--swatch-front: ${preset.front}; --swatch-back: ${preset.back}`,
@@ -678,18 +691,18 @@ export function createApp(root: HTMLElement): App {
   const frontInput = el('input', {
     type: 'color',
     value: DEFAULT_FRONT,
-    'aria-label': 'Front colour',
+    'aria-label': t.paper.frontColour,
   });
   const backInput = el('input', {
     type: 'color',
     value: DEFAULT_BACK,
-    'aria-label': 'Back colour',
+    'aria-label': t.paper.backColour,
   });
   const paperPanel = el('div', { class: 'panel-section' }, [
     paperCurrent,
     el('div', { class: 'preset-list' }, paperButtons),
     el('div', { class: 'field' }, [
-      el('span', { class: 'field-label' }, ['Custom (width × height, longer side 1 is usual)']),
+      el('span', { class: 'field-label' }, [t.paper.customField]),
       el('div', { class: 'size-row' }, [
         paperWidth,
         el('span', {}, ['×']),
@@ -698,19 +711,16 @@ export function createApp(root: HTMLElement): App {
       ]),
     ]),
     paperSwap,
-    el('p', { class: 'help' }, [
-      'Changing the size rewinds to the flat sheet and keeps every step on the timeline, so ',
-      'play to see them on the new sheet.',
-    ]),
+    el('p', { class: 'help' }, [t.paper.rewindHelp]),
     el('div', { class: 'field' }, [
-      el('span', { class: 'field-label' }, ['Colours (front / back)']),
+      el('span', { class: 'field-label' }, [t.paper.coloursField]),
       el('div', { class: 'colour-presets' }, colourButtons),
       el('div', { class: 'colour-row' }, [
-        el('label', { class: 'colour-field' }, [frontInput, 'Front']),
-        el('label', { class: 'colour-field' }, [backInput, 'Back']),
+        el('label', { class: 'colour-field' }, [frontInput, t.paper.front]),
+        el('label', { class: 'colour-field' }, [backInput, t.paper.back]),
       ]),
     ]),
-    el('p', { class: 'help' }, ['Size and colours are saved in exported files.']),
+    el('p', { class: 'help' }, [t.paper.savedHelp]),
   ]);
 
   // --- Step panel (filled by renderStepPanel) ------------------------------------
@@ -719,24 +729,7 @@ export function createApp(root: HTMLElement): App {
   const keysTable = el(
     'table',
     { class: 'keys' },
-    (
-      [
-        ['Drag', 'Line tool: draw a fold line, then click the side that flips'],
-        ['Drag', 'Point tool: bring a point onto another point'],
-        ['Esc', 'Cancel the line, close the panel or menu, pause playback'],
-        ['← / →', 'One step back or forward'],
-        ['P', 'Play or pause'],
-        ['Home / End', 'Flat sheet or last step'],
-        ['Ctrl+Z', 'Undo the last edit of the timeline'],
-        ['Ctrl+Shift+Z', 'Redo an edit (also Ctrl+Y)'],
-        ['Delete', 'Delete the selected step'],
-        ['F2', 'Rename the selected step'],
-        ['Scroll', 'Zoom around the pointer'],
-        ['Space + drag', 'Pan the folded view'],
-        ['Alt + drag', 'Draw a fold line without snapping'],
-        ['F / 0', 'Fit the sheet or show it whole'],
-      ] as const
-    ).map(([key, what]) =>
+    t.keys.map(([key, what]) =>
       el('tr', {}, [el('th', {}, [el('kbd', {}, [key])]), el('td', {}, [what])]),
     ),
   );
@@ -774,68 +767,57 @@ export function createApp(root: HTMLElement): App {
       el('span', { class: 'btn-label' }, [label]),
     ]);
   const toolFold = toolButton(
-    { 'aria-pressed': 'true', title: 'Drag to draw the fold line' },
+    { 'aria-pressed': 'true', title: t.folded.lineTitle },
     LINE_ICON,
-    'Line',
+    t.folded.line,
   );
   const toolPoint = toolButton(
-    {
-      'aria-pressed': 'false',
-      title:
-        'Drag a point onto another point: the sheet folds along the line halfway between them, so the first point lands on the second',
-    },
+    { 'aria-pressed': 'false', title: t.folded.pointTitle },
     POINT_ICON,
-    'Point',
+    t.folded.point,
   );
   const toolMove = toolButton(
-    { 'aria-pressed': 'false', title: 'Drag to pan (or hold Space)' },
+    { 'aria-pressed': 'false', title: t.folded.moveTitle },
     MOVE_ICON,
-    'Move',
+    t.folded.move,
   );
-  const fitButton = el(
-    'button',
-    { type: 'button', class: 'btn fit', title: 'Fit the folded sheet into view (F)' },
-    [icon(FIT_ICON), el('span', { class: 'btn-label' }, ['Fit'])],
-  );
+  const fitButton = el('button', { type: 'button', class: 'btn fit', title: t.folded.fitTitle }, [
+    icon(FIT_ICON),
+    el('span', { class: 'btn-label' }, [t.folded.fit]),
+  ]);
   const fullButton = el(
     'button',
-    { type: 'button', class: 'btn full', title: 'Show the whole sheet (0)' },
-    [icon(FULL_ICON), el('span', { class: 'btn-label' }, ['Full'])],
+    { type: 'button', class: 'btn full', title: t.folded.fullTitle },
+    [icon(FULL_ICON), el('span', { class: 'btn-label' }, [t.folded.full])],
   );
-  const zoomReadout = el('span', { class: 'zoom', title: 'Zoom; scroll on the sheet to change' }, [
-    '100%',
-  ]);
+  const zoomReadout = el('span', { class: 'zoom', title: t.folded.zoomTitle }, ['100%']);
   const snapButton = el(
     'button',
     {
       type: 'button',
       class: 'btn snap',
       'aria-pressed': String(snapEnabled),
-      title: 'Snap fold lines to corners, midpoints and edges (hold Alt to draw freely)',
+      title: t.folded.snapTitle,
     },
-    [icon(SNAP_ICON), el('span', { class: 'btn-label' }, ['Snap'])],
+    [icon(SNAP_ICON), el('span', { class: 'btn-label' }, [t.folded.snap])],
   );
   // On a narrow card the view buttons fold into this menu.
   const moreButton = el(
     'button',
-    { type: 'button', class: 'btn more-toggle', title: 'More view tools', 'aria-haspopup': 'menu' },
+    { type: 'button', class: 'btn more-toggle', title: t.folded.more, 'aria-haspopup': 'menu' },
     [icon(MORE_ICON)],
   );
   const layerControl = el(
     'fieldset',
-    {
-      class: 'segmented segmented-compact',
-      title:
-        'Layers moved by the next fold: all of them, or only the top n (a facet is in the top n when fewer than n layers lie above it)',
-    },
+    { class: 'segmented segmented-compact', title: t.folded.layersTitle },
     [
       el('span', { class: 'seg-icon' }, [icon(LAYERS_ICON)]),
-      el('label', { class: 'seg' }, [layerAll, el('span', {}, ['All'])]),
-      el('label', { class: 'seg' }, [layerTop, el('span', {}, ['Top']), layerCount]),
+      el('label', { class: 'seg' }, [layerAll, el('span', {}, [t.folded.all])]),
+      el('label', { class: 'seg' }, [layerTop, el('span', {}, [t.folded.top]), layerCount]),
     ],
   );
   const viewTools = el('div', { class: 'card-tools' }, [
-    el('div', { class: 'tool-toggle', role: 'group', 'aria-label': 'Drag tool' }, [
+    el('div', { class: 'tool-toggle', role: 'group', 'aria-label': t.folded.dragTool }, [
       toolFold,
       toolPoint,
       toolMove,
@@ -848,13 +830,13 @@ export function createApp(root: HTMLElement): App {
   ]);
 
   const tabButtons = VIEW_TABS.map((tab) =>
-    el('button', { type: 'button', role: 'tab', 'aria-selected': 'false', 'data-tab': tab.id }, [
-      tab.label,
+    el('button', { type: 'button', role: 'tab', 'aria-selected': 'false', 'data-tab': tab }, [
+      t.tabs[tab],
     ]),
   );
   const viewTabs = el(
     'div',
-    { class: 'view-tabs tool-toggle', role: 'tablist', 'aria-label': 'View' },
+    { class: 'view-tabs tool-toggle', role: 'tablist', 'aria-label': t.tabs.view },
     tabButtons,
   );
 
@@ -863,23 +845,22 @@ export function createApp(root: HTMLElement): App {
   const secondaryStrip = (): HTMLElement =>
     el(
       'div',
-      { class: 'tool-toggle secondary-tabs', role: 'tablist', 'aria-label': 'Secondary view' },
+      { class: 'tool-toggle secondary-tabs', role: 'tablist', 'aria-label': t.tabs.secondary },
       SECONDARY_TABS.map((tab) =>
         el(
           'button',
-          { type: 'button', role: 'tab', 'aria-selected': 'false', 'data-secondary': tab.id },
-          [tab.label],
+          { type: 'button', role: 'tab', 'aria-selected': 'false', 'data-secondary': tab },
+          [t.tabs[tab]],
         ),
       ),
     );
   const unfoldedStrip = secondaryStrip();
   const solidStrip = secondaryStrip();
   const unfoldedTools = el('div', { class: 'card-tools' }, [unfoldedStrip]);
-  const orbitReset = el(
-    'button',
-    { type: 'button', class: 'btn', title: 'Turn the model back to the default view' },
-    [icon(RESET_ICON), el('span', { class: 'btn-label' }, ['Reset'])],
-  );
+  const orbitReset = el('button', { type: 'button', class: 'btn', title: t.solid.resetTitle }, [
+    icon(RESET_ICON),
+    el('span', { class: 'btn-label' }, [t.solid.reset]),
+  ]);
   // The fixed views, from how the loaded sequence says its model stands.
   let fixedViews: NamedView[] = namedViews(viewFrame);
   const viewButtons = fixedViews.map((view) =>
@@ -889,17 +870,12 @@ export function createApp(root: HTMLElement): App {
         type: 'button',
         'aria-pressed': 'false',
         'data-view': view.id,
-        title: `${view.label}: ${
-          view.id === 'front'
-            ? 'looking at the face'
-            : view.id === 'side'
-              ? 'the profile'
-              : view.id === 'top'
-                ? 'from above'
-                : 'the side view turned 45°'
-        }`,
+        title: t.solid.views[view.id].title,
       },
-      [icon(VIEW_ICONS[view.id]), el('span', { class: 'btn-label' }, [view.short])],
+      [
+        icon(VIEW_ICONS[view.id]),
+        el('span', { class: 'btn-label' }, [t.solid.views[view.id].short]),
+      ],
     ),
   );
   // Perspective shows depth; off, the fixed views become true drawings.
@@ -910,13 +886,17 @@ export function createApp(root: HTMLElement): App {
       type: 'button',
       class: 'btn',
       'aria-pressed': String(perspective),
-      title: 'Perspective: nearer parts drawn larger. Off, every view is an orthographic drawing',
+      title: t.solid.perspectiveTitle,
     },
-    [icon(PERSPECTIVE_ICON), el('span', { class: 'btn-label' }, ['Perspective'])],
+    [icon(PERSPECTIVE_ICON), el('span', { class: 'btn-label' }, [t.solid.perspective])],
   );
   const solidTools = el('div', { class: 'card-tools' }, [
     solidStrip,
-    el('div', { class: 'tool-toggle', role: 'group', 'aria-label': 'Named views' }, viewButtons),
+    el(
+      'div',
+      { class: 'tool-toggle', role: 'group', 'aria-label': t.solid.namedViews },
+      viewButtons,
+    ),
     perspectiveButton,
     orbitReset,
   ]);
@@ -929,7 +909,7 @@ export function createApp(root: HTMLElement): App {
         type: 'button',
         class: 'chip',
         'aria-pressed': String(mm === thicknessMm),
-        title: `Paper ${mm} mm thick on a ${SHEET_MM / 10} cm sheet`,
+        title: t.solid.thicknessChip(mm, SHEET_MM / 10),
       },
       [mm === 0 ? '0' : String(mm)],
     ),
@@ -941,13 +921,13 @@ export function createApp(root: HTMLElement): App {
     max: String(MAX_THICKNESS_MM),
     step: '0.01',
     value: String(thicknessMm),
-    'aria-label': 'Paper thickness in millimetres',
-    title: `Exact thickness, 0 to ${MAX_THICKNESS_MM} mm`,
+    'aria-label': t.solid.thicknessLabel,
+    title: t.solid.thicknessTitle(MAX_THICKNESS_MM),
   });
   const thicknessControl = el(
     'span',
-    { class: 'chips', role: 'group', 'aria-label': 'Paper thickness' },
-    [...thicknessButtons, thicknessInput, el('span', { class: 'chip-unit' }, ['mm'])],
+    { class: 'chips', role: 'group', 'aria-label': t.solid.thicknessGroup },
+    [...thicknessButtons, thicknessInput, el('span', { class: 'chip-unit' }, [t.solid.mm])],
   );
   /** What the 3D card draws with: the sheet's colours, the ink, thickness and shadow. */
   const sceneStyle = (): SceneStyle => ({
@@ -967,7 +947,7 @@ export function createApp(root: HTMLElement): App {
         type: 'button',
         class: 'chip',
         'aria-pressed': String(degrees === opening),
-        title: `Open every crease by ${degrees}°`,
+        title: t.solid.openingChip(degrees),
       },
       [`${degrees}°`],
     ),
@@ -979,24 +959,26 @@ export function createApp(root: HTMLElement): App {
     max: String(MAX_OPENING),
     step: '0.5',
     value: String(opening),
-    'aria-label': 'Crease opening in degrees',
-    title: `Exact opening, 0 to ${MAX_OPENING} degrees`,
+    'aria-label': t.solid.openingLabel,
+    title: t.solid.openingTitle(MAX_OPENING),
   });
   const openingControl = el(
     'span',
-    { class: 'chips', role: 'group', 'aria-label': 'Crease opening' },
+    { class: 'chips', role: 'group', 'aria-label': t.solid.openingGroup },
     [...openingButtons, openingInput, el('span', { class: 'chip-unit' }, ['°'])],
   );
 
   const stat = (value: HTMLElement, label: string): HTMLElement =>
     el('div', { class: 'stat' }, [value, el('span', { class: 'stat-label' }, [label])]);
   statsRow.append(
-    stat(statFolds, 'folds'),
-    stat(statLayers, 'layers'),
-    stat(statFacets, 'facets'),
-    stat(statCursor, 'under cursor'),
+    stat(statFolds, t.folded.stats.folds),
+    stat(statLayers, t.folded.stats.layers),
+    stat(statFacets, t.folded.stats.facets),
+    stat(statCursor, t.folded.stats.underCursor),
   );
-  const creaseStats = el('div', { class: 'card-stats' }, [stat(statCreases, 'creases')]);
+  const creaseStats = el('div', { class: 'card-stats' }, [
+    stat(statCreases, t.folded.stats.creases),
+  ]);
 
   /**
    * Every view card has the same anatomy: a head with the title and its
@@ -1019,9 +1001,9 @@ export function createApp(root: HTMLElement): App {
     ]);
 
   const legend = el('div', { class: 'legend' }, [
-    el('span', {}, [el('i', { class: 'swatch swatch-front' }), 'Front side up']),
-    el('span', {}, [el('i', { class: 'swatch swatch-back' }), 'Back side up']),
-    el('span', {}, [el('i', { class: 'swatch swatch-crease' }), 'Crease']),
+    el('span', {}, [el('i', { class: 'swatch swatch-front' }), t.unfolded.frontUp]),
+    el('span', {}, [el('i', { class: 'swatch swatch-back' }), t.unfolded.backUp]),
+    el('span', {}, [el('i', { class: 'swatch swatch-crease' }), t.unfolded.crease]),
   ]);
 
   const foldedFrame = el('div', { class: 'view-frame' }, [foldedSvg]);
@@ -1031,7 +1013,7 @@ export function createApp(root: HTMLElement): App {
   const scene = createScene(solidFrame);
   const solidCanvas = scene.canvas;
   const foldedCard = card(
-    'Folded',
+    t.folded.title,
     statsRow,
     viewTools,
     foldedFrame,
@@ -1039,28 +1021,28 @@ export function createApp(root: HTMLElement): App {
     'folded-card',
   );
   const unfoldedCard = card(
-    'Unfolded',
+    t.unfolded.title,
     creaseStats,
     unfoldedTools,
     unfoldedFrame,
-    [legend, el('span', { class: 'foot-end caption' }, ['Crease pattern, live'])],
+    [legend, el('span', { class: 'foot-end caption' }, [t.unfolded.caption])],
     'unfolded-card',
   );
   const solidCard = card(
-    '3D',
+    t.solid.title,
     el('div', { class: 'card-stats' }),
     solidTools,
     solidFrame,
     [
       el('span', { class: 'range-label' }, [
-        el('span', { class: 'range-name' }, ['Open']),
+        el('span', { class: 'range-name' }, [t.solid.open]),
         openingControl,
       ]),
       el('span', { class: 'range-label' }, [
-        el('span', { class: 'range-name' }, ['Paper']),
+        el('span', { class: 'range-name' }, [t.solid.paper]),
         thicknessControl,
       ]),
-      el('span', { class: 'foot-end caption' }, ['Drag to turn']),
+      el('span', { class: 'foot-end caption' }, [t.solid.dragToTurn]),
     ],
     'solid-card',
   );
@@ -1068,24 +1050,26 @@ export function createApp(root: HTMLElement): App {
   const workspace = el('div', { class: 'workspace' }, [viewsGrid, timelineCard]);
 
   // --- Rail and panel ------------------------------------------------------------
-  const railButtons = PANELS.map((panel) =>
+  const railButtons = PANELS.map((id) =>
     el(
       'button',
       {
         type: 'button',
         class: 'rail-button',
         'aria-pressed': 'false',
-        'data-panel': panel.id,
-        title: panel.label,
+        'data-panel': id,
+        title: t.panels[id].title,
       },
-      [icon(RAIL_ICONS[panel.id])],
+      [icon(RAIL_ICONS[id])],
     ),
   );
-  const rail = el('nav', { class: 'rail', 'aria-label': 'Panels' }, railButtons);
+  const rail = el('nav', { class: 'rail', 'aria-label': t.panels.nav }, railButtons);
   const panelTitle = el('h2', {}, ['']);
-  const panelClose = el('button', { type: 'button', class: 'btn panel-close', title: 'Close' }, [
-    icon(CLOSE_ICON),
-  ]);
+  const panelClose = el(
+    'button',
+    { type: 'button', class: 'btn panel-close', title: t.panels.close },
+    [icon(CLOSE_ICON)],
+  );
   const panelBody = el('div', { class: 'panel-body' });
   const panel = el('aside', { class: 'panel', hidden: '' }, [
     el('div', { class: 'panel-head' }, [panelTitle, panelClose]),
@@ -1096,7 +1080,7 @@ export function createApp(root: HTMLElement): App {
     step: stepPanel,
     library: el('div', { class: 'groups' }, [
       el('details', { class: 'group', open: '' }, [
-        el('summary', {}, [icon(COLLAPSE_ICON), 'Presets']),
+        el('summary', {}, [icon(COLLAPSE_ICON), t.panels.presets]),
         el('div', { class: 'preset-list' }, presetButtons),
       ]),
     ]),
@@ -1108,7 +1092,7 @@ export function createApp(root: HTMLElement): App {
     el('header', { class: 'topbar' }, [
       el('div', { class: 'brand' }, [brandMark(), el('h1', {}, ['Origamio'])]),
       projectName,
-      el('div', { class: 'actions' }, [layoutSwitch]),
+      el('div', { class: 'actions' }, [languageSelect, layoutSwitch]),
     ]),
     el('div', { class: 'body' }, [rail, panel, workspace]),
     el('footer', { class: 'statusbar' }, [
@@ -1116,7 +1100,7 @@ export function createApp(root: HTMLElement): App {
       statusSteps,
       statusMessage,
       el('span', { class: 'credits' }, [
-        el('span', { class: 'credit' }, ['© 2026 Hannes Gao']),
+        el('span', { class: 'credit' }, [t.credits.copyright]),
         el(
           'a',
           {
@@ -1124,12 +1108,12 @@ export function createApp(root: HTMLElement): App {
             href: 'https://github.com/hannesgao/Origamio/blob/main/LICENSE',
             target: '_blank',
             rel: 'noopener',
-            title: 'Read the licence',
+            title: t.credits.licenceTitle,
           },
-          ['MIT License'],
+          [t.credits.licence],
         ),
         el('span', { class: 'credit credit-version' }, [`v${__APP_VERSION__}`]),
-        el('span', { class: 'credit credit-build', title: `Built ${__BUILD_TIME__} (UTC)` }, [
+        el('span', { class: 'credit credit-build', title: t.credits.built(__BUILD_TIME__) }, [
           buildStamp(__BUILD_TIME__),
         ]),
         el(
@@ -1139,9 +1123,9 @@ export function createApp(root: HTMLElement): App {
             href: 'https://github.com/hannesgao/Origamio',
             target: '_blank',
             rel: 'noopener',
-            title: 'Origamio on GitHub',
+            title: t.credits.githubTitle,
           },
-          [icon(GITHUB_ICON), 'GitHub'],
+          [icon(GITHUB_ICON), t.credits.github],
         ),
       ]),
     ]),
@@ -1267,18 +1251,18 @@ export function createApp(root: HTMLElement): App {
     if (wantTabs && !viewTabs.isConnected) viewsGrid.prepend(viewTabs);
     if (!wantTabs && viewTabs.isConnected) viewTabs.remove();
     tabButtons.forEach((button, i) => {
-      button.setAttribute('aria-selected', String(VIEW_TABS[i]?.id === activeTab));
+      button.setAttribute('aria-selected', String(VIEW_TABS[i] === activeTab));
     });
     drawerToggle.setAttribute('aria-expanded', String(drawerOpen));
-    drawerToggle.title = drawerOpen ? 'Hide the track' : 'Show the track';
+    drawerToggle.title = drawerOpen ? t.transport.hideTrack : t.transport.showTrack;
     drawer.hidden = !drawerOpen;
     layoutButtons.forEach((button, i) => {
-      button.setAttribute('aria-pressed', String(LAYOUTS[i]?.id === layout));
+      button.setAttribute('aria-pressed', String(LAYOUTS[i] === layout));
     });
     railButtons.forEach((button, i) => {
-      button.setAttribute('aria-pressed', String(PANELS[i]?.id === openPanel));
+      button.setAttribute('aria-pressed', String(PANELS[i] === openPanel));
     });
-    paperCurrent.textContent = `Current sheet: ${describePaper(paper)}`;
+    paperCurrent.textContent = t.paper.current(describePaper(paper));
     const sheetLabel = statusSheet.querySelector('.status-sheet');
     if (sheetLabel) sheetLabel.textContent = describePaper(paper);
     paperButtons.forEach((button, i) => {
@@ -1303,7 +1287,7 @@ export function createApp(root: HTMLElement): App {
     document.documentElement.style.setProperty('--paper-back', paper.back);
     panel.hidden = openPanel === null;
     if (openPanel) {
-      panelTitle.textContent = PANELS.find((p) => p.id === openPanel)?.label ?? '';
+      panelTitle.textContent = t.panels[openPanel].label;
       panelBody.replaceChildren(panelContents[openPanel]);
     }
     scheduleFit();
@@ -1370,38 +1354,34 @@ export function createApp(root: HTMLElement): App {
       case 'idle': {
         if (redrawing !== null) {
           return tool === 'point'
-            ? `Redrawing step ${redrawing + 1}: drag a point onto the point it should land on (Esc cancels).`
-            : `Redrawing step ${redrawing + 1}: drag the new fold line, then click the side that flips (Esc cancels).`;
+            ? t.hints.redrawPoint(redrawing + 1)
+            : t.hints.redrawLine(redrawing + 1);
         }
         const next = timeline.next;
-        if (next) return `Next: ${describeStep(next)}. Press → to apply it or play (P).`;
-        if (tool === 'move')
-          return 'Drag to pan, scroll to zoom. Switch back to Line or Point to fold.';
-        if (tool === 'point') return 'Drag a corner or point onto the point it should land on.';
-        return 'Drag to draw a fold line. Scroll to zoom, hold Space to pan.';
+        if (next) return t.hints.next(describeStep(next));
+        if (tool === 'move') return t.hints.move;
+        if (tool === 'point') return t.hints.point;
+        return t.hints.line;
       }
       case 'dragging': {
-        const release =
-          tool === 'point' ? 'Release to fold it there.' : 'Release to set the fold line.';
+        const release = tool === 'point' ? t.hints.releasePoint : t.hints.releaseLine;
         switch (p.snap?.kind) {
           case 'vertex':
-            return `Snapped to a corner. ${release}`;
+            return t.hints.snappedCorner(release);
           case 'intersection':
-            return `Snapped to where two edges cross. ${release}`;
+            return t.hints.snappedCrossing(release);
           case 'midpoint':
-            return `Snapped to the middle of an edge. ${release}`;
+            return t.hints.snappedMidpoint(release);
           case 'edge':
-            return `Snapped onto an edge. ${release}`;
+            return t.hints.snappedEdge(release);
           default:
             return release;
         }
       }
       case 'choose-side':
-        return redrawing !== null
-          ? `Click the side that flips for step ${redrawing + 1} (Esc to cancel).`
-          : 'Click the side that should flip over (Esc to cancel).';
+        return redrawing !== null ? t.hints.chooseSideRedraw(redrawing + 1) : t.hints.chooseSide;
       case 'animating':
-        return playing ? 'Playing… (P or Esc to pause after this step)' : 'Folding…';
+        return playing ? t.hints.playing : t.hints.folding;
     }
   };
 
@@ -1496,16 +1476,23 @@ export function createApp(root: HTMLElement): App {
   };
 
   // --- Timeline --------------------------------------------------------------
+  /** A step's name as shown: a shipped sequence's names are translated, a typed one is kept. */
+  const shownLabel = (label: string): string => t.stepLabels[label] ?? label;
+  /** The name to store for what was typed: the stored name when the shown name was left as it was. */
+  const typedLabel = (step: FoldStep, typed: string): string =>
+    step.label !== undefined && typed.trim() === shownLabel(step.label) ? step.label : typed;
   const describeStep = (step: FoldStep): string => {
-    if (step.label) return step.label;
+    if (step.label) return shownLabel(step.label);
     const { layers, placement } = step.options;
     const which =
       !layers || layers.kind === 'all'
-        ? 'Fold all'
+        ? t.step.foldAll
         : layers.kind === 'top'
-          ? `Fold top ${layers.count}`
-          : `Fold bottom ${layers.count}`;
-    return placement && placement !== 'top' ? `${which} (${placement})` : which;
+          ? t.step.foldTop(layers.count)
+          : t.step.foldBottom(layers.count);
+    return placement && placement !== 'top'
+      ? t.step.placed(which, t.step.placements[placement])
+      : which;
   };
 
   let timelineSignature = '';
@@ -1529,13 +1516,14 @@ export function createApp(root: HTMLElement): App {
     playButton.disabled = position >= length && !playing;
     playButton.innerHTML = '';
     playButton.append(icon(playing ? TRANSPORT_ICONS.pause : TRANSPORT_ICONS.play));
-    playButton.title = playing ? 'Pause after this step (P)' : 'Play the remaining steps (P)';
+    playButton.title = playing ? t.transport.pause : t.transport.play;
     playButton.classList.toggle('is-playing', playing);
     exportButton.disabled = length === 0;
     positionReadout.textContent = `${two(position)} / ${two(length)}`;
-    statusSteps.textContent = length === 0 ? 'No steps' : `Step ${two(position)} of ${two(length)}`;
+    statusSteps.textContent =
+      length === 0 ? t.status.noSteps : t.status.stepOf(two(position), two(length));
     statusMessage.textContent = timelineMessage;
-    statusMessage.classList.toggle('is-error', timelineMessage.startsWith('Could not'));
+    statusMessage.classList.toggle('is-error', timelineError);
     timelineCard.classList.toggle('is-playing', playing);
 
     // The playhead moves every frame while a step animates.
@@ -1568,8 +1556,8 @@ export function createApp(root: HTMLElement): App {
           role: 'listitem',
           'data-index': String(number),
           title: dead
-            ? `${describeStep(step)} — moves nothing on the sheet as it is at this point`
-            : `${describeStep(step)} — click to go there, double-click to rename, drag to move`,
+            ? t.transport.clipDead(describeStep(step))
+            : t.transport.clipTitle(describeStep(step)),
           style: `left: ${i * CLIP_WIDTH}px; width: ${CLIP_WIDTH - 4}px`,
         },
         [el('span', { class: 'tl-label' }, [describeStep(step)])],
@@ -1581,8 +1569,10 @@ export function createApp(root: HTMLElement): App {
     revealPlayhead();
   };
 
-  const say = (message: string): void => {
+  /** Show a message in the status bar; an error is shown as one. */
+  const say = (message: string, error = false): void => {
     timelineMessage = message;
+    timelineError = error;
     renderTimeline();
   };
 
@@ -1619,9 +1609,7 @@ export function createApp(root: HTMLElement): App {
     if (!step || index === null) {
       stepPanel.replaceChildren(
         el('p', { class: 'help' }, [
-          timeline.length === 0
-            ? 'Fold something or load a preset, then select a step on the timeline.'
-            : 'Select a step on the timeline (click a clip) to edit it here.',
+          timeline.length === 0 ? t.inspector.emptyNoSteps : t.inspector.emptySelect,
         ]),
       );
       return;
@@ -1634,7 +1622,7 @@ export function createApp(root: HTMLElement): App {
       if (phase.kind === 'animating') return;
       playing = false;
       timeline.update(at, patch);
-      afterEdit(`${what} of step ${at + 1} changed.`, at);
+      afterEdit(t.inspector.changed(what, at + 1), at);
     };
     const options = step.options;
     const layers = options.layers ?? ALL_LAYERS;
@@ -1642,17 +1630,17 @@ export function createApp(root: HTMLElement): App {
     const nameField = el('input', {
       type: 'text',
       class: 'ctl',
-      value: step.label ?? '',
+      value: step.label ? shownLabel(step.label) : '',
       placeholder: describeStep({ line: step.line, side: step.side, options }),
-      'aria-label': 'Step name',
+      'aria-label': t.inspector.stepName,
     });
-    nameField.addEventListener('change', () => renameStep(at, nameField.value));
+    nameField.addEventListener('change', () => renameStep(at, typedLabel(step, nameField.value)));
 
-    const layerKind = el('select', { class: 'ctl', 'aria-label': 'Layers that move' });
+    const layerKind = el('select', { class: 'ctl', 'aria-label': t.inspector.layers });
     for (const [value, text] of [
-      ['all', 'All layers'],
-      ['top', 'Top n layers'],
-      ['bottom', 'Bottom n layers'],
+      ['all', t.inspector.layersAll],
+      ['top', t.inspector.layersTop],
+      ['bottom', t.inspector.layersBottom],
     ] as const) {
       const option = el('option', { value }, [text]);
       if (value === layers.kind) option.selected = true;
@@ -1664,7 +1652,7 @@ export function createApp(root: HTMLElement): App {
       step: '1',
       class: 'ctl',
       value: String(layers.kind === 'all' ? 1 : layers.count),
-      'aria-label': 'Number of layers',
+      'aria-label': t.inspector.layerCount,
     });
     layerN.disabled = layers.kind === 'all';
     const applyLayers = (): void => {
@@ -1674,16 +1662,19 @@ export function createApp(root: HTMLElement): App {
         kind === 'top' ? topLayers(count) : kind === 'bottom' ? bottomLayers(count) : ALL_LAYERS;
       const rest: FoldOptions = { ...options };
       delete (rest as { layers?: LayerSelection }).layers;
-      update({ options: next.kind === 'all' ? rest : { ...rest, layers: next } }, 'Layers');
+      update(
+        { options: next.kind === 'all' ? rest : { ...rest, layers: next } },
+        t.inspector.what.layers,
+      );
     };
     layerKind.addEventListener('change', applyLayers);
     layerN.addEventListener('change', applyLayers);
 
-    const placement = el('select', { class: 'ctl', 'aria-label': 'Where the moved paper lands' });
+    const placement = el('select', { class: 'ctl', 'aria-label': t.inspector.placement });
     for (const [value, text] of [
-      ['top', 'On top (valley fold)'],
-      ['bottom', 'Underneath (on the back)'],
-      ['inside', 'Inside (reverse fold)'],
+      ['top', t.inspector.placementTop],
+      ['bottom', t.inspector.placementBottom],
+      ['inside', t.inspector.placementInside],
     ] as const) {
       const option = el('option', { value }, [text]);
       if (value === (options.placement ?? 'top')) option.selected = true;
@@ -1695,16 +1686,18 @@ export function createApp(root: HTMLElement): App {
       const value = placement.value;
       update(
         { options: value === 'top' ? rest : { ...rest, placement: value as Placement } },
-        'Placement',
+        t.inspector.what.placement,
       );
     });
 
     const flipButton = el('button', { type: 'button', class: 'btn panel-action' }, [
-      'Flip which side moves',
+      t.inspector.flip,
     ]);
-    flipButton.addEventListener('click', () => update({ side: step.side === 1 ? -1 : 1 }, 'Side'));
+    flipButton.addEventListener('click', () =>
+      update({ side: step.side === 1 ? -1 : 1 }, t.inspector.what.side),
+    );
     const redrawButton = el('button', { type: 'button', class: 'btn panel-action' }, [
-      redrawing === at ? 'Redrawing… (Esc cancels)' : 'Redraw the line on the folded sheet',
+      redrawing === at ? t.inspector.redrawing : t.inspector.redraw,
     ]);
     redrawButton.addEventListener('click', () => startRedraw(at));
     const setLine = (which: 'a' | 'b', axis: 'x' | 'y', n: number): void => {
@@ -1712,37 +1705,40 @@ export function createApp(root: HTMLElement): App {
       const b = { ...step.line.b };
       (which === 'a' ? a : b)[axis] = n;
       if (distance(a, b) < 1e-6) {
-        say('Could not change the line: the two points would coincide.');
+        say(t.inspector.coincide, true);
         return;
       }
-      update({ line: line(a, b) }, 'Line');
+      update({ line: line(a, b) }, t.inspector.what.line);
     };
     const lineRow = (which: 'a' | 'b'): HTMLElement =>
       el('div', { class: 'size-row line-row' }, [
-        el('span', { class: 'field-label' }, [which === 'a' ? 'From' : 'To']),
+        el('span', { class: 'field-label' }, [which === 'a' ? t.inspector.from : t.inspector.to]),
         numberField(step.line[which].x, (n) => setLine(which, 'x', n), `${which} x`),
         numberField(step.line[which].y, (n) => setLine(which, 'y', n), `${which} y`),
       ]);
 
     const limits: HTMLElement[] = [];
     for (const [key, text] of [
-      ['region', 'Only facets inside a region of the unfolded sheet'],
-      ['window', 'Only facets inside a window of the folded sheet'],
+      ['region', t.inspector.regionLimit],
+      ['window', t.inspector.windowLimit],
     ] as const) {
       const polygon = options[key];
       if (!polygon) continue;
-      const remove = el('button', { type: 'button', class: 'btn' }, ['Remove']);
+      const remove = el('button', { type: 'button', class: 'btn' }, [t.inspector.remove]);
       remove.addEventListener('click', () => {
         const { region, window, ...others } = options;
         const rest: FoldOptions =
           key === 'region'
             ? { ...others, ...(window ? { window } : {}) }
             : { ...others, ...(region ? { region } : {}) };
-        update({ options: rest }, key === 'region' ? 'Region' : 'Window');
+        update(
+          { options: rest },
+          key === 'region' ? t.inspector.what.region : t.inspector.what.window,
+        );
       });
       limits.push(
         el('div', { class: 'limit-row' }, [
-          el('span', {}, [`${text} (${polygon.length} points)`]),
+          el('span', {}, [t.inspector.points(text, polygon.length)]),
           remove,
         ]),
       );
@@ -1751,28 +1747,27 @@ export function createApp(root: HTMLElement): App {
     const effect = timeline.effect(at);
     stepPanel.replaceChildren(
       el('p', { class: 'help step-title' }, [
-        `Step ${at + 1} of ${timeline.length}`,
-        effect === false ? ' — moves nothing where it now sits' : '',
+        t.inspector.title(at + 1, timeline.length),
+        effect === false ? t.inspector.movesNothing : '',
       ]),
       ...(step.also && step.also.length > 0
-        ? [
-            el('p', { class: 'help' }, [
-              `This step makes ${step.also.length} more fold${step.also.length === 1 ? '' : 's'} at the same time; the fields below are its first fold.`,
-            ]),
-          ]
+        ? [el('p', { class: 'help' }, [t.inspector.moreFolds(step.also.length)])]
         : []),
-      el('label', { class: 'field' }, [el('span', { class: 'field-label' }, ['Name']), nameField]),
+      el('label', { class: 'field' }, [
+        el('span', { class: 'field-label' }, [t.inspector.name]),
+        nameField,
+      ]),
       el('div', { class: 'field' }, [
-        el('span', { class: 'field-label' }, ['Layers that move']),
+        el('span', { class: 'field-label' }, [t.inspector.layers]),
         el('div', { class: 'size-row layers-row' }, [layerKind, layerN]),
       ]),
       el('label', { class: 'field' }, [
-        el('span', { class: 'field-label' }, ['Where the moved paper lands']),
+        el('span', { class: 'field-label' }, [t.inspector.placement]),
         placement,
       ]),
       el('div', { class: 'field' }, [
         el('span', { class: 'field-label' }, [
-          `Fold line (folded coordinates at this step; the ${step.side === 1 ? 'left' : 'right'} side moves)`,
+          t.inspector.foldLine(step.side === 1 ? 'left' : 'right'),
         ]),
         lineRow('a'),
         lineRow('b'),
@@ -1781,15 +1776,12 @@ export function createApp(root: HTMLElement): App {
       ...(limits.length > 0
         ? [
             el('div', { class: 'field' }, [
-              el('span', { class: 'field-label' }, ['Limits']),
+              el('span', { class: 'field-label' }, [t.inspector.limits]),
               ...limits,
             ]),
           ]
         : []),
-      el('p', { class: 'help' }, [
-        'Every change replays the steps after this one; a step that then moves nothing is ',
-        'marked on the timeline.',
-      ]),
+      el('p', { class: 'help' }, [t.inspector.replayHelp]),
     );
   };
 
@@ -1802,7 +1794,7 @@ export function createApp(root: HTMLElement): App {
     phase = { kind: 'idle' };
     stepSignature = '';
     render();
-    say(`Draw the new line for step ${index + 1} on the folded sheet.`);
+    say(t.messages.drawNewLine(index + 1));
   };
 
   const cancelRedraw = (): void => {
@@ -1872,11 +1864,7 @@ export function createApp(root: HTMLElement): App {
     redrawing = null;
     phase = { kind: 'idle' };
     render();
-    say(
-      dead > 0
-        ? `${message} ${dead} later step${dead === 1 ? ' now moves' : 's now move'} nothing.`
-        : message,
-    );
+    say(dead > 0 ? t.messages.laterDead(message, dead) : message);
   };
 
   /** A fold made by hand: inserted at the playhead, the later steps stay. */
@@ -1895,19 +1883,16 @@ export function createApp(root: HTMLElement): App {
     if (probe.movedIds.length === 0) {
       phase = { kind: 'idle' };
       render();
-      say('That fold moves nothing.');
+      say(t.messages.movesNothing);
       return Promise.resolve();
     }
     const at = timeline.position;
     timeline.insert(at, step);
     const result = timeline.forward();
     selected = at;
-    const along =
-      result && result.takenAlong > 0
-        ? ` It took ${result.takenAlong} attached facet${result.takenAlong === 1 ? '' : 's'} along so the paper does not tear.`
-        : '';
+    const along = result && result.takenAlong > 0 ? t.messages.tookAlong(result.takenAlong) : '';
     return (result ? animate() : Promise.resolve()).then(() =>
-      afterEdit(`Inserted step ${at + 1}.${along}`, at + 1),
+      afterEdit(`${t.messages.inserted(at + 1)}${along}`, at + 1),
     );
   };
 
@@ -1981,7 +1966,7 @@ export function createApp(root: HTMLElement): App {
       // Sequences start from the flat sheet, so show all of it like Reset does.
       camera = defaultCamera(timeline.state.width, timeline.state.height);
       render();
-      if (paperChanged) say(`Sheet set to ${describePaper(paper)} for "${sequence.name}".`);
+      if (paperChanged) say(t.messages.sheetSetFor(describePaper(paper), sequence.name));
       if (autoplay) play();
     });
   };
@@ -2012,11 +1997,11 @@ export function createApp(root: HTMLElement): App {
     paperWidth.value = String(+paper.width.toFixed(4));
     paperHeight.value = String(+paper.height.toFixed(4));
     applyLayout();
-    if (announce) say(`Sheet is now ${describePaper(paper)}; ${timeline.length} steps rewound.`);
+    if (announce) say(t.messages.sheetNow(describePaper(paper), timeline.length));
   };
 
   const exportSequence = (): Sequence => ({
-    name: sequenceName.trim() || 'My sequence',
+    name: sequenceName.trim() || t.file.defaultName,
     paper,
     ...(viewFrame ? { view: viewFrame } : {}),
     steps: [...timeline.steps],
@@ -2033,19 +2018,17 @@ export function createApp(root: HTMLElement): App {
     const anchor = el('a', { href: url, download: `${slug || 'sequence'}.json` });
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    say(`Saved ${sequence.steps.length} steps.`);
+    say(t.messages.saved(sequence.steps.length));
   };
 
   const importFile = async (file: File): Promise<void> => {
     try {
       const sequence = parseSequence(await file.text());
       await loadSequence(sequence);
-      say(
-        `Loaded "${sequence.name}": ${sequence.steps.length} steps on a ${describePaper(paper)} sheet. Press play.`,
-      );
+      say(t.messages.loaded(sequence.name, sequence.steps.length, describePaper(paper)));
     } catch (error) {
-      const reason = error instanceof SequenceError ? error.message : 'unreadable file';
-      say(`Could not load ${file.name}: ${reason}`);
+      const reason = error instanceof SequenceError ? error.message : t.messages.unreadable;
+      say(t.messages.couldNotLoad(file.name, reason), true);
     }
   };
 
@@ -2055,14 +2038,14 @@ export function createApp(root: HTMLElement): App {
     playing = false;
     timeline.remove(index);
     selected = null;
-    afterEdit(`Deleted step ${index + 1}.`, index);
+    afterEdit(t.messages.deleted(index + 1), index);
   };
 
   const duplicateStep = (index: number): void => {
     if (phase.kind === 'animating') return;
     timeline.duplicate(index);
     selected = index + 1;
-    afterEdit(`Duplicated step ${index + 1}.`, index + 1);
+    afterEdit(t.messages.duplicated(index + 1), index + 1);
   };
 
   const moveStep = (from: number, to: number): void => {
@@ -2070,7 +2053,7 @@ export function createApp(root: HTMLElement): App {
     playing = false;
     timeline.move(from, to);
     selected = Math.max(0, Math.min(timeline.length - 1, to));
-    afterEdit(`Moved step ${from + 1} to ${selected + 1}.`, Math.min(from, selected));
+    afterEdit(t.messages.moved(from + 1, selected + 1), Math.min(from, selected));
   };
 
   const renameStep = (index: number, label: string): void => {
@@ -2084,29 +2067,29 @@ export function createApp(root: HTMLElement): App {
     playing = false;
     const count = timeline.length - index - 1;
     timeline.truncate(index + 1);
-    afterEdit(`Removed ${count} step${count === 1 ? '' : 's'} after step ${index + 1}.`);
+    afterEdit(t.messages.removedAfter(count, index + 1));
   };
 
   const undoEdit = (): void => {
     if (phase.kind === 'animating') return;
     playing = false;
     if (!timeline.undoEdit()) {
-      say('Nothing to undo.');
+      say(t.messages.nothingToUndo);
       return;
     }
     if (selected !== null && selected >= timeline.length) selected = null;
-    afterEdit('Undid the last edit.');
+    afterEdit(t.messages.undid);
   };
 
   const redoEdit = (): void => {
     if (phase.kind === 'animating') return;
     playing = false;
     if (!timeline.redoEdit()) {
-      say('Nothing to redo.');
+      say(t.messages.nothingToRedo);
       return;
     }
     if (selected !== null && selected >= timeline.length) selected = null;
-    afterEdit('Redid the edit.');
+    afterEdit(t.messages.redid);
   };
 
   // Inline rename: the clip's label turns into a text field.
@@ -2120,9 +2103,9 @@ export function createApp(root: HTMLElement): App {
     const input = el('input', {
       type: 'text',
       class: 'tl-rename',
-      value: step.label ?? '',
+      value: step.label ? shownLabel(step.label) : '',
       placeholder: describeStep({ line: step.line, side: step.side, options: step.options }),
-      'aria-label': `Name of step ${index + 1}`,
+      'aria-label': t.transport.renameLabel(index + 1),
     });
     let done = false;
     const finish = (commit: boolean): void => {
@@ -2131,7 +2114,7 @@ export function createApp(root: HTMLElement): App {
       // The track may have been rebuilt without this field: nothing to commit then.
       if (!input.isConnected) return;
       renaming = null;
-      if (commit) renameStep(index, input.value);
+      if (commit) renameStep(index, typedLabel(step, input.value));
       else {
         timelineSignature = '';
         renderTimeline();
@@ -2174,20 +2157,20 @@ export function createApp(root: HTMLElement): App {
   };
   const openMenu = (index: number, x: number, y: number): void => {
     const items: MenuItem[] = [
-      ['Rename', () => startRename(index)],
+      [t.menu.rename, () => startRename(index)],
       [
-        'Edit…',
+        t.menu.edit,
         () => {
           selected = index;
           setPanel('step');
         },
       ],
-      ['Go to this step', () => jumpTo(index + 1)],
-      ['Duplicate', () => duplicateStep(index)],
-      ['Move left', () => moveStep(index, index - 1), index === 0],
-      ['Move right', () => moveStep(index, index + 1), index >= timeline.length - 1],
-      ['Delete', () => deleteStep(index)],
-      ['Delete steps after', () => truncateAfter(index), index >= timeline.length - 1],
+      [t.menu.goTo, () => jumpTo(index + 1)],
+      [t.menu.duplicate, () => duplicateStep(index)],
+      [t.menu.moveLeft, () => moveStep(index, index - 1), index === 0],
+      [t.menu.moveRight, () => moveStep(index, index + 1), index >= timeline.length - 1],
+      [t.menu.delete, () => deleteStep(index)],
+      [t.menu.deleteAfter, () => truncateAfter(index), index >= timeline.length - 1],
     ];
     showMenu(items, x, y);
   };
@@ -2199,25 +2182,26 @@ export function createApp(root: HTMLElement): App {
     const rect = moreButton.getBoundingClientRect();
     showMenu(
       [
-        [
-          snapEnabled ? 'Snap to points: on' : 'Snap to points: off',
-          () => setSnapEnabled(!snapEnabled),
-        ],
-        ['Fit the sheet (F)', fitView],
-        ['Show the whole sheet (0)', fullView],
-        [`Zoom ${zoomReadout.textContent ?? ''}`, () => undefined, true],
+        [snapEnabled ? t.menu.snapOn : t.menu.snapOff, () => setSnapEnabled(!snapEnabled)],
+        [t.menu.fit, fitView],
+        [t.menu.full, fullView],
+        [t.menu.zoom(zoomReadout.textContent ?? ''), () => undefined, true],
       ],
       rect.right - 180,
       rect.bottom + 4,
     );
   });
   root.append(menu);
-  document.addEventListener('pointerdown', (event) => {
-    const inside =
-      event.target instanceof Node &&
-      (menu.contains(event.target) || moreButton.contains(event.target));
-    if (!menu.hidden && !inside) closeMenu();
-  });
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      const inside =
+        event.target instanceof Node &&
+        (menu.contains(event.target) || moreButton.contains(event.target));
+      if (!menu.hidden && !inside) closeMenu();
+    },
+    { signal },
+  );
 
   // --- Pointer interaction ---------------------------------------------------
   /** Sheet units per CSS pixel at the current zoom. */
@@ -2308,7 +2292,7 @@ export function createApp(root: HTMLElement): App {
       timeline.seek(at + 1);
       selected = at;
       stepSignature = '';
-      afterEdit(`Line of step ${at + 1} redrawn.`, at);
+      afterEdit(t.messages.lineRedrawn(at + 1), at);
       return;
     }
     // A fold made by hand is inserted at the playhead; later steps stay.
@@ -2602,14 +2586,18 @@ export function createApp(root: HTMLElement): App {
   );
   solidCanvas.addEventListener('dblclick', () => setOrbit(DEFAULT_ORBIT));
   orbitReset.addEventListener('click', () => setOrbit(DEFAULT_ORBIT));
-  window.addEventListener('resize', scheduleFit);
+  window.addEventListener('resize', scheduleFit, { signal });
 
   layoutButtons.forEach((button, i) => {
-    button.addEventListener('click', () => setLayout(LAYOUTS[i]?.id ?? 'side-by-side'));
+    button.addEventListener('click', () => setLayout(LAYOUTS[i] ?? 'side-by-side'));
+  });
+  languageSelect.addEventListener('change', () => {
+    const next = languageSelect.value as Language;
+    if (LANGUAGES.includes(next)) void setLanguage(next);
   });
   drawerToggle.addEventListener('click', toggleDrawer);
   railButtons.forEach((button, i) => {
-    const id = PANELS[i]?.id ?? null;
+    const id = PANELS[i] ?? null;
     button.addEventListener('click', () => setPanel(openPanel === id ? null : id));
   });
   panelClose.addEventListener('click', () => setPanel(null));
@@ -2636,7 +2624,7 @@ export function createApp(root: HTMLElement): App {
     const height = Number(paperHeight.value);
     const ok = (n: number): boolean => Number.isFinite(n) && n > 0 && n <= MAX_PAPER_SIDE;
     if (!ok(width) || !ok(height)) {
-      say(`Could not use that size: sides must be between 0 and ${MAX_PAPER_SIDE}.`);
+      say(t.messages.badSize(MAX_PAPER_SIDE), true);
       return null;
     }
     return { ...paper, width, height };
@@ -2648,10 +2636,13 @@ export function createApp(root: HTMLElement): App {
   paperSwap.addEventListener('click', () =>
     setPaper({ ...paper, width: paper.height, height: paper.width }),
   );
-  narrowQuery.addEventListener('change', applyLayout);
+  narrowQuery.addEventListener('change', applyLayout, { signal });
   // The 3D view takes its ink from the theme; follow the system when it switches.
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render());
-  new ResizeObserver(scheduleFit).observe(workspace);
+  window
+    .matchMedia('(prefers-color-scheme: dark)')
+    .addEventListener('change', () => render(), { signal });
+  const resizeObserver = new ResizeObserver(scheduleFit);
+  resizeObserver.observe(workspace);
   for (const strip of [unfoldedStrip, solidStrip]) {
     for (const button of strip.querySelectorAll('button')) {
       button.addEventListener('click', () => {
@@ -2661,7 +2652,7 @@ export function createApp(root: HTMLElement): App {
     }
   }
   tabButtons.forEach((button, i) => {
-    button.addEventListener('click', () => setTab(VIEW_TABS[i]?.id ?? 'folded'));
+    button.addEventListener('click', () => setTab(VIEW_TABS[i] ?? 'folded'));
   });
 
   toolFold.addEventListener('click', () => setTool('fold'));
@@ -2687,7 +2678,7 @@ export function createApp(root: HTMLElement): App {
     timeline.clear();
     redrawing = null;
     selected = null;
-    setName('My sequence');
+    setName(t.file.defaultName);
     setViewFrame(undefined);
     timelineMessage = '';
     phase = { kind: 'idle' };
@@ -2698,9 +2689,11 @@ export function createApp(root: HTMLElement): App {
     button.addEventListener('click', () => {
       const entry = LIBRARY[i];
       if (entry) {
-        void loadSequence(entry.sequence).then(() =>
+        // Loaded under its name in the visitor's language; the file keeps its own.
+        const text = presetText(entry.id, entry.sequence);
+        void loadSequence({ ...entry.sequence, name: text.name }).then(() =>
           say(
-            `Loaded "${entry.sequence.name}": ${entry.sequence.steps.length} steps on a ${describePaper(paper)} sheet. Step with → or play.`,
+            t.messages.loadedPreset(text.name, entry.sequence.steps.length, describePaper(paper)),
           ),
         );
       }
@@ -2819,85 +2812,106 @@ export function createApp(root: HTMLElement): App {
     layerTop.checked = true;
   });
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      if (!menu.hidden) closeMenu();
-      else if (redrawing !== null && phase.kind === 'idle') cancelRedraw();
-      else if (playing) pause();
-      else if (phase.kind === 'choose-side' || phase.kind === 'dragging') phase = { kind: 'idle' };
-      else if (openPanel) setPanel(null);
-      render();
-      return;
-    }
-    const inField =
-      event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement;
-    if (inField) return;
-    const modifier = event.ctrlKey || event.metaKey;
-    if (modifier && event.key.toLowerCase() === 'z' && event.shiftKey) {
-      event.preventDefault();
-      redoEdit();
-    } else if (modifier && event.key.toLowerCase() === 'y') {
-      event.preventDefault();
-      redoEdit();
-    } else if (modifier && event.key.toLowerCase() === 'z') {
-      event.preventDefault();
-      undo();
-    } else if (
-      !modifier &&
-      (event.key === 'Delete' || event.key === 'Backspace') &&
-      selected !== null
-    ) {
-      event.preventDefault();
-      deleteStep(selected);
-    } else if (!modifier && event.key === 'F2' && selected !== null) {
-      event.preventDefault();
-      startRename(selected);
-    } else if (!modifier && !event.altKey && event.key === ' ') {
-      // A button focused by a mouse click would be re-activated on key up;
-      // keyboard users (focus-visible) keep the native behaviour.
-      const active = document.activeElement;
-      if (active instanceof HTMLButtonElement && active.matches(':focus-visible')) return;
-      // Links, disclosure summaries and fields keep their own use of Space.
-      if (active instanceof HTMLElement && active.matches('a[href], summary, textarea, input'))
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'Escape') {
+        if (!menu.hidden) closeMenu();
+        else if (redrawing !== null && phase.kind === 'idle') cancelRedraw();
+        else if (playing) pause();
+        else if (phase.kind === 'choose-side' || phase.kind === 'dragging')
+          phase = { kind: 'idle' };
+        else if (openPanel) setPanel(null);
+        render();
         return;
-      if (active instanceof HTMLButtonElement) active.blur();
-      if (!event.repeat) {
-        spaceHeld = true;
-        foldedSvg.dataset['space'] = 'held';
       }
-      event.preventDefault();
-    } else if (!modifier && !event.altKey && event.key.toLowerCase() === 'p') {
-      if (playing) pause();
-      else play();
-    } else if (!modifier && !event.altKey && event.key === 'Home') {
-      event.preventDefault();
-      jumpTo(0);
-    } else if (!modifier && !event.altKey && event.key === 'End') {
-      event.preventDefault();
-      jumpTo(timeline.length);
-    } else if (!modifier && !event.altKey && event.key === 'ArrowRight') {
-      event.preventDefault();
-      void stepForward();
-    } else if (!modifier && !event.altKey && event.key === 'ArrowLeft') {
-      event.preventDefault();
-      stepBack();
-    } else if (!modifier && !event.altKey && event.key.toLowerCase() === 'f') {
-      fitView();
-    } else if (!modifier && !event.altKey && event.key === '0') {
-      fullView();
-    }
-  });
-  document.addEventListener('keyup', (event) => {
-    if (event.key === ' ') {
+      const inField =
+        event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement;
+      if (inField) return;
+      const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && event.key.toLowerCase() === 'z' && event.shiftKey) {
+        event.preventDefault();
+        redoEdit();
+      } else if (modifier && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redoEdit();
+      } else if (modifier && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        undo();
+      } else if (
+        !modifier &&
+        (event.key === 'Delete' || event.key === 'Backspace') &&
+        selected !== null
+      ) {
+        event.preventDefault();
+        deleteStep(selected);
+      } else if (!modifier && event.key === 'F2' && selected !== null) {
+        event.preventDefault();
+        startRename(selected);
+      } else if (!modifier && !event.altKey && event.key === ' ') {
+        // A button focused by a mouse click would be re-activated on key up;
+        // keyboard users (focus-visible) keep the native behaviour.
+        const active = document.activeElement;
+        if (active instanceof HTMLButtonElement && active.matches(':focus-visible')) return;
+        // Links, disclosure summaries and fields keep their own use of Space.
+        if (active instanceof HTMLElement && active.matches('a[href], summary, textarea, input'))
+          return;
+        if (active instanceof HTMLButtonElement) active.blur();
+        if (!event.repeat) {
+          spaceHeld = true;
+          foldedSvg.dataset['space'] = 'held';
+        }
+        event.preventDefault();
+      } else if (!modifier && !event.altKey && event.key.toLowerCase() === 'p') {
+        if (playing) pause();
+        else play();
+      } else if (!modifier && !event.altKey && event.key === 'Home') {
+        event.preventDefault();
+        jumpTo(0);
+      } else if (!modifier && !event.altKey && event.key === 'End') {
+        event.preventDefault();
+        jumpTo(timeline.length);
+      } else if (!modifier && !event.altKey && event.key === 'ArrowRight') {
+        event.preventDefault();
+        void stepForward();
+      } else if (!modifier && !event.altKey && event.key === 'ArrowLeft') {
+        event.preventDefault();
+        stepBack();
+      } else if (!modifier && !event.altKey && event.key.toLowerCase() === 'f') {
+        fitView();
+      } else if (!modifier && !event.altKey && event.key === '0') {
+        fullView();
+      }
+    },
+    { signal },
+  );
+  document.addEventListener(
+    'keyup',
+    (event) => {
+      if (event.key === ' ') {
+        spaceHeld = false;
+        delete foldedSvg.dataset['space'];
+      }
+    },
+    { signal },
+  );
+  window.addEventListener(
+    'blur',
+    () => {
       spaceHeld = false;
       delete foldedSvg.dataset['space'];
-    }
-  });
-  window.addEventListener('blur', () => {
-    spaceHeld = false;
-    delete foldedSvg.dataset['space'];
-    endNavigation();
-  });
+      endNavigation();
+    },
+    { signal },
+  );
+  const dispose = (): void => {
+    alive.abort();
+    resizeObserver.disconnect();
+    cancelAnimationFrame(fitFrame);
+    playing = false;
+    scene.dispose();
+    solver.dispose();
+  };
 
   applyLayout();
   render();
@@ -2945,5 +2959,6 @@ export function createApp(root: HTMLElement): App {
     pause,
     undo,
     reset,
+    dispose,
   };
 }
