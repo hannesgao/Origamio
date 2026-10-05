@@ -493,16 +493,13 @@ function onFacet(
  * At the start of a step the moving paper lies flat in the stack, so
  * geometry alone cannot say which side of a still facet it is on. The
  * stack order the step lands in says: a vertex that lay on another facet
- * then keeps that side from the first frame. The step moves the paper on
- * the side it lands on, so the pairs it would have to pass through (paper
- * swinging up that lands below, or down that lands above) hold no side.
+ * then keeps that side from the first frame.
  */
 function seedSides(
   state: PaperState,
   mesh: Mesh,
   moving: ReadonlySet<number>,
   memory: ContactMemory,
-  swing: 1 | -1 | undefined,
 ): void {
   memory.seeded = true;
   const before = memory.before;
@@ -566,9 +563,8 @@ function findContacts(
   moving: ReadonlySet<number>,
   memory: ContactMemory,
   reach: number,
-  swing: 1 | -1 | undefined,
 ): Contact[] {
-  if (!memory.seeded) seedSides(state, mesh, moving, memory, swing);
+  if (!memory.seeded) seedSides(state, mesh, moving, memory);
   interface Body {
     readonly id: number;
     readonly ids: readonly number[];
@@ -769,15 +765,7 @@ export function solveSheet(
   // While a step plays, moving paper is held off the still paper it comes near.
   const contacts =
     inFlight && options.contact
-      ? findContacts(
-          state,
-          mesh,
-          pos,
-          inFlight,
-          options.contact,
-          CONTACT_REACH * state.size,
-          options.swing,
-        )
+      ? findContacts(state, mesh, pos, inFlight, options.contact, CONTACT_REACH * state.size)
       : [];
   const separationSweep = (apart: number): number => {
     let moved = 0;

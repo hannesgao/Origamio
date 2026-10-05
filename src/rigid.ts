@@ -386,7 +386,6 @@ export function stepPose(
   // of its creases say, and the creases that disagree are released for the
   // step, so the layers in its way bend out of it as paper does.
   const released = new Set<Hinge>();
-  let swing: 1 | -1 | undefined;
   if (animation && t < 1) {
     const crossing: [Hinge, 1 | -1][] = [];
     for (const h of hinges(state)) {
@@ -396,7 +395,6 @@ export function stepPose(
     const over = crossing.filter(([, side]) => side === 1).length;
     const minority = over >= crossing.length - over ? -1 : 1;
     for (const [h, side] of crossing) if (side === minority) released.add(h);
-    if (crossing.length > 0) swing = minority === 1 ? -1 : 1;
   }
   const angleOf = (h: Hinge): number => {
     const open = hingeOpening(h, opening);
@@ -419,7 +417,6 @@ export function stepPose(
     angleOf,
     ...(anchor ? { rootId: anchor.id } : {}),
     ...(released.size > 0 ? { released } : {}),
-    ...(swing !== undefined ? { swing } : {}),
     ...(animation && t < 1
       ? { moved: animation.movedIds, ...(animation.contact ? { contact: animation.contact } : {}) }
       : {}),
@@ -472,8 +469,6 @@ export interface PoseOptions {
    * the solver does not bend them, the paper stays joined along them.
    */
   readonly released?: ReadonlySet<Hinge>;
-  /** With `moved`: the way the moving paper swings, up (1) or down (-1) the stack. */
-  readonly swing?: 1 | -1;
 }
 
 /**

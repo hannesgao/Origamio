@@ -140,7 +140,6 @@ describe('a step in flight stays whole', () => {
   it('releases the creases an inside reverse fold cannot swing on, so it walks without tears', () => {
     const { before, after, movedIds } = craneFold(9, 1);
     const pose = stepPose(after, 0, { previous: before, movedIds, progress: 0.5 });
-    expect(pose.swing).toBe(-1);
     expect(pose.released?.size).toBe(1);
     const all = hinges(after);
     const byId = new Map(placePanels(after, all, pose).map((p) => [p.facet.id, p]));
