@@ -196,6 +196,7 @@ export class Timeline {
     const step = this.list[index];
     if (!step) return;
     const trimmed = label.trim();
+    if (trimmed === (step.label ?? '')) return;
     const renamed: FoldStep = {
       line: step.line,
       side: step.side,
@@ -204,6 +205,7 @@ export class Timeline {
     };
     // A label never changes the geometry, so the cache survives.
     this.undoStack.push({ steps: this.list.slice(), position: this.pos });
+    if (this.undoStack.length > MAX_EDIT_HISTORY) this.undoStack.shift();
     this.redoStack.length = 0;
     this.list[index] = renamed;
   }

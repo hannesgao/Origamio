@@ -254,4 +254,3 @@ export function renderUnfolded(state: PaperState): string {
 export const fromSvgPoint = (p: Vec, size: number): Vec => ({ x: p.x, y: size - p.y });
 
 /** Convert a model point to SVG user space. */
-export const toSvgPoint = (p: Vec, size: number): Vec => ({ x: p.x, y: size - p.y });

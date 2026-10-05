@@ -13,6 +13,7 @@ import {
   DirectionalLight,
   HemisphereLight,
   Mesh,
+  type Material,
   MeshStandardMaterial,
   OrthographicCamera,
   PCFShadowMap,
@@ -22,7 +23,6 @@ import {
   Scene,
   ShadowMaterial,
   Vector2,
-  Vector3,
   WebGLRenderer,
 } from 'three';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
@@ -669,10 +669,11 @@ export class Scene3d implements SheetScene {
   dispose(): void {
     cancelAnimationFrame(this.easing);
     this.mesh.geometry.dispose();
+    (this.mesh.material as Material).dispose();
     this.lines.geometry.dispose();
+    this.lineMaterial.dispose();
+    this.ground.geometry.dispose();
+    (this.ground.material as Material).dispose();
     this.renderer.dispose();
   }
 }
-
-/** Keeps TypeScript aware of the vector type for consumers. */
-export type { Vector3 };

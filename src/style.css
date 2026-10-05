@@ -31,9 +31,6 @@
   --clip-pending: #3a322c;
   --playhead: #ff5a4f;
 
-  /* Tallest a sheet view may grow: the viewport minus header, card chrome and gaps. */
-  --view-max: calc(100vh - 230px);
-
   --radius: 14px;
   --radius-sm: 9px;
   --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
@@ -84,6 +81,7 @@ html {
 body {
   margin: 0;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   font-family: var(--font-body);
   font-size: 15px;
@@ -124,6 +122,7 @@ select {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
+  height: 100dvh;
 }
 
 .body {
@@ -886,8 +885,7 @@ kbd {
 }
 
 @container (max-width: 460px) {
-  .card-stats .stat:nth-child(4),
-  .help-more {
+  .card-stats .stat:nth-child(4) {
     display: none;
   }
 }
@@ -1050,11 +1048,6 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-
-.range-label input[type='range'] {
-  width: 120px;
-  accent-color: var(--accent);
 }
 
 /* Small preset chips with an exact-value box, sized for a 20px foot line. */
@@ -1774,14 +1767,30 @@ a.credit:hover {
   }
 
   .workspace {
-    padding: 8px 8px 64px;
+    padding: 8px 8px 96px;
   }
 
   .tl-speed-label .btn-label,
   .drawer-toggle .btn-label,
   .timeline-head h2,
-  .statusbar,
+  .statusbar .status-item,
+  .statusbar .credits,
   .project-name {
+    display: none;
+  }
+
+  /* Only the latest message, in a strip above the transport, and nothing when there is none. */
+  .statusbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(44px + env(safe-area-inset-bottom));
+    z-index: 5;
+    height: 28px;
+    padding: 0 10px;
+  }
+
+  .statusbar:has(.status-message:empty) {
     display: none;
   }
 
