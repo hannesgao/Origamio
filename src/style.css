@@ -120,6 +120,8 @@ select {
   --toolbar-h: 40px;
   --foot-h: 28px;
   display: grid;
+  /* One column no wider than the viewport: the timeline track scrolls inside its card instead. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
 }
@@ -143,6 +145,7 @@ select {
 .workspace {
   grid-column: 3;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto;
   align-content: start;
   gap: var(--space);
@@ -739,7 +742,9 @@ kbd {
   padding: 0 14px;
 }
 
-/* In view cards the head, the tools and the foot are exactly as wide as the canvas. */
+/* In view cards the head, the tools and the foot are exactly as wide as the
+   canvas, and each measures itself for the queries that trim its contents,
+   since the canvas can be narrower than the card. */
 .view-card .card-head,
 .view-card .card-toolbar,
 .view-card .card-foot {
@@ -747,6 +752,7 @@ kbd {
   margin: 0 auto;
   padding-left: 0;
   padding-right: 0;
+  container-type: inline-size;
 }
 
 .card-toolbar {
@@ -1084,7 +1090,7 @@ kbd {
 
 .chip-input {
   flex: none;
-  width: 3.6em;
+  width: 4.2em;
   height: 18px;
   margin-left: 4px;
   padding: 0 4px;
@@ -1262,6 +1268,7 @@ kbd {
   font-size: 0.78rem;
   color: var(--muted);
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .status-item {
@@ -1744,6 +1751,12 @@ a.credit:hover {
 }
 
 @media (max-width: 900px) {
+  /* The status bar keeps the author, the version and the link; the build date and the licence go. */
+  .credit-build,
+  .credits a[title='Read the licence'] {
+    display: none;
+  }
+
   .panel {
     position: absolute;
     left: var(--rail-w);

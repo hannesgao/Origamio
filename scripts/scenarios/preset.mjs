@@ -8,7 +8,10 @@ import { join } from 'node:path';
 
 export default async function (page, { shot, out }) {
   const preset = process.env.SHOT_PRESET ?? 'crane';
+  // The presets are listed in the Library panel, which a fresh profile has closed.
+  await page.click('[data-panel="library"]');
   await page.click(`[data-preset="${preset}"]`);
+  await page.click('.panel-close');
   await page.keyboard.press('End');
   await page.waitForTimeout(200);
   await page.keyboard.press('f');

@@ -1,6 +1,6 @@
 {
   "name": "origamio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Yet another origami simulator: fold a square sheet along arbitrary lines in the browser.",
   "private": true,
   "type": "module",
