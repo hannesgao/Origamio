@@ -113,8 +113,8 @@ describe('crane animation', () => {
           const byId = new Map(panels.map((p) => [p.facet.id, p]));
           // Every crease the fold crosses must leave the sheet whole: the two
           // facets of a hinge agree on where its ends are, to within the loop
-          // error. The reverse folds of the neck and head are not rigid and
-          // disagree by 0.17 half way; the petal folds once tore by 1.0.
+          // error (the square base reaches 0.08); the petal folds once tore
+          // by 1.0 and the reverse folds by 0.17.
           let worst = 0;
           for (const h of all) {
             const p = byId.get(h.p);
@@ -129,7 +129,7 @@ describe('crane animation', () => {
               worst = Math.max(worst, Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z));
             }
           }
-          expect(worst, `${step.label ?? ''}: facets torn apart mid-swing`).toBeLessThan(0.2);
+          expect(worst, `${step.label ?? ''}: facets torn apart mid-swing`).toBeLessThan(0.1);
         }
         before = result.state;
       }
