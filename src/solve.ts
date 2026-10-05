@@ -232,6 +232,8 @@ const CONTACT_REACH = 0.25;
  */
 interface Contact {
   readonly vertex: number;
+  /** The facet the vertex is held off. */
+  readonly facet: number;
   readonly tri: readonly [number, number, number];
   readonly w: readonly [number, number, number];
   readonly side: 1 | -1;
@@ -488,11 +490,10 @@ function onFacet(
 }
 
 /**
- * Before the step the moving paper lay flat in the stack, so geometry alone
- * cannot say which side of a still facet it was on: the stack order of the
- * sheet before the step says. Every pair of a moving and a still facet that
- * lay on one another then is remembered that way, for the vertices of each
- * against the other.
+ * At the start of a step the moving paper lies flat in the stack, so
+ * geometry alone cannot say which side of a still facet it is on. The
+ * stack order the step lands in says: a vertex that lay on another facet
+ * then keeps that side from the first frame.
  */
 function seedSides(
   state: PaperState,
@@ -506,6 +507,7 @@ function seedSides(
     before.facets.find((g) => containsPoint(g.poly, centroid(f.poly)));
   const flying = state.facets.filter((f) => moving.has(f.id));
   const still = state.facets.filter((f) => !moving.has(f.id));
+  const margin = 1e-6 * state.size;
   for (const m of flying) {
     const pm = parentOf(m);
     if (!pm) continue;
@@ -514,15 +516,37 @@ function seedSides(
       const ps = parentOf(s);
       if (!ps) continue;
       const sThen = applyToPolygon(ps.transform, s.poly);
-      if (Math.abs(signedArea(intersectConvex(mThen, sThen))) < 1e-9 * state.size * state.size) {
-        continue;
-      }
-      // Below in the stack means on the back side of a facet whose front faces up.
-      const mBelow = pm.z < ps.z;
-      const againstStill: 1 | -1 = (mBelow ? -1 : 1) * (isFlipped(ps) ? -1 : 1) === 1 ? 1 : -1;
+      const tiny = 1e-9 * state.size * state.size;
+      if (Math.abs(signedArea(intersectConvex(mThen, sThen))) < tiny) continue;
+      // The order is only known where the two still lie on one another at
+      // the end: paper that unfolds away from a layer leaves it from the
+      // side the first frame shows.
+      const mNow = applyToPolygon(m.transform, m.poly);
+      const sNow = applyToPolygon(s.transform, s.poly);
+      if (Math.abs(signedArea(intersectConvex(mNow, sNow))) < tiny) continue;
+      // Below in the stack means on the back side of a facet whose front
+      // faces up. A side is kept against the facet's own front, which turns
+      // over with the moving paper: against moving paper it is read on the
+      // facet as it set off.
+      const mBelow = m.z < s.z;
+      const againstStill: 1 | -1 = (mBelow ? -1 : 1) * (isFlipped(s) ? -1 : 1) === 1 ? 1 : -1;
       const againstMoving: 1 | -1 = (mBelow ? 1 : -1) * (isFlipped(pm) ? -1 : 1) === 1 ? 1 : -1;
-      for (const vi of mesh.index.get(m.id) ?? []) memory.sides.set(`${vi}:${s.id}`, againstStill);
-      for (const vi of mesh.index.get(s.id) ?? []) memory.sides.set(`${vi}:${m.id}`, againstMoving);
+      // Only the vertices that lay on the other facet (its edge included)
+      // keep that side: a vertex beyond the fold line, where the moving
+      // paper is to land, is on the other side of it once it swings past,
+      // and the geometry of the frame that first sees it says which.
+      const seed = (owner: Facet, over: Polygon, other: Facet, side: 1 | -1): void => {
+        const poly = mesh.polys.get(owner.id) ?? [];
+        const ids = mesh.index.get(owner.id) ?? [];
+        const parent = parentOf(owner);
+        if (!parent) return;
+        poly.forEach((v, i) => {
+          const then = apply(parent.transform, v);
+          if (wellInside(over, then, -margin)) memory.sides.set(`${ids[i]}:${other.id}`, side);
+        });
+      };
+      seed(m, sThen, s, againstStill);
+      seed(s, mThen, m, againstMoving);
     }
   }
 }
@@ -561,20 +585,25 @@ function findContacts(
   const flying = bodies.filter((b) => moving.has(b.id));
   const still = bodies.filter((b) => !moving.has(b.id));
   const contacts: Contact[] = [];
+  // A vertex is shared by every facet that meets at it, so a pair can come
+  // up more than once; each is held once.
+  const listed = new Set<string>();
   const near = (vertex: number, facet: Body): void => {
     if (facet.ids.includes(vertex)) return;
+    const key = `${vertex}:${facet.id}`;
+    if (listed.has(key)) return;
     const p = pos[vertex] as Vec3;
     const d = dot3(sub3(p, pos[facet.ids[0] as number] as Vec3), facet.normal);
     if (Math.abs(d) > reach) return;
     const found = onFacet(pos, facet.ids, facet.normal, sub3(p, mul3(facet.normal, d)));
     if (!found) return;
-    const key = `${vertex}:${facet.id}`;
     let side = memory.sides.get(key);
     if (side === undefined) {
       side = d >= 0 ? 1 : -1;
       memory.sides.set(key, side);
     }
-    contacts.push({ vertex, tri: found.tri, w: found.w, side });
+    listed.add(key);
+    contacts.push({ vertex, facet: facet.id, tri: found.tri, w: found.w, side });
   };
   for (const a of flying) {
     for (const b of still) {
@@ -690,10 +719,11 @@ export function solveSheet(
   const byId = new Map(start.map((p) => [p.facet.id, p]));
   // The anchored facet: the walk's root, or the lowest largest facet it chose.
   const rootId = options.rootId ?? anchorFacet(state)?.id;
+  // Nothing is pinned while the sheet settles: a facet held fast in the
+  // middle of a stack jams the layers on both sides of it against the loop
+  // error. The anchor is put back where the walk had it afterwards, moving
+  // the whole sheet as one, which keeps it as still.
   const pinned = new Set<number>();
-  if (options.anchor !== false && rootId !== undefined) {
-    for (const vi of mesh.index.get(rootId) ?? []) pinned.add(vi);
-  }
   const pos: Vec3[] = Array.from({ length: mesh.count }, () => ({ x: 0, y: 0, z: 0 }));
   const weight = new Array<number>(mesh.count).fill(0);
   for (const [id, poly] of mesh.polys) {
@@ -712,19 +742,6 @@ export function solveSheet(
   for (let i = 0; i < mesh.count; i++) {
     const w = weight[i] as number;
     if (w > 0) pos[i] = mul3(pos[i] as Vec3, 1 / w);
-  }
-  // The anchor keeps its own shape: its corners are pinned where the walk
-  // put them, not at the average with neighbours that disagree, or the
-  // pinned shape would carry the loop error for good.
-  if (rootId !== undefined && options.anchor !== false) {
-    const root = byId.get(rootId);
-    const poly = mesh.polys.get(rootId);
-    const ids = mesh.index.get(rootId);
-    if (root && poly && ids) {
-      poly.forEach((v, i) => {
-        pos[ids[i] as number] = pointOnPanel(root, v);
-      });
-    }
   }
 
   const lengthSweep = (): number => {
@@ -767,6 +784,7 @@ export function solveSheet(
   for (let sweep = 0; sweep < iterations; sweep++) {
     let moved = lengthSweep();
     for (const c of mesh.bends) {
+      if (options.released?.has(c.hinge)) continue;
       const shown = angleOf(c.hinge);
       const target = Math.PI - Math.abs(shown);
       const firm = Math.abs(c.hinge.shown) < Math.PI - 1e-9;
@@ -791,6 +809,19 @@ export function solveSheet(
     if (residual < tolerance) break;
   }
 
+  if (rootId !== undefined && options.anchor !== false) {
+    const root = byId.get(rootId);
+    const poly = mesh.polys.get(rootId);
+    const ids = mesh.index.get(rootId);
+    if (root && poly && ids) {
+      registerTo(
+        pos,
+        ids.map((vi) => pos[vi] as Vec3),
+        poly.map((v) => pointOnPanel(root, v)),
+      );
+    }
+  }
+
   const positions = new Map<number, Vec3[]>();
   const panels: Panel[] = [];
   for (const f of state.facets) {
@@ -806,6 +837,45 @@ export function solveSheet(
     panels.push({ facet: f, points, normal: facetNormal(points) });
   }
   return { panels, residual, positions };
+}
+
+/**
+ * Move every position as one rigid body so that the `from` points (a
+ * facet's corners as solved) land on the `to` points (the same corners
+ * where the walk had them), as nearly as a rigid motion can.
+ */
+function registerTo(pos: Vec3[], from: readonly Vec3[], to: readonly Vec3[]): void {
+  const centreOf = (pts: readonly Vec3[]): Vec3 =>
+    mul3(
+      pts.reduce((s, q) => add3(s, q), { x: 0, y: 0, z: 0 }),
+      1 / pts.length,
+    );
+  // The corner farthest from the centre gives the first axis: the same
+  // corner of both, chosen on the exact one.
+  const toCentre = centreOf(to);
+  let k = 0;
+  to.forEach((q, i) => {
+    if (len3(sub3(q, toCentre)) > len3(sub3(to[k] as Vec3, toCentre))) k = i;
+  });
+  const frame = (pts: readonly Vec3[]): [Vec3, Vec3, Vec3, Vec3] | null => {
+    const c = centreOf(pts);
+    const n = facetNormal(pts);
+    const u = sub3(pts[k] as Vec3, c);
+    if (len3(u) < 1e-9 || len3(n) < 1e-9) return null;
+    const e1 = norm3(u);
+    const e3 = norm3(sub3(n, mul3(e1, dot3(n, e1))));
+    return [c, e1, cross3(e3, e1), e3];
+  };
+  const f = frame(from);
+  const g = frame(to);
+  if (!f || !g) return;
+  for (let i = 0; i < pos.length; i++) {
+    const d = sub3(pos[i] as Vec3, f[0]);
+    const a = dot3(d, f[1]);
+    const b = dot3(d, f[2]);
+    const c = dot3(d, f[3]);
+    pos[i] = add3(g[0], add3(add3(mul3(g[1], a), mul3(g[2], b)), mul3(g[3], c)));
+  }
 }
 
 /** Where a point of the facet's unfolded polygon sits on the placed panel. */

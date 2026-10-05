@@ -89,10 +89,17 @@ note and the other views work as before.
   model (a sequence can say how its model stands; the crane does, and a
   model that does not is framed by its shape, long axis front to back); _Reset_
   returns to the default angle. While a step plays, its creases swing from
-  flat to folded in three dimensions; the moving paper is held off the paper
-  it comes near, on the side it set off from, so a flap pushes layers aside
-  rather than passing through them. A step saved with a fold `angle` below
-  180° stays open at that angle. Pointing at a facet in any view outlines the
+  flat to folded in three dimensions, on the side the moving paper lands on;
+  the moving paper is held off the paper it comes near, on the side the
+  stack order of the finished step puts it, so a flap pushes layers aside
+  rather than passing through them. Paper folded inside, between layers, is
+  hinged to still paper on both sides of it and cannot swing rigidly either
+  way: it goes the way most of its creases say, and the creases that
+  disagree are released for the step, so a reverse fold swings cleanly. The
+  facet held still is put back where the rigid walk had it after the sheet
+  settles, rather than pinned while it does, so an anchor in the middle of a
+  stack does not jam the layers on either side of it. A step saved with a
+  fold `angle` below 180° stays open at that angle. Pointing at a facet in any view outlines the
   same facet in the others, and pointing at the folded sheet outlines every
   facet under the cursor.
 - **Light and dark themes.** The interface follows the operating system's
