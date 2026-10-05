@@ -50,7 +50,7 @@ jobs:
 
       - name: Zip the site
         run: |
-          cp LICENSE README.md dist/
+          cp LICENSE README.md README.zh-CN.md dist/
           (cd dist && zip -qr "../origamio-${TAG#v}.zip" .)
           unzip -l "origamio-${TAG#v}.zip"
 
